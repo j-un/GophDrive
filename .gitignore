@@ -1,0 +1,38 @@
+# General
+.DS_Store
+*.log
+*.tmp
+*.swp
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Next.js
+.next/
+out/
+build/
+dist/
+.env.local
+
+# Go
+backend/bin/
+backend/dist/
+backend/function.zip
+backend/bootstrap
+backend/api
+coverage/
+backend/coverage.txt
+backend/tmp/
+*.exe
+*.test
+
+# CDK
+infra/cdk.out/
+infra/node_modules/
+
+# Environment Variables
+.env
+*.env

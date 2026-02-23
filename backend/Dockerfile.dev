@@ -1,0 +1,22 @@
+ARG GO_VERSION=1.26.0
+FROM golang:${GO_VERSION}-bookworm
+
+WORKDIR /app
+
+# Install Air for hot reload (Use v1.61.7 which supports Go 1.24)
+RUN go install github.com/air-verse/air@v1.61.7
+
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Expose port (Backend API)
+EXPOSE 8080
+
+# Command to run air
+CMD ["air", "-c", ".air.toml"]

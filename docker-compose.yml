@@ -1,0 +1,136 @@
+services:
+  # ============================================================================
+  # LocalStack - AWS Service Emulator
+  # ============================================================================
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566" # Map to host machine for external access
+    environment:
+      - SERVICES=dynamodb,kms,lambda,apigateway,iam,s3,logs,cloudwatch,ssm
+      - DEBUG=0
+      - DEFAULT_REGION=ap-northeast-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    restart: unless-stopped
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # ============================================================================
+  # Backend - Go API Server (Hot Reload via Air)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        GO_VERSION: ${GO_VERSION:-1.26.0}
+    container_name: gophdrive-backend
+    ports:
+      - "8080:8080" # Map to host machine
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app # Source code mount for hot reload
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=ap-northeast-1
+      - DEV_MODE=true
+      - FRONTEND_URL=http://localhost:3000 # For CORS (Browser Origin)
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - localstack
+
+  # ============================================================================
+  # Frontend - Next.js App (Hot Reload)
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        NODE_VERSION: ${NODE_VERSION:-22}
+    container_name: gophdrive-frontend
+    ports:
+      - "3000:3000" # Map to host machine
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app # Source code mount for hot reload
+      - /app/node_modules # Prevent overwriting node_modules
+      - /app/.next # Isolate .next build cache from the host bind-mount
+      - ./core:/workspace/core # Optional visibility for debugging
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      # Browser -> Host -> Backend (via localhost:8080)
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      # SSR -> Backend (Container to Container)
+      - INTERNAL_API_URL=http://backend:8080
+    depends_on:
+      - backend
+
+  # ============================================================================
+  # Core Wasm Builder - Auto-recompiles Wasm bridging module
+  # ============================================================================
+  air-wasm:
+    build:
+      context: .
+      dockerfile: docker/base.Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION:-1.26.0}
+        NODE_VERSION: ${NODE_VERSION:-22}
+    container_name: gophdrive-air-wasm
+    restart: unless-stopped
+    volumes:
+      - .:/workspace # Mount entire workspace so it can reach ./core and ./frontend/public
+    working_dir: /workspace
+    command: >
+      bash -c " go install github.com/air-verse/air@v1.61.7 &&  cd core &&  export GOOS=js GOARCH=wasm && air -c .air.toml "
+    depends_on:
+      - frontend
+
+  # ============================================================================
+  # Infra Toolbox - For CDK Deployment
+  # ============================================================================
+  infra:
+    build:
+      context: .
+      dockerfile: docker/base.Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION:-1.26.0}
+        NODE_VERSION: ${NODE_VERSION:-22}
+    container_name: gophdrive-infra
+    volumes:
+      - .:/workspace # Mount entire project root
+      - ~/:/root-home # Mount home for cached credentials if needed
+      - go-mod-cache:/go/pkg/mod # Persist downloaded go modules across dev setups
+    working_dir: /workspace
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_DEFAULT_REGION=ap-northeast-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    command: tail -f /dev/null # Keep running for exec
+
+  # ============================================================================
+  # Test Runner - All Unit Tests
+  # ============================================================================
+  test-runner:
+    build:
+      context: .
+      dockerfile: docker/base.Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION:-1.26.0}
+        NODE_VERSION: ${NODE_VERSION:-22}
+    volumes:
+      - .:/workspace
+      - test-npm-frontend:/workspace/frontend/node_modules
+      - test-npm-infra:/workspace/infra/node_modules
+      - go-mod-cache:/go/pkg/mod # Persist downloaded go modules across dev setups
+    command: bash scripts/internal/test-all.sh
+
+volumes:
+  localstack-data:
+  test-npm-frontend:
+  test-npm-infra:
+  go-mod-cache:

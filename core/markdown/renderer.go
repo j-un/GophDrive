@@ -1,0 +1,45 @@
+package markdown
+
+import (
+	"bytes"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
+)
+
+// Renderer handles Markdown rendering.
+type Renderer struct {
+	md goldmark.Markdown
+}
+
+// NewRenderer creates a new Markdown renderer with extensions.
+func NewRenderer() *Renderer {
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.GFM, // GitHub Flavored Markdown (Table, Strikethrough, TaskList, Autolink)
+		),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithHardWraps(),
+			html.WithXHTML(),
+			html.WithUnsafe(), // Allow raw HTML (needed for some Mermaid scenarios or user embedded HTML)
+		),
+	)
+
+	return &Renderer{
+		md: md,
+	}
+}
+
+// Render converts Markdown to HTML.
+func (r *Renderer) Render(source []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := r.md.Convert(source, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}

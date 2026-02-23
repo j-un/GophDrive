@@ -1,0 +1,17 @@
+ARG NODE_VERSION=22
+FROM node:${NODE_VERSION}-bookworm
+
+WORKDIR /app
+
+# Install dependencies based on package.json
+COPY package.json package-lock.json ./
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose port (Next.js Dev Server)
+EXPOSE 3000
+
+# Run chokidar proxy for macOS Docker polling issues alongside Next.js
+CMD node watcher.js & npm run dev

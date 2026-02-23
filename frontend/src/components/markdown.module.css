@@ -1,0 +1,142 @@
+.preview {
+  padding: 1rem;
+  font-family: var(--font-geist-sans), sans-serif;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+
+.preview > *:first-child {
+  margin-top: 0;
+}
+
+.preview h1,
+.preview h2,
+.preview h3,
+.preview h4 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.preview h1 {
+  font-size: 2.25em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.preview h2 {
+  font-size: 1.75em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.preview h3 {
+  font-size: 1.5em;
+}
+
+.preview h4 {
+  font-size: 1.25em;
+}
+
+.preview p {
+  margin-bottom: 1.25em;
+}
+
+.preview ul,
+.preview ol {
+  padding-left: 1.625em;
+  margin-bottom: 1.25em;
+}
+
+.preview li {
+  margin-bottom: 0.25em;
+}
+
+.preview li::marker {
+  color: var(--primary);
+}
+
+.preview blockquote {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 1.25em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.preview pre {
+  background: var(--secondary);
+  /* Darker background for code blocks */
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-bottom: 1.25em;
+  border: 1px solid var(--border);
+}
+
+.preview code {
+  font-family: "Geist Mono", monospace;
+  background: var(--secondary);
+  /* Subtle primary tint */
+  padding: 0.2em 0.4em;
+  border-radius: 0.25em;
+  font-size: 0.9em;
+  color: var(--primary);
+}
+
+.preview pre code {
+  background: none;
+  padding: 0;
+  color: var(--secondary-foreground);
+  font-size: 0.9em;
+}
+
+.preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.25em;
+}
+
+.preview th,
+.preview td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.preview th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.preview a {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--primary);
+}
+
+.preview a:hover {
+  border-bottom-style: solid;
+}
+
+.preview hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+.preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.preview input[type="checkbox"] {
+  accent-color: var(--primary);
+  margin-right: 0.5em;
+  transform: translateY(1px);
+}

@@ -1,0 +1,87 @@
+.main {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  padding: 1rem;
+}
+
+.card {
+  padding: 2rem;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  /* Glass effect handled by global .glass class */
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(to right, var(--primary), #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.statusContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.iconWrapper {
+  width: 4rem;
+  height: 4rem;
+  background: var(--success);
+  /* Opacity should be handled if possible, or use a new var. For now let's use a hardcoded rgba match or similar if I can't derive it. Actually I can use color-mix if I want but let's just stick to the hex for the bg if I don't have a muted success var. */
+  /* Reverting to rgba for bg for now but using var for color */
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: var(--success);
+}
+
+.loadingWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 4px solid var(--primary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorBox {
+  color: var(--destructive);
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.code {
+  font-family: monospace;
+  display: block;
+  margin-top: 0.5rem;
+  word-break: break-all;
+}
