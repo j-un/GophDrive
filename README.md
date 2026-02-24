@@ -21,6 +21,34 @@ Built with extensibility in mind, GophDrive uses a clean adapter pattern that al
 - **Database (Meta/Sessions)**: Amazon DynamoDB
 - **Auth**: Google OAuth 2.0 + Custom JWTs
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User([User / Browser])
+    GoogleDrive[Google Drive API]
+    
+    subgraph AWS [AWS Cloud]
+        CF[CloudFront]
+        S3[(S3 Bucket<br/>Frontend Assets)]
+        API[API Gateway]
+        Lambda[Lambda<br/>Go Backend]
+        Dynamo[(DynamoDB)]
+    end
+
+    %% Access Flow
+    User -->|HTTPS| CF
+    CF -->|Static Assets| S3
+    CF -->|/api/*| API
+    
+    %% Main Application Flow
+    API -->|Proxy| Lambda
+    Lambda <-->|OAuth / Files| GoogleDrive
+    
+    %% Backend Dependencies
+    Lambda -.->|Encrypts Tokens<br/>via KMS| Dynamo
+```
+
 ## Project Structure
 
 ```text
@@ -67,7 +95,15 @@ Before deploying, you must create a Google Cloud Project and configure OAuth 2.0
 - Create an **OAuth client ID** (Web application).
 - Set the Authorized Redirect URI to your intended domain's `/api/auth/callback` path (e.g., `https://gophdrive.example.com/api/auth/callback` or the CloudFront URL after deployment).
 
-### 2. Run the Deployment Script
+### 2. AWS CDK Bootstrap (First Time Only)
+If this is your first time deploying AWS CDK to this region/account, you must bootstrap it:
+```bash
+cd infra
+npx cdk bootstrap
+cd ..
+```
+
+### 3. Run the Deployment Script
 Set your credentials as environment variables and run the script:
 
 ```bash
