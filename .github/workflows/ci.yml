@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  backend-core:
+    name: Backend & Core (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '.go-version'
+          cache-dependency-path: |
+            backend/go.sum
+            core/go.sum
+
+      - name: Check Backend (fmt, vet, test)
+        working-directory: ./backend
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted properly:"
+            gofmt -l .
+            exit 1
+          fi
+          go vet ./...
+          go test ./...
+
+      - name: Check Core (fmt, vet, test)
+        working-directory: ./core
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted properly:"
+            gofmt -l .
+            exit 1
+          fi
+          go vet ./...
+          go test ./...
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run Prettier
+        working-directory: ./frontend
+        run: npx prettier --check .
+
+      - name: Run ESLint
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Run Tests
+        working-directory: ./frontend
+        run: npm run test
+
+  # TODO: Temporarily disabled due to heavy load and timeout issues. 
+  # Needs optimization before re-enabling.
+  # infra:
+  #   name: Infrastructure (CDK)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
+
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version-file: '.node-version'
+  #         cache: 'npm'
+  #         cache-dependency-path: infra/package-lock.json
+
+  #     - name: Setup Go
+  #       uses: actions/setup-go@v5
+  #       with:
+  #         go-version-file: '.go-version'
+
+  #     - name: Install Dependencies
+  #       working-directory: ./infra
+  #       run: npm ci
+
+  #     - name: Run Prettier
+  #       working-directory: ./infra
+  #       run: npx prettier --check .
+
+  #     - name: Run ESLint
+  #       working-directory: ./infra
+  #       run: npm run lint
+
+  #     - name: Run Tests
+  #       working-directory: ./infra
+  #       run: npm run test
