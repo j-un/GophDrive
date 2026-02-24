@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, Suspense } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  Suspense,
+  useRef,
+} from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Save, Share2, Home, ChevronRight } from "lucide-react";
@@ -51,6 +57,46 @@ function NoteContent() {
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
 
   const isOffline = useOffline();
+
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncing = useRef(false);
+
+  const handleEditorScroll = () => {
+    if (
+      isSyncing.current ||
+      !editorScrollRef.current ||
+      !previewScrollRef.current
+    )
+      return;
+    isSyncing.current = true;
+    const { scrollTop, scrollHeight, clientHeight } = editorScrollRef.current;
+    const scrollPercentage = scrollTop / (scrollHeight - clientHeight || 1);
+    const preview = previewScrollRef.current;
+    preview.scrollTop =
+      scrollPercentage * (preview.scrollHeight - preview.clientHeight);
+    setTimeout(() => {
+      isSyncing.current = false;
+    }, 50);
+  };
+
+  const handlePreviewScroll = () => {
+    if (
+      isSyncing.current ||
+      !editorScrollRef.current ||
+      !previewScrollRef.current
+    )
+      return;
+    isSyncing.current = true;
+    const { scrollTop, scrollHeight, clientHeight } = previewScrollRef.current;
+    const scrollPercentage = scrollTop / (scrollHeight - clientHeight || 1);
+    const editor = editorScrollRef.current;
+    editor.scrollTop =
+      scrollPercentage * (editor.scrollHeight - editor.clientHeight);
+    setTimeout(() => {
+      isSyncing.current = false;
+    }, 50);
+  };
 
   useEffect(() => {
     if (!id) {
@@ -691,7 +737,11 @@ function NoteContent() {
           >
             MARKDOWN
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div
+            style={{ flex: 1, overflowY: "auto" }}
+            ref={editorScrollRef}
+            onScroll={handleEditorScroll}
+          >
             <Editor
               value={content}
               onChange={setContent}
@@ -718,7 +768,11 @@ function NoteContent() {
           >
             PREVIEW
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div
+            style={{ flex: 1, overflowY: "auto" }}
+            ref={previewScrollRef}
+            onScroll={handlePreviewScroll}
+          >
             <Preview markdown={content} className="h-full max-w-3xl mx-auto" />
           </div>
         </div>
