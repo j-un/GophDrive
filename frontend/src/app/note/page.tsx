@@ -691,12 +691,12 @@ function NoteContent() {
           >
             MARKDOWN
           </div>
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ flex: 1, overflowY: "auto" }}>
             <Editor
               value={content}
               onChange={setContent}
               readOnly={!!lockedBy}
-              className="h-full rounded-none border-0"
+              className="min-h-full rounded-none border-0"
             />
           </div>
         </div>

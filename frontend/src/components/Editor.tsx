@@ -40,13 +40,18 @@ export function Editor({
 
   return (
     <div
-      className={`rounded-lg overflow-hidden border border-[var(--border)] ${className || ""}`}
-      style={{ backgroundColor: "var(--card)" }}
+      className={`rounded-lg border border-[var(--border)] ${className || ""}`}
+      style={{
+        backgroundColor: "var(--card)",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
       <CodeMirror
         value={value}
-        height="100%"
-        className="h-full text-base font-mono"
+        height="auto"
+        minHeight="100%"
+        className="text-base font-mono flex-1"
         extensions={[
           markdown({ base: markdownLanguage, codeLanguages: languages }),
           EditorView.lineWrapping,
