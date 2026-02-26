@@ -881,7 +881,11 @@ func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName s
 	}
 
 	// 2. Update Name
-	orig.Name = toMemoryName(newName)
+	name := newName
+	if orig.MIMEType != "application/vnd.google-apps.folder" {
+		name = toMemoryName(newName)
+	}
+	orig.Name = name
 	orig.ModifiedTime = time.Now()
 	// ETag should probably change on rename? Yes.
 	orig.ETag = uuid.New().String()
@@ -989,7 +993,11 @@ func (m *MemoryAdapter) renameFileMap(ctx context.Context, fileID string, newNam
 		return nil, adapter.ErrNotFound
 	}
 
-	f.Name = toMemoryName(newName)
+	name := newName
+	if f.MIMEType != "application/vnd.google-apps.folder" {
+		name = toMemoryName(newName)
+	}
+	f.Name = name
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 

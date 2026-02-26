@@ -144,18 +144,29 @@ func TestMemoryAdapter_RenameFile(t *testing.T) {
 	m := NewMemoryAdapter(nil, "user1", "")
 	ctx := context.Background()
 
+	// Test renaming a file
 	file, _ := m.CreateFile(ctx, "old.md", []byte("data"), "root")
 	originalETag := file.ETag
 
 	renamed, err := m.RenameFile(ctx, file.ID, "new.md")
 	if err != nil {
-		t.Fatalf("RenameFile failed: %v", err)
+		t.Fatalf("RenameFile(file) failed: %v", err)
 	}
 	if renamed.Name != "new.md" {
-		t.Errorf("Expected name 'new.md', got '%s'", renamed.Name)
+		t.Errorf("Expected file name 'new.md', got '%s'", renamed.Name)
 	}
 	if renamed.ETag == originalETag {
-		t.Error("Expected ETag to change after rename")
+		t.Error("Expected ETag to change after file rename")
+	}
+
+	// Test renaming a folder (should not add .md)
+	folder, _ := m.CreateFolder(ctx, "OldFolder", []string{"root"})
+	folderRenamed, err := m.RenameFile(ctx, folder.ID, "NewFolder")
+	if err != nil {
+		t.Fatalf("RenameFile(folder) failed: %v", err)
+	}
+	if folderRenamed.Name != "NewFolder" {
+		t.Errorf("Expected folder name 'NewFolder', got '%s'", folderRenamed.Name)
 	}
 }
 
