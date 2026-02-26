@@ -359,8 +359,22 @@ func (d *DriveAdapter) DuplicateFile(ctx context.Context, fileID string) (*adapt
 
 // RenameFile renames a file.
 func (d *DriveAdapter) RenameFile(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
+	// 1. Get current metadata to check if it's a folder
+	current, err := d.service.Files.Get(fileID).Fields("mimeType").Do()
+	if err != nil {
+		if isNotFound(err) {
+			return nil, adapter.ErrNotFound
+		}
+		return nil, fmt.Errorf("unable to fetch file metadata for rename: %v", err)
+	}
+
+	name := newName
+	if current.MimeType != "application/vnd.google-apps.folder" {
+		name = toDriveName(newName)
+	}
+
 	f := &drive.File{
-		Name: toDriveName(newName),
+		Name: name,
 	}
 
 	res, err := d.service.Files.Update(fileID, f).
@@ -388,6 +402,7 @@ func (d *DriveAdapter) SetStarred(ctx context.Context, fileID string, starred bo
 	f := &drive.File{
 		Starred: starred,
 	}
+	f.ForceSendFields = []string{"Starred"}
 
 	res, err := d.service.Files.Update(fileID, f).
 		SupportsAllDrives(true).
