@@ -3,7 +3,7 @@ tmp_dir = "tmp"
 
 [build]
   bin = "./tmp/main"
-  cmd = "bash ../scripts/build-wasm.sh"
+  cmd = "bash ../scripts/internal/build-wasm.sh"
   delay = 1000
   exclude_dir = ["tmp"]
   exclude_regex = ["_test.go"]
