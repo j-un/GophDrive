@@ -4,8 +4,6 @@ import {
   Folder,
   FolderPlus,
   ChevronRight,
-  MoreVertical,
-  Trash2,
   Star,
   Settings,
 } from "lucide-react";
@@ -19,6 +17,7 @@ import {
 } from "@/lib/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import SearchInput from "./SearchInput";
+import { NoteMenu } from "./NoteMenu";
 
 interface SidebarProps {
   currentFolderId?: string;
@@ -384,80 +383,21 @@ export function Sidebar({
                   </span>
                 </div>
 
-                {/* More Menu Button */}
-                <div style={{ position: "relative" }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveMenuId(
-                        activeMenuId === folder.id ? null : folder.id,
-                      );
-                    }}
-                    className="btn icon-btn"
-                    style={{
-                      padding: "0.25rem",
-                      background: "transparent",
-                      border: "none",
-                      opacity: activeMenuId === folder.id ? 1 : 0,
-                      transition: "opacity 0.2s",
-                      color: "var(--muted-foreground)",
-                    }}
-                    // Show button on hover via CSS (group-hover) or if active
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.opacity =
-                        activeMenuId === folder.id ? "1" : "0")
-                    }
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {activeMenuId === folder.id && (
-                    <div
-                      ref={menuRef}
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        top: "100%",
-                        zIndex: 10,
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "0.5rem",
-                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                        minWidth: "120px",
-                        overflow: "hidden",
-                        display: "flex",
-                        flexDirection: "column",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={(e) => handleToggleStar(e, folder)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--muted)] flex items-center gap-3 justify-start"
-                        style={{
-                          color: "var(--foreground)",
-                          border: "none",
-                          background: "transparent",
-                        }}
-                      >
-                        <Star
-                          size={14}
-                          fill={folder.starred ? "currentColor" : "none"}
-                        />
-                        {folder.starred ? "Unstar" : "Star"}
-                      </button>
-                      <button
-                        onClick={(e) => requestDeleteFolder(e, folder)}
-                        className="w-full text-left px-4 py-2 text-sm text-[var(--destructive)] hover:bg-[var(--muted)] flex items-center gap-3 justify-start"
-                        style={{ border: "none", background: "transparent" }}
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* Unified Menu Component */}
+                <NoteMenu
+                  isOpen={activeMenuId === folder.id}
+                  onToggle={(e) => {
+                    e.stopPropagation();
+                    setActiveMenuId(
+                      activeMenuId === folder.id ? null : folder.id,
+                    );
+                  }}
+                  onClose={() => setActiveMenuId(null)}
+                  onStar={(e) => handleToggleStar(e, folder)}
+                  isStarred={folder.starred}
+                  onDelete={(e) => requestDeleteFolder(e, folder)}
+                  align="right"
+                />
               </div>
             ))
           )}
