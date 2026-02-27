@@ -6,6 +6,7 @@ interface RenameDialogProps {
   initialName: string;
   onRename: (newName: string) => void;
   onCancel: () => void;
+  title?: string;
 }
 
 export const RenameDialog: React.FC<RenameDialogProps> = ({
@@ -13,6 +14,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
   initialName,
   onRename,
   onCancel,
+  title = "Rename",
 }) => {
   const [name, setName] = useState(initialName);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +66,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
             marginBottom: "1rem",
           }}
         >
-          <h3 style={{ margin: 0, fontWeight: "bold" }}>Rename Note</h3>
+          <h3 style={{ margin: 0, fontWeight: "bold" }}>{title}</h3>
           <button
             onClick={onCancel}
             style={{
