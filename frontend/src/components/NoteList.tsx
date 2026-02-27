@@ -9,6 +9,7 @@ import {
   duplicateNote,
   renameNote,
   deleteFile,
+  starFile,
   createNote as apiCreateNote,
   listFiles,
 } from "@/lib/api";
@@ -202,6 +203,20 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
     }
   };
 
+  const handleToggleStar = async (e: React.MouseEvent, note: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    try {
+      await starFile(note.id, !note.starred);
+      loadNotes();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to toggle star");
+    }
+  };
+
   const confirmDeleteNote = async () => {
     if (!deleteNoteId) return;
     try {
@@ -276,6 +291,7 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
         initialName={renameNoteName}
         onRename={executeRename}
         onCancel={() => setRenameNoteId(null)}
+        title="Rename Note"
       />
       <div
         style={{
@@ -395,6 +411,8 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
                   onDelete={(e) => requestDeleteNote(e, note)}
                   onDuplicate={(e) => handleDuplicateNote(e, note)}
                   onRename={(e) => requestRenameNote(e, note)}
+                  onStar={(e) => handleToggleStar(e, note)}
+                  isStarred={note.starred}
                 />
               </div>
             </div>
@@ -563,6 +581,8 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
                   onDelete={(e) => requestDeleteNote(e, note)}
                   onDuplicate={(e) => handleDuplicateNote(e, note)}
                   onRename={(e) => requestRenameNote(e, note)}
+                  onStar={(e) => handleToggleStar(e, note)}
+                  isStarred={note.starred}
                 />
               </div>
             </div>
