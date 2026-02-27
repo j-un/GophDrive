@@ -140,3 +140,94 @@
   margin-right: 0.5em;
   transform: translateY(1px);
 }
+
+/* Syntax Highlighting (Chroma) */
+.preview :global(.chroma) {
+  color: var(--foreground);
+}
+
+.preview :global(.chroma) :global(.cl) {
+  display: block;
+}
+
+/* Keywords & Declarations */
+.preview :global(.chroma) :global(.k),
+.preview :global(.chroma) :global(.kd),
+.preview :global(.chroma) :global(.kn),
+.preview :global(.chroma) :global(.kp),
+.preview :global(.chroma) :global(.kr),
+.preview :global(.chroma) :global(.kt) {
+  color: #c678dd; /* Purple */
+}
+
+/* Strings */
+.preview :global(.chroma) :global(.s),
+.preview :global(.chroma) :global(.s1),
+.preview :global(.chroma) :global(.s2),
+.preview :global(.chroma) :global(.sb),
+.preview :global(.chroma) :global(.sc),
+.preview :global(.chroma) :global(.sd),
+.preview :global(.chroma) :global(.se),
+.preview :global(.chroma) :global(.sh),
+.preview :global(.chroma) :global(.si),
+.preview :global(.chroma) :global(.sx) {
+  color: #98c379; /* Green */
+}
+
+/* Functions */
+.preview :global(.chroma) :global(.nf) {
+  color: #61afef; /* Blue */
+}
+
+/* Variables & Attributes */
+.preview :global(.chroma) :global(.nv),
+.preview :global(.chroma) :global(.nx),
+.preview :global(.chroma) :global(.na),
+.preview :global(.chroma) :global(.no) {
+  color: #e06c75; /* Red */
+}
+
+/* Constants, Numbers, Types */
+.preview :global(.chroma) :global(.kc),
+.preview :global(.chroma) :global(.m),
+.preview :global(.chroma) :global(.mi),
+.preview :global(.chroma) :global(.mf),
+.preview :global(.chroma) :global(.mh),
+.preview :global(.chroma) :global(.mo),
+.preview :global(.chroma) :global(.nc),
+.preview :global(.chroma) :global(.ne),
+.preview :global(.chroma) :global(.ni) {
+  color: #d19a66; /* Orange/Gold */
+}
+
+/* Names & Tags */
+.preview :global(.chroma) :global(.nb),
+.preview :global(.chroma) :global(.nd),
+.preview :global(.chroma) :global(.nl),
+.preview :global(.chroma) :global(.nn),
+.preview :global(.chroma) :global(.nt) {
+  color: #e5c07b; /* Yellow */
+}
+
+/* Comments */
+.preview :global(.chroma) :global(.c),
+.preview :global(.chroma) :global(.cm),
+.preview :global(.chroma) :global(.c1),
+.preview :global(.chroma) :global(.cs),
+.preview :global(.chroma) :global(.cp),
+.preview :global(.chroma) :global(.cpf) {
+  color: #7f848e; /* Gray */
+  font-style: italic;
+}
+
+/* Operators & Punctuation */
+.preview :global(.chroma) :global(.o),
+.preview :global(.chroma) :global(.ow),
+.preview :global(.chroma) :global(.p) {
+  color: #56b6c2; /* Cyan */
+}
+
+/* Errors */
+.preview :global(.chroma) :global(.err) {
+  color: #ef596f;
+}
