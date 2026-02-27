@@ -1,12 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Folder,
-  FolderPlus,
-  ChevronRight,
-  Star,
-  Settings,
-} from "lucide-react";
+import { Folder, FolderPlus, ChevronRight, Star, Settings } from "lucide-react";
 import {
   createFolder,
   deleteFile,
