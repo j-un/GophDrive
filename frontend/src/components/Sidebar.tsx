@@ -10,12 +10,14 @@ import {
 import {
   createFolder,
   deleteFile,
+  renameNote,
   listStarred,
   starFile,
   FileItem,
   listFiles,
 } from "@/lib/api";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { RenameDialog } from "./RenameDialog";
 import SearchInput from "./SearchInput";
 import { NoteMenu } from "./NoteMenu";
 
@@ -50,6 +52,11 @@ export function Sidebar({
     isOpen: boolean;
     folder: FileItem | null;
   }>({ isOpen: false, folder: null });
+
+  // Rename State
+  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState<string>("");
+
   const menuRef = useRef<HTMLDivElement>(null);
 
   const loadFolders = async () => {
@@ -115,6 +122,27 @@ export function Sidebar({
     }
   };
 
+  const requestRenameFolder = (e: React.MouseEvent, folder: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setRenameFolderId(folder.id);
+    setRenameFolderName(folder.name || "Untitled Folder");
+  };
+
+  const executeRename = async (newName: string) => {
+    if (!renameFolderId) return;
+    try {
+      await renameNote(renameFolderId, newName);
+      setRenameFolderId(null);
+      loadFolders();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to rename folder");
+    }
+  };
+
   const handleCreateFolder = async (name: string) => {
     if (!name.trim()) return;
     if (isSubmitting) return;
@@ -160,6 +188,13 @@ export function Sidebar({
           onCancel={() =>
             setDeleteConfirmation({ isOpen: false, folder: null })
           }
+        />
+        <RenameDialog
+          isOpen={!!renameFolderId}
+          initialName={renameFolderName}
+          onRename={executeRename}
+          onCancel={() => setRenameFolderId(null)}
+          title="Rename Folder"
         />
         {/* Header */}
         <div
@@ -396,6 +431,7 @@ export function Sidebar({
                   onStar={(e) => handleToggleStar(e, folder)}
                   isStarred={folder.starred}
                   onDelete={(e) => requestDeleteFolder(e, folder)}
+                  onRename={(e) => requestRenameFolder(e, folder)}
                   align="right"
                 />
               </div>

@@ -291,6 +291,7 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
         initialName={renameNoteName}
         onRename={executeRename}
         onCancel={() => setRenameNoteId(null)}
+        title="Rename Note"
       />
       <div
         style={{
