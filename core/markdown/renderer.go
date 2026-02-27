@@ -3,8 +3,8 @@ package markdown
 import (
 	"bytes"
 
-	"github.com/yuin/goldmark"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
