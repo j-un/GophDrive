@@ -169,6 +169,28 @@ func (s *AuthService) UpdateBaseFolderID(ctx context.Context, userID, folderID s
 	return nil
 }
 
+// GetTestTokens returns the internal token map (for testing only).
+func (s *AuthService) GetTestTokens() map[string]model.UserToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	// Create a copy to avoid race
+	tokens := make(map[string]model.UserToken)
+	for k, v := range s.tokens {
+		tokens[k] = v
+	}
+	return tokens
+}
+
+// GetBaseFolderID returns the BaseFolderID for a user (for testing only).
+func (s *AuthService) GetBaseFolderID(ctx context.Context, userID string) (string, error) {
+	token, err := s.GetUserToken(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return token.BaseFolderID, nil
+}
+
 // GetClient returns an authenticated http.Client for the user.
 func (s *AuthService) GetClient(ctx context.Context, userID string) (*http.Client, error) {
 	var userToken model.UserToken
