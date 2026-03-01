@@ -173,7 +173,7 @@ func (s *AuthService) UpdateBaseFolderID(ctx context.Context, userID, folderID s
 func (s *AuthService) GetTestTokens() map[string]model.UserToken {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Create a copy to avoid race
 	tokens := make(map[string]model.UserToken)
 	for k, v := range s.tokens {
