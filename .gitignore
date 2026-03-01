@@ -36,3 +36,4 @@ infra/node_modules/
 # Environment Variables
 .env
 *.env
+frontend/tsconfig.tsbuildinfo
