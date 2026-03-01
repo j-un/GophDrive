@@ -269,30 +269,23 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 			Name: "Welcome (English).md",
 			Content: `# Welcome to GophDrive!
 
-This is a demo of GophDrive, a secure, serverless Markdown note-taking application that utilizes your own Google Drive for storage!
+This is a demo of GophDrive, a secure, serverless Markdown note-taking application that uses Google Drive for storage!
 
 ## Key Features
-- **Google Drive Integration** Your notes are stored securely in a folder you control!
-- **Serverless Architecture** Built on AWS for high availability and automatic scaling.
-- **WebAssembly Power** Core logic runs directly in your browser for a fast, responsive experience.
-- **Offline Mode** View and edit your notes even without internet; they sync once you're back online!
+- **Google Drive Integration** Your notes are safely stored in your own Google Drive.
+- **Serverless** Built on AWS for high availability and scalability.
+- **WebAssembly** Core logic (Markdown rendering, conflict resolution) is written in Go and runs fast in your browser.
+- **Offline Support** View and edit your notes even without an internet connection (syncs when back online)!
 
-## System Architecture
-| Component | Tech Stack | Primary Role |
+## Markdown Syntax
+Here are some examples of Markdown elements you can use:
+
+### Tables
+| Feature | Status | Description |
 | :--- | :--- | :--- |
-| Frontend | Next.js, TypeScript | UI and WebAssembly execution |
-| Backend | Go, AWS Lambda | Google Drive API integration |
-| Core Logic | Go (Wasm) | Markdown processing and sync |
-| Database | DynamoDB | Session management and demo storage |
-
-## Markdown Demonstration
-
-### Tables (Example)
-| Function | Status | Description |
-| :--- | :--- | :--- |
-| Markdown Preview | Active | High-speed rendering via Wasm |
-| Conflict Detection | Active | Prevents overwriting concurrent edits |
-| Starred Notes | Active | Quick access to important files |
+| Preview | Active | Fast rendering via WebAssembly |
+| Sync | Active | Automatic Google Drive synchronization |
+| Security | Active | Serverless encryption for tokens |
 
 ### Lists
 - Item 1
@@ -301,9 +294,9 @@ This is a demo of GophDrive, a secure, serverless Markdown note-taking applicati
 - Item 3
 
 ### Checklists
-- [x] Launch the application!
-- [ ] Create your first note
-- [ ] Star an important note
+- [x] Open the app!
+- [ ] Write a note
+- [ ] Save it
 
 ### Code Blocks
 ` + "```go" + `
@@ -312,55 +305,48 @@ package main
 import "fmt"
 
 func main() {
-    fmt.Println("Welcome to GophDrive!")
+    fmt.Println("Hello, GophDrive!")
 }
 ` + "```" + `
 
 ### Blockquotes
-> "The best way to predict the future is to invent it."
+> This is a blockquote. Perfect for highlighting important information.
 
 ---
-We hope you enjoy exploring GophDrive!`,
+Enjoy exploring GophDrive!`,
 		},
 		{
 			Name: "ようこそ (Japanese).md",
-			Content: `# GophDriveへようこそ！
+			Content: `# GophDrive へようこそ！
 
-これは、Google Driveをストレージとして活用する、セキュアでサーバーレスなマークダウンノートアプリのデモです！
+これは、Google Drive をストレージとして利用する、セキュアでサーバーレスなマークダウンノートアプリのデモです！
 
 ## 主な特徴
-- **Google Drive 連携** ノートはすべてユーザー自身のGoogle Driveに保存され、プライバシーが守られます！
-- **サーバーレス** AWS LambdaとDynamoDBを活用した、スケーラブルで堅牢な構成です。
-- **WebAssembly** 変換や同期などの主要ロジックをブラウザ上で実行するため、非常に高速です。
-- **オフライン対応** インターネットがない場所でも編集を続けられ、接続時に自動で同期されます！
+- **Google Drive 連携** あなたのノートは、あなたの Google Drive に安全に保管されます！
+- **サーバーレス** AWS 上で動作し、高い可用性とスケーラビリティを実現しています。
+- **WebAssembly** コアロジック（マークダウン変換や競合解決）は Go で書かれ、ブラウザ上で高速に動作します。
+- **オフライン対応** インターネットがなくてもノートの閲覧・編集が可能です（同期はオンライン復帰時）！
 
-## システム構成
-| コンポーネント | 技術スタック | 主要な役割 |
-| :--- | :--- | :--- |
-| フロントエンド | Next.js, TypeScript | UIおよびWebAssemblyの実行 |
-| バックエンド | Go, AWS Lambda | Google Drive APIとの連携 |
-| コアロジック | Go (Wasm) | マークダウン処理および競合解決 |
-| データベース | DynamoDB | セッション管理およびデモ用保存 |
+## マークダウン記法
+以下に、このアプリで利用可能なマークダウン記法の例をいくつか挙げます。
 
-## マークダウン要素の検証
-
-### テーブル記法の例
+### テーブル
 | 機能 | 状態 | 備考 |
 | :--- | :--- | :--- |
-| リアルタイムプレビュー | 有効 | Wasmによる高速レンダリング |
-| 競合検知 | 有効 | 同時編集による上書きを防止 |
-| スター機能 | 有効 | 重要なノートに素早くアクセス |
+| プレビュー | 有効 | WebAssemblyによる高速表示 |
+| 同期 | 有効 | Google Driveとの自動連携 |
+| セキュリティ | 有効 | サーバーレスな暗号化保護 |
 
 ### リスト
 - 項目 1
 - 項目 2
-    - 下位項目
+    - ネストされた項目
 - 項目 3
 
 ### チェックリスト
-- [x] アプリケーションを起動する！
-- [ ] 最初のノートを作成する
-- [ ] 重要なノートにスターをつける
+- [x] アプリを開く！
+- [ ] ノートを書く
+- [ ] 保存する
 
 ### コードブロック
 ` + "```go" + `
@@ -369,15 +355,15 @@ package main
 import "fmt"
 
 func main() {
-    fmt.Println("GophDriveへようこそ！")
+    fmt.Println("Hello, GophDrive!")
 }
 ` + "```" + `
 
 ### 引用
-> 重要な情報は引用ブロックを用いることで視覚的に強調することが可能です。
+> これは引用文です。重要な情報を強調するのに適しています。
 
 ---
-GophDriveの機能をぜひ自由に体験してみてください！`,
+さあ、自由にノートを作成して GophDrive を体験してみてください！`,
 		},
 	}
 
