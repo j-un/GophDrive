@@ -266,16 +266,16 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 		Content string
 	}{
 		{
-			Name: "Welcome (English).md",
+			Name: "Welcome!.md",
 			Content: `# Welcome to GophDrive!
 
 This is a demo of GophDrive, a secure, serverless Markdown note-taking application that uses Google Drive for storage!
 
 ## Key Features
-- **Google Drive Integration** Your notes are safely stored in your own Google Drive.
-- **Serverless** Built on AWS for high availability and scalability.
-- **WebAssembly** Core logic (Markdown rendering, conflict resolution) is written in Go and runs fast in your browser.
-- **Offline Support** View and edit your notes even without an internet connection (syncs when back online)!
+- **Google Drive Integration** Your notes are safely stored in your own Google Drive
+- **Serverless** Built on AWS for high availability and scalability
+- **WebAssembly** Core logic (Markdown rendering, conflict resolution) is written in Go and runs fast in your browser
+- **Offline Support** View and edit your notes even without an internet connection (syncs when back online)
 
 ## Markdown Syntax
 Here are some examples of Markdown elements you can use:
@@ -300,7 +300,7 @@ Here are some examples of Markdown elements you can use:
 - Item 3
 
 ### Checklists
-- [x] Open the app!
+- [x] Open the app
 - [ ] Write a note
 - [ ] Save it
 
@@ -322,19 +322,18 @@ func main() {
 Enjoy exploring GophDrive!`,
 		},
 		{
-			Name: "ようこそ (Japanese).md",
+			Name: "ようこそ!.md",
 			Content: `# GophDrive へようこそ！
 
-これは、Google Drive をストレージとして利用する、セキュアでサーバーレスなマークダウンノートアプリのデモです！
+これは、Google Drive をストレージとして利用する、セキュアでサーバーレスなマークダウンノートアプリのデモです。
 
 ## 主な特徴
-- **Google Drive 連携** あなたのノートは、あなたの Google Drive に安全に保管されます！
-- **サーバーレス** AWS 上で動作し、高い可用性とスケーラビリティを実現しています。
-- **WebAssembly** コアロジック（マークダウン変換や競合解決）は Go で書かれ、ブラウザ上で高速に動作します。
-- **オフライン対応** インターネットがなくてもノートの閲覧・編集が可能です（同期はオンライン復帰時）！
+- **Google Drive 連携** あなたのノートは、あなたの Google Drive に安全に保管
+- **サーバーレス** AWS 上で動作し、高い可用性とスケーラビリティを実現
+- **WebAssembly** コアロジック（マークダウン変換や競合解決）は Go で書かれ、ブラウザ上で高速に動作
+- **オフライン対応** インターネットがなくてもノートの閲覧・編集が可能（同期はオンライン復帰時）
 
 ## マークダウン記法
-以下に、このアプリで利用可能なマークダウン記法の例をいくつか挙げます。
 
 ### テキスト装飾
 - **太字** による強調
@@ -356,7 +355,7 @@ Enjoy exploring GophDrive!`,
 - 項目 3
 
 ### チェックリスト
-- [x] アプリを開く！
+- [x] アプリを開く
 - [ ] ノートを書く
 - [ ] 保存する
 

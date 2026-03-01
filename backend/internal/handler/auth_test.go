@@ -63,10 +63,10 @@ func TestDemoLogin_CreatesWelcomeNotes(t *testing.T) {
 	foundJP := false
 	foundEN := false
 	for _, f := range files {
-		if f.Name == "ようこそ (Japanese)" {
+		if f.Name == "ようこそ!" {
 			foundJP = true
 		}
-		if f.Name == "Welcome (English)" {
+		if f.Name == "Welcome!" {
 			foundEN = true
 		}
 	}
