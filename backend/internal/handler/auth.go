@@ -280,6 +280,12 @@ This is a demo of GophDrive, a secure, serverless Markdown note-taking applicati
 ## Markdown Syntax
 Here are some examples of Markdown elements you can use:
 
+### Text Decoration
+- **Bold text** for emphasis
+- *Italic text* for subtle emphasis
+- ~~Strikethrough~~ to indicate removed content
+- ` + "`" + `Inline code` + "`" + ` for technical terms
+
 ### Tables
 | Feature | Status | Description |
 | :--- | :--- | :--- |
@@ -329,6 +335,12 @@ Enjoy exploring GophDrive!`,
 
 ## マークダウン記法
 以下に、このアプリで利用可能なマークダウン記法の例をいくつか挙げます。
+
+### テキスト装飾
+- **太字** による強調
+- *斜体* による控えめな強調
+- ~~打ち消し線~~ による削除の表現
+- ` + "`" + `インラインコード` + "`" + ` による技術用語の記述
 
 ### テーブル
 | 機能 | 状態 | 備考 |
