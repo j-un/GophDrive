@@ -260,6 +260,116 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to set base folder ID"}, nil
 	}
 
+	// Create Welcome Notes
+	welcomeNotes := []struct {
+		Name    string
+		Content string
+	}{
+		{
+			Name: "Welcome (English).md",
+			Content: `# Welcome to GophDrive!
+
+This is a demo of GophDrive, a secure, serverless Markdown note-taking application that uses Google Drive for storage.
+
+## Key Features
+- **Google Drive Integration**: Your notes are safely stored in your own Google Drive.
+- **Serverless**: Built on AWS for high availability and scalability.
+- **WebAssembly**: Core logic (Markdown rendering, conflict resolution) is written in Go and runs fast in your browser.
+- **Offline Support**: View and edit your notes even without an internet connection (syncs when back online).
+
+## Markdown Demo
+Here are some examples of Markdown elements you can use:
+
+### Lists
+- Item 1
+- Item 2
+    - Nested item
+- Item 3
+
+### Numbered Lists
+1. First step
+2. Second step
+3. Final step
+
+### Checklists
+- [x] Open the app
+- [ ] Write a note
+- [ ] Save it
+
+### Code Blocks
+` + "```go" + `
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, GophDrive!")
+}
+` + "```" + `
+
+### Blockquotes
+> This is a blockquote. Perfect for highlighting important information.
+
+---
+Enjoy exploring GophDrive!`,
+		},
+		{
+			Name: "ようこそ (Japanese).md",
+			Content: `# GophDrive へようこそ！
+
+これは、Google Drive をストレージとして利用する、セキュアでサーバーレスなマークダウンノートアプリのデモです。
+
+## 主な特徴
+- **Google Drive 連携**: あなたのノートは、あなたの Google Drive に安全に保管されます。
+- **サーバーレス**: AWS 上で動作し、高い可用性とスケーラビリティを実現しています。
+- **WebAssembly**: コアロジック（マークダウン変換や競合解決）は Go で書かれ、ブラウザ上で高速に動作します。
+- **オフライン対応**: インターネットがなくてもノートの閲覧・編集が可能です（同期はオンライン復帰時）。
+
+## マークダウンのデモ
+以下に、このアプリで利用可能なマークダウン要素の例をいくつか挙げます。
+
+### リスト
+- 項目 1
+- 項目 2
+    - ネストされた項目
+- 項目 3
+
+### 番号付きリスト
+1. 最初のステップ
+2. 次のステップ
+3. 最後のステップ
+
+### チェックリスト
+- [x] アプリを開く
+- [ ] ノートを書く
+- [ ] 保存する
+
+### コードブロック
+` + "```go" + `
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, GophDrive!")
+}
+` + "```" + `
+
+### 引用
+> これは引用文です。重要な情報を強調するのに適しています。
+
+---
+さあ、自由にノートを作成して GophDrive を体験してみてください！`,
+		},
+	}
+
+	for _, note := range welcomeNotes {
+		if _, err := storage.CreateFile(ctx, note.Name, []byte(note.Content), rootFolderID); err != nil {
+			fmt.Printf("DemoLogin CreateFile (%s) error: %v\n", note.Name, err)
+			// Continue even if file creation fails for one
+		}
+	}
+
 	claims := jwt.MapClaims{
 		"sub":   userID,
 		"email": email,
