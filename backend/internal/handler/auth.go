@@ -267,18 +267,25 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 	}{
 		{
 			Name: "Welcome (English).md",
-			Content: `# Welcome to GophDrive!
+			Content: `# GophDrive Overview
 
-This is a demo of GophDrive, a secure, serverless Markdown note-taking application that uses Google Drive for storage.
+A demo of GophDrive, a secure, serverless Markdown note-taking application utilizing Google Drive for storage.
 
 ## Key Features
-- **Google Drive Integration**: Your notes are safely stored in your own Google Drive.
-- **Serverless**: Built on AWS for high availability and scalability.
-- **WebAssembly**: Core logic (Markdown rendering, conflict resolution) is written in Go and runs fast in your browser.
-- **Offline Support**: View and edit your notes even without an internet connection (syncs when back online).
+- **Google Drive Integration** Notes are stored securely in a designated Google Drive folder
+- **Serverless Architecture** Built on AWS Lambda and DynamoDB for high availability and scalability
+- **WebAssembly Execution** Core logic is written in Go and compiled to WebAssembly for performance in the browser
+- **Offline Capabilities** Enables viewing and editing without internet connectivity with synchronization upon reconnection
 
-## Markdown Demo
-Here are some examples of Markdown elements you can use:
+## System Architecture
+| Component | Tech Stack | Primary Role |
+| :--- | :--- | :--- |
+| Frontend | Next.js, TypeScript | UI and WebAssembly execution |
+| Backend | Go, AWS Lambda | Google Drive API integration and session management |
+| Core Logic | Go (Wasm) | Markdown processing and conflict resolution |
+| Database | DynamoDB | Session locks and metadata management |
+
+## Markdown Demonstration
 
 ### Lists
 - Item 1
@@ -292,9 +299,9 @@ Here are some examples of Markdown elements you can use:
 3. Final step
 
 ### Checklists
-- [x] Open the app
-- [ ] Write a note
-- [ ] Save it
+- [x] Launch application
+- [ ] Create a note
+- [ ] Save changes
 
 ### Code Blocks
 ` + "```go" + `
@@ -303,46 +310,53 @@ package main
 import "fmt"
 
 func main() {
-    fmt.Println("Hello, GophDrive!")
+    fmt.Println("GophDrive initialized")
 }
 ` + "```" + `
 
 ### Blockquotes
-> This is a blockquote. Perfect for highlighting important information.
+> Critical information can be visually highlighted using blockquotes.
 
 ---
-Enjoy exploring GophDrive!`,
+Explore the features of GophDrive through this demonstration.`,
 		},
 		{
 			Name: "ようこそ (Japanese).md",
-			Content: `# GophDrive へようこそ！
+			Content: `# GophDrive 概要
 
-これは、Google Drive をストレージとして利用する、セキュアでサーバーレスなマークダウンノートアプリのデモです。
+Google Driveを外部ストレージとして利用する、サーバーレスなマークダウンノートアプリケーションのデモ版である。
 
-## 主な特徴
-- **Google Drive 連携**: あなたのノートは、あなたの Google Drive に安全に保管されます。
-- **サーバーレス**: AWS 上で動作し、高い可用性とスケーラビリティを実現しています。
-- **WebAssembly**: コアロジック（マークダウン変換や競合解決）は Go で書かれ、ブラウザ上で高速に動作します。
-- **オフライン対応**: インターネットがなくてもノートの閲覧・編集が可能です（同期はオンライン復帰時）。
+## 主要な機能
+- **Google Drive 連携** ユーザー自身のGoogle Driveにノートが保存されるため、データの制御権を維持できる
+- **サーバーレスアーキテクチャ** AWS LambdaおよびDynamoDBを利用し、高い可用性とスケーラビリティを実現している
+- **WebAssemblyによる高速処理** マークダウン変換や同期ロジックをWebAssemblyで実行することで、ブラウザ上での高速な動作を可能にしている
+- **オフライン編集** インターネット接続が切断された状態でも編集を継続でき、復帰時に同期が行われる
 
-## マークダウンのデモ
-以下に、このアプリで利用可能なマークダウン要素の例をいくつか挙げます。
+## システム構成
+| コンポーネント | 技術スタック | 主要な役割 |
+| :--- | :--- | :--- |
+| フロントエンド | Next.js, TypeScript | ユーザーインターフェースおよびWasmの実行 |
+| バックエンド | Go, AWS Lambda | Google Drive APIとの連携およびセッション管理 |
+| コアロジック | Go (Wasm) | マークダウン処理および競合解決 |
+| データベース | DynamoDB | セッションロックおよびメタデータの管理 |
+
+## マークダウン要素の検証
 
 ### リスト
 - 項目 1
 - 項目 2
-    - ネストされた項目
+    - 下位項目
 - 項目 3
 
 ### 番号付きリスト
-1. 最初のステップ
-2. 次のステップ
-3. 最後のステップ
+1. 第一段階
+2. 第二段階
+3. 最終段階
 
 ### チェックリスト
-- [x] アプリを開く
-- [ ] ノートを書く
-- [ ] 保存する
+- [x] アプリケーションの起動
+- [ ] 新規ノートの作成
+- [ ] データの保存
 
 ### コードブロック
 ` + "```go" + `
@@ -351,15 +365,15 @@ package main
 import "fmt"
 
 func main() {
-    fmt.Println("Hello, GophDrive!")
+    fmt.Println("GophDrive initialized")
 }
 ` + "```" + `
 
 ### 引用
-> これは引用文です。重要な情報を強調するのに適しています。
+> 重要な情報は引用ブロックを用いることで視覚的に強調することが可能である。
 
 ---
-さあ、自由にノートを作成して GophDrive を体験してみてください！`,
+本デモを通じて、GophDriveの機能を自由に検証されたい。`,
 		},
 	}
 
