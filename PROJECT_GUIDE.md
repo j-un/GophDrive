@@ -87,6 +87,7 @@ Full deployment to the production AWS account:
 
 ## AI Agent Handover Notes
 
+- **PWA Cache Maintenance**: Whenever `frontend/src/`, `core/`, or `frontend/public/` is modified, you **MUST** update the `CACHE_NAME` in `frontend/public/sw.js` (format: `gophdrive-YYYYMMDD-NN`). This ensures the browser detects the change and refreshes the cache.
 - **Wasm Execution**: The frontend relies on `wasm_exec.js` and `initWasm()` for core features. If Wasm logic changes, ensure `scripts/internal/build-wasm.sh` is called.
 - **SPA Routing**: Production is hosted on S3/CloudFront. SPA-style direct navigation (e.g., `/notes/`) is handled by a CloudFront Function that appends `index.html` to directory requests.
 - **Conflict Management**: GophDrive uses a session-based locking mechanism (`internal/session`) to prevent concurrent edit conflicts.
