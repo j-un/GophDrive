@@ -16,6 +16,7 @@ out/
 build/
 dist/
 .env.local
+frontend/next-env.d.ts
 
 # Go
 backend/bin/
