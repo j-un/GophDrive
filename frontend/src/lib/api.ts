@@ -34,6 +34,29 @@ export function isLoggedIn(): boolean {
   return !!getToken();
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshSession(): Promise<boolean> {
+  console.log("api: Refreshing session...");
+  try {
+    const res = await fetchFn(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        setToken(data.token);
+      }
+      console.log("api: Session refreshed successfully.");
+      return true;
+    }
+  } catch (e) {
+    console.error("api: Refresh failed", e);
+  }
+  return false;
+}
+
 export async function apiFetch(
   path: string,
   init?: RequestInit,
@@ -55,11 +78,38 @@ export async function apiFetch(
     headers,
     credentials: "include",
     cache: "no-store",
-    next: { revalidate: 0 }, // For Next.js App Router (if used in server components too)
+    next: { revalidate: 0 },
   });
 
-  if (res.status === 401 && headers["Authorization"]) {
-    clearToken();
+  if (res.status === 401) {
+    // If it's already a refresh request, just let it fail to avoid infinite loop
+    if (path === "/auth/refresh") {
+      clearToken();
+      return res;
+    }
+
+    // Try to refresh once
+    if (!refreshPromise) {
+      refreshPromise = refreshSession();
+    }
+
+    const success = await refreshPromise;
+    refreshPromise = null;
+
+    if (success) {
+      // Retry original request with new token
+      const newToken = getToken();
+      const newHeaders: Record<string, string> = {
+        ...((init?.headers as Record<string, string>) || {}),
+      };
+      if (newToken) {
+        newHeaders["Authorization"] = `Bearer ${newToken}`;
+      }
+      // Re-run apiFetch (it will have a new timestamp)
+      return apiFetch(path, { ...init, headers: newHeaders });
+    } else {
+      clearToken();
+    }
   }
 
   return res;

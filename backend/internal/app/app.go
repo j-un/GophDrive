@@ -240,6 +240,9 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		if path == "/auth/logout" && method == "POST" {
 			return corsResponse(must(app.authHandler.Logout(ctx, req))), nil
 		}
+		if path == "/auth/refresh" && method == "POST" {
+			return corsResponse(must(app.authHandler.Refresh(ctx, req))), nil
+		}
 		if path == "/auth/drive/folders" && method == "GET" {
 			return corsResponse(must(app.authHandler.ListDriveFolders(ctx, req))), nil
 		}
