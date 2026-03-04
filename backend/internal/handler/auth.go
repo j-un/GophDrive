@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -110,13 +111,87 @@ func (h *AuthHandler) Callback(ctx context.Context, req events.APIGatewayProxyRe
 		sameSite = "None"
 	}
 
-	// Set secure httpOnly cookie
-	cookie := fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=86400; SameSite=%s; Secure", signedToken, sameSite)
+	// Set secure httpOnly cookie (Session Token: 24h expiry, Cookie: 30 days Max-Age to allow Refresh)
+	cookie := fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=2592000; SameSite=%s; Secure", signedToken, sameSite)
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusFound,
 		Headers: map[string]string{
 			"Location": fmt.Sprintf("%s/?success=true", frontendURL),
+		},
+		MultiValueHeaders: map[string][]string{
+			"Set-Cookie": {cookie},
+		},
+	}, nil
+}
+
+// Refresh handles token refresh requests.
+func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	tokenString := GetTokenString(req)
+	if tokenString == "" {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "No token found"}, nil
+	}
+
+	// Parse JWT, allowing it to be expired
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(h.jwtSecret), nil
+	})
+
+	// If there's an error, check if it's anything OTHER than expired
+	if err != nil {
+		if !errors.Is(err, jwt.ErrTokenExpired) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: fmt.Sprintf("Invalid token: %v", err)}, nil
+		}
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Invalid token claims"}, nil
+	}
+
+	userID, _ := claims["sub"].(string)
+	if userID == "" {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Missing subject in token"}, nil
+	}
+
+	// 1. Verify user still has a valid session/refresh token in DynamoDB
+	userToken, err := h.authService.GetUserToken(ctx, userID)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "User session not found. Please login again."}, nil
+	}
+
+	// 2. Issue NEW JWT Session Token
+	// Update expiry
+	claims["exp"] = time.Now().Add(24 * time.Hour).Unix()
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	signedToken, err := jwtToken.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to sign token"}, nil
+	}
+
+	// Determine Cookie Settings
+	sameSite := "Lax"
+	if os.Getenv("DEV_MODE") != "true" {
+		sameSite = "None"
+	}
+
+	// Set new cookie
+	cookie := fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=2592000; SameSite=%s; Secure", signedToken, sameSite)
+
+	// Return profile and set cookie
+	response := map[string]interface{}{
+		"id":             userToken.UserID,
+		"base_folder_id": userToken.BaseFolderID,
+		"token":          signedToken,
+	}
+	body, _ := json.Marshal(response)
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(body),
+		Headers: map[string]string{
+			"Content-Type": "application/json",
 		},
 		MultiValueHeaders: map[string][]string{
 			"Set-Cookie": {cookie},
@@ -403,7 +478,7 @@ func main() {
 		frontendURL = "http://localhost:3000"
 	}
 
-	cookie := fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax; Secure", signedToken)
+	cookie := fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=2592000; SameSite=Lax; Secure", signedToken)
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusFound,
