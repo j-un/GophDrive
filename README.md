@@ -3,13 +3,21 @@
 GophDrive is a highly secure, serverless Markdown note-taking application designed for AWS. It leverages your own Google Drive for storage, ensuring you maintain complete control and privacy over your data.
 Built with extensibility in mind, GophDrive uses a clean adapter pattern that allows for future support of alternative storage providers.
 
+## Live Demo
+
+You can experience GophDrive's interface and functionality using the demo mode at:
+**[https://gophdrive.n-s.tokyo/](https://gophdrive.n-s.tokyo/)**
+
+> [!IMPORTANT]
+> Since GophDrive is designed to be self-hosted, the **"Login with Google" feature is disabled** on the demo site. Please use the **"Try Demo Mode"** button to explore the application using ephemeral storage.
+
 ## Key Features
 
 - **Google Drive Integration**: Your notes are safely stored as Markdown files directly in a designated folder in your Google Drive.
 - **Serverless Architecture**: Built on AWS Lambda, API Gateway, DynamoDB, S3, and CloudFront for high availability, automatic scaling, and low cost.
 - **Client-Side Processing (WebAssembly)**: Core logic, including Markdown processing and conflict resolution, is written in Go and compiled to WebAssembly (Wasm) for fast, secure execution directly in your browser.
 - **Real-Time Conflict Management**: Session-based locking ensures that concurrent edits don't result in data loss.
-- **Demo Mode**: Try out the application temporarily without connecting your Google account using the built-in Ephemeral Storage Demo Mode.
+- **Demo Mode**: Try out the application functionality (using browser memory) without connecting a Google account.
 - **Custom Domains**: Easily map your own domain name (with TLS 1.3 enforcement) via the automated AWS CDK deployment scripts.
 
 ## Tech Stack
