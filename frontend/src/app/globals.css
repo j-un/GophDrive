@@ -284,3 +284,65 @@ textarea {
     min-width: 44px;
   }
 }
+
+/* ===== Desktop View Modes ===== */
+@media (min-width: 769px) {
+  .view-mode-editor .preview-pane {
+    display: none !important;
+  }
+  .view-mode-editor .editor-pane {
+    width: 100% !important;
+    border-right: none;
+    display: flex !important;
+  }
+
+  .view-mode-preview .editor-pane {
+    display: none !important;
+  }
+  .view-mode-preview .preview-pane {
+    width: 100% !important;
+    display: flex !important;
+  }
+
+  .desktop-view-switcher {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--muted);
+    padding: 2px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    margin: 0 0.5rem;
+  }
+
+  .view-btn {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .view-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--foreground);
+  }
+
+  .view-btn.active {
+    background: var(--card);
+    color: var(--primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Hide switcher on mobile */
+@media (max-width: 768px) {
+  .desktop-view-switcher {
+    display: none;
+  }
+}

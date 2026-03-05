@@ -9,7 +9,16 @@ import React, {
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Save, Share2, Home, ChevronRight } from "lucide-react";
+import {
+  Check,
+  Save,
+  Share2,
+  Home,
+  ChevronRight,
+  FileText,
+  Columns2,
+  Eye,
+} from "lucide-react";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useOffline } from "@/hooks/useOffline";
@@ -55,6 +64,9 @@ function NoteContent() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+  const [viewMode, setViewMode] = useState<"editor" | "split" | "preview">(
+    "split",
+  );
 
   const isOffline = useOffline();
 
@@ -669,6 +681,29 @@ function NoteContent() {
               Read Only
             </span>
           )}
+          <div className="desktop-view-switcher">
+            <button
+              className={`view-btn ${viewMode === "editor" ? "active" : ""}`}
+              onClick={() => setViewMode("editor")}
+              title="Editor"
+            >
+              <FileText size={16} />
+            </button>
+            <button
+              className={`view-btn ${viewMode === "split" ? "active" : ""}`}
+              onClick={() => setViewMode("split")}
+              title="Split"
+            >
+              <Columns2 size={16} />
+            </button>
+            <button
+              className={`view-btn ${viewMode === "preview" ? "active" : ""}`}
+              onClick={() => setViewMode("preview")}
+              title="Preview"
+            >
+              <Eye size={16} />
+            </button>
+          </div>
           <button
             className="btn"
             style={{ background: "var(--card)", color: "var(--foreground)" }}
@@ -721,7 +756,10 @@ function NoteContent() {
         </button>
       </div>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div
+        className={`view-mode-${viewMode}`}
+        style={{ flex: 1, display: "flex", overflow: "hidden" }}
+      >
         {/* Editor Pane */}
         <div className={`editor-pane ${mobileTab !== "edit" ? "hidden" : ""}`}>
           <div
@@ -738,7 +776,12 @@ function NoteContent() {
             MARKDOWN
           </div>
           <div
-            style={{ flex: 1, overflowY: "auto" }}
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+            }}
             ref={editorScrollRef}
             onScroll={handleEditorScroll}
           >
@@ -769,11 +812,21 @@ function NoteContent() {
             PREVIEW
           </div>
           <div
-            style={{ flex: 1, overflowY: "auto" }}
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+            }}
             ref={previewScrollRef}
             onScroll={handlePreviewScroll}
           >
-            <Preview markdown={content} className="h-full max-w-3xl mx-auto" />
+            <div className="flex-1">
+              <Preview
+                markdown={content}
+                className="h-full max-w-3xl mx-auto"
+              />
+            </div>
           </div>
         </div>
       </div>
