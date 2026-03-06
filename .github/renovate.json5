@@ -1,15 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":separateMajorReleases",
-    ":prHourlyLimitNone",
-    ":prImmediately",
-    "github-actions:pinDigests"
-  ],
-  "postUpdateOptions": [
-    "gomodTidy"
-  ],
+  "extends": ["config:recommended"],
+  // 外部プリセットに頼らず直接設定 (v43 ドキュメント準拠)
+  "separateMajorMinor": true,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "minimumReleaseAge": null,
+  "postUpdateOptions": ["gomodTidy"],
   "schedule": ["on Sunday"],
   "automerge": true,
   "automergeType": "branch",
@@ -37,7 +34,9 @@
     },
     {
       "matchManagers": ["github-actions"],
-      "groupName": "github actions dependencies"
+      "groupName": "github actions dependencies",
+      // プリセット (github-actions:pinDigests) を使わずにインラインで指定
+      "pinDigests": true
     },
     {
       "matchPackageNames": ["golang", "node"],
@@ -66,9 +65,7 @@
         "^docker/base\\.Dockerfile$",
         "^docker-compose\\.yml$"
       ],
-      "matchStrings": [
-        "GO_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
-      ],
+      "matchStrings": ["GO_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"],
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version"
     },
@@ -79,9 +76,7 @@
         "^docker/base\\.Dockerfile$",
         "^docker-compose\\.yml$"
       ],
-      "matchStrings": [
-        "NODE_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
-      ],
+      "matchStrings": ["NODE_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version"
     },
