@@ -1248,6 +1248,7 @@ func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fi
 			Name:         fromMemoryName(item.Name),
 			MIMEType:     item.MIMEType,
 			ModifiedTime: item.ModifiedTime,
+			ViewedTime:   item.ModifiedTime, // Use modifiedTime as proxy
 			Size:         item.Size,
 			ETag:         item.ETag,
 			Parents:      item.Parents,
@@ -1255,10 +1256,10 @@ func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fi
 		})
 	}
 
-	// Sort by ModifiedTime desc
+	// Sort by ViewedTime desc
 	for i := 0; i < len(files); i++ {
 		for j := i + 1; j < len(files); j++ {
-			if files[i].ModifiedTime.Before(files[j].ModifiedTime) {
+			if files[i].ViewedTime.Before(files[j].ViewedTime) {
 				files[i], files[j] = files[j], files[i]
 			}
 		}
@@ -1295,13 +1296,14 @@ func (m *MemoryAdapter) listRecentMap(ctx context.Context, limit int) ([]adapter
 		}
 		meta := f.FileMetadata
 		meta.Name = fromMemoryName(meta.Name)
+		meta.ViewedTime = f.ModifiedTime // Proxy
 		files = append(files, meta)
 	}
 
 	// Sort desc
 	for i := 0; i < len(files); i++ {
 		for j := i + 1; j < len(files); j++ {
-			if files[i].ModifiedTime.Before(files[j].ModifiedTime) {
+			if files[i].ViewedTime.Before(files[j].ViewedTime) {
 				files[i], files[j] = files[j], files[i]
 			}
 		}
