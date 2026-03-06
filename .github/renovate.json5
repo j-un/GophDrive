@@ -1,0 +1,51 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":separateMajorReleases",
+    ":PRHourlyLimitNone",
+    ":prImmediately"
+  ],
+  "schedule": ["at any time on Sunday"],
+  "automerge": true,
+  "automergeType": "branch",
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "golang dependencies"
+    },
+    {
+      "matchManagers": ["npm"],
+      "groupName": "nodejs dependencies"
+    },
+    {
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "docker dependencies"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.go-version$"],
+      "matchStrings": ["(?<currentValue>.+)"],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "golang-version"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.node-version$"],
+      "matchStrings": ["(?<currentValue>.+)"],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version"
+    }
+  ]
+}
