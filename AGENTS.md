@@ -17,6 +17,10 @@ GophDrive is a PWA (Progressive Web App) that uses a Service Worker for client-s
 - When modifying Go logic in `core/`, you MUST run `./scripts/internal/build-wasm.sh` to rebuild `frontend/public/core.wasm`.
 - **CRITICAL**: Any change to Wasm logic or its interface MUST be accompanied by a PWA cache update (`CACHE_NAME` change).
 
+## Verification and Validation
+- **CRITICAL**: After making ANY code modification, you MUST run `./scripts/check.sh` from the project root to verify backend, frontend, and core changes.
+- Ensure all tests, linting, and build checks pass before proposing a commit.
+
 ## Engineering Standards
 - Adhere to the patterns defined in `PROJECT_GUIDE.md`.
 - Ensure type safety and idiomatic Go/TypeScript code.
