@@ -3,7 +3,18 @@ set -e
 
 echo "🐳 Setting up Pure Docker Environment..."
 
-# 1. Build and Start Containers
+# 1. Source versions from files
+if [ -f .node-version ]; then
+  export NODE_VERSION=$(cat .node-version | tr -d '[:space:]')
+  echo "🔹 Using Node.js version $NODE_VERSION (from .node-version)"
+fi
+
+if [ -f .go-version ]; then
+  export GO_VERSION=$(cat .go-version | tr -d '[:space:]')
+  echo "🔹 Using Go version $GO_VERSION (from .go-version)"
+fi
+
+# 2. Build and Start Containers
 echo "🚀 Building and starting containers..."
 docker compose up -d --build
 

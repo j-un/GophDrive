@@ -49,7 +49,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
       args:
-        NODE_VERSION: ${NODE_VERSION:-22}
+        NODE_VERSION: ${NODE_VERSION:-24}
     container_name: gophdrive-frontend
     ports:
       - "3000:3000" # Map to host machine
@@ -78,7 +78,7 @@ services:
       dockerfile: docker/base.Dockerfile
       args:
         GO_VERSION: ${GO_VERSION:-1.26.0}
-        NODE_VERSION: ${NODE_VERSION:-22}
+        NODE_VERSION: ${NODE_VERSION:-24}
     container_name: gophdrive-air-wasm
     restart: unless-stopped
     volumes:
@@ -98,7 +98,7 @@ services:
       dockerfile: docker/base.Dockerfile
       args:
         GO_VERSION: ${GO_VERSION:-1.26.0}
-        NODE_VERSION: ${NODE_VERSION:-22}
+        NODE_VERSION: ${NODE_VERSION:-24}
     container_name: gophdrive-infra
     volumes:
       - .:/workspace # Mount entire project root
@@ -121,7 +121,7 @@ services:
       dockerfile: docker/base.Dockerfile
       args:
         GO_VERSION: ${GO_VERSION:-1.26.0}
-        NODE_VERSION: ${NODE_VERSION:-22}
+        NODE_VERSION: ${NODE_VERSION:-24}
     volumes:
       - .:/workspace
       - test-npm-frontend:/workspace/frontend/node_modules
