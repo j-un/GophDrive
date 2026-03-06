@@ -3,10 +3,12 @@
   "extends": [
     "config:recommended",
     ":separateMajorReleases",
-    ":PRHourlyLimitNone",
+    ":prHourlyLimitNone",
     ":prImmediately",
-    "helpers:pinGitHubActionDigests",
-    ":gomodTidy"
+    ":pinGitHubActionDigests"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ],
   "schedule": ["on Sunday"],
   "automerge": true,
@@ -45,21 +47,21 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^\\.go-version$"],
+      "managerFilePatterns": ["^\\.go-version$"],
       "matchStrings": ["(?<currentValue>.+)"],
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version"
     },
     {
       "customType": "regex",
-      "fileMatch": ["^\\.node-version$"],
+      "managerFilePatterns": ["^\\.node-version$"],
       "matchStrings": ["(?<currentValue>.+)"],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version"
     },
     {
       "customType": "regex",
-      "fileMatch": [
+      "managerFilePatterns": [
         "(^|/)Dockerfile\\.dev$",
         "^docker/base\\.Dockerfile$",
         "^docker-compose\\.yml$"
@@ -72,7 +74,7 @@
     },
     {
       "customType": "regex",
-      "fileMatch": [
+      "managerFilePatterns": [
         "(^|/)Dockerfile\\.dev$",
         "^docker/base\\.Dockerfile$",
         "^docker-compose\\.yml$"
@@ -85,7 +87,10 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["(^|/)Dockerfile\\.dev$", "^docker-compose\\.yml$"],
+      "managerFilePatterns": [
+        "(^|/)Dockerfile\\.dev$",
+        "^docker-compose\\.yml$"
+      ],
       "matchStrings": ["github.com/air-verse/air@v(?<currentValue>[\\d.]+)"],
       "depNameTemplate": "github.com/air-verse/air",
       "datasourceTemplate": "github-tags"
