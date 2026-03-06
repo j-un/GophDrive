@@ -4,7 +4,9 @@
     "config:recommended",
     ":separateMajorReleases",
     ":PRHourlyLimitNone",
-    ":prImmediately"
+    ":prImmediately",
+    "helpers:pinGitHubActionDigests",
+    ":gomodTidy"
   ],
   "schedule": ["at any time on Sunday"],
   "automerge": true,
@@ -30,6 +32,14 @@
     {
       "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "docker dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions dependencies"
+    },
+    {
+      "matchPackageNames": ["golang", "node"],
+      "groupName": "tooling versions"
     }
   ],
   "customManagers": [
@@ -46,6 +56,39 @@
       "matchStrings": ["(?<currentValue>.+)"],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "(^|/)Dockerfile\\.dev$",
+        "^docker/base\\.Dockerfile$",
+        "^docker-compose\\.yml$"
+      ],
+      "matchStrings": [
+        "GO_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
+      ],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "golang-version"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "(^|/)Dockerfile\\.dev$",
+        "^docker/base\\.Dockerfile$",
+        "^docker-compose\\.yml$"
+      ],
+      "matchStrings": [
+        "NODE_VERSION[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
+      ],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)Dockerfile\\.dev$", "^docker-compose\\.yml$"],
+      "matchStrings": ["github.com/air-verse/air@v(?<currentValue>[\\d.]+)"],
+      "depNameTemplate": "github.com/air-verse/air",
+      "datasourceTemplate": "github-tags"
     }
   ]
 }
