@@ -65,6 +65,9 @@ type StorageAdapter interface {
 	// ListStarred lists all starred files/folders.
 	ListStarred(ctx context.Context) ([]FileMetadata, error)
 
+	// ListRecent lists recently viewed files.
+	ListRecent(ctx context.Context, limit int) ([]FileMetadata, error)
+
 	// SearchFiles searches for files matching the query.
 	SearchFiles(ctx context.Context, query string) ([]FileMetadata, error)
 }

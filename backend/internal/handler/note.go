@@ -434,3 +434,33 @@ func (h *NoteHandler) ListStarredNotes(ctx context.Context, req events.APIGatewa
 		},
 	}, nil
 }
+
+// ListRecentNotes lists recently viewed notes.
+func (h *NoteHandler) ListRecentNotes(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	storage, err := h.getStorageAdapter(ctx, req)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: err.Error()}, nil
+	}
+
+	// Default limit is 5
+	limit := 5
+	// We could allow overriding limit via query param
+	if lStr := req.QueryStringParameters["limit"]; lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+
+	files, err := storage.ListRecent(ctx, limit)
+	if err != nil {
+		fmt.Printf("ListRecent error: %v\n", err)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to list recent notes"}, nil
+	}
+
+	body, _ := json.Marshal(files)
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(body),
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+	}, nil
+}

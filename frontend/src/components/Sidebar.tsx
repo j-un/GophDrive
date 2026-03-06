@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Folder, FolderPlus, ChevronRight, Star, Settings } from "lucide-react";
+import { Folder, FolderPlus, ChevronRight, Star, Settings, FileText, Clock } from "lucide-react";
 import {
   createFolder,
   deleteFile,
@@ -9,6 +9,7 @@ import {
   starFile,
   FileItem,
   listFiles,
+  listRecent,
 } from "@/lib/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { RenameDialog } from "./RenameDialog";
@@ -37,6 +38,7 @@ export function Sidebar({
   const router = useRouter();
   const [folders, setFolders] = useState<FileItem[]>([]);
   const [starredFolders, setStarredFolders] = useState<FileItem[]>([]);
+  const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,6 +71,10 @@ export function Sidebar({
       setStarredFolders(
         starredItems.sort((a, b) => a.name.localeCompare(b.name)),
       );
+
+      // Fetch Recent Files (top 5)
+      const recent = await listRecent(5);
+      setRecentFiles(recent || []);
     } catch (err) {
       console.error("Failed to load folders:", err);
     } finally {
@@ -322,6 +328,74 @@ export function Sidebar({
                     }}
                   >
                     {folder.name}
+                  </span>
+                </div>
+              ))
+            )}
+            <div
+              style={{
+                borderBottom: "1px solid var(--border)",
+                margin: "0.5rem 0",
+              }}
+            />
+          </div>
+
+          {/* Recent Section */}
+          <div style={{ marginBottom: "1rem" }}>
+            <div
+              style={{
+                padding: "0.5rem",
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "var(--muted-foreground)",
+                textTransform: "uppercase",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+            >
+              <Clock size={14} /> Recent
+            </div>
+            {recentFiles.length === 0 ? (
+              <div
+                style={{
+                  padding: "0.5rem",
+                  fontSize: "0.8rem",
+                  opacity: 0.5,
+                  fontStyle: "italic",
+                }}
+              >
+                No recent files
+              </div>
+            ) : (
+              recentFiles.map((file) => (
+                <div
+                  key={`recent-${file.id}`}
+                  onClick={() => {
+                    router.push(`/note/${file.id}`);
+                    onClose?.();
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.5rem",
+                    borderRadius: "0.25rem",
+                    cursor: "pointer",
+                    color: "var(--foreground)",
+                  }}
+                  className="hover:bg-[var(--muted)]"
+                >
+                  <FileText size={16} color="var(--primary)" />
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {file.name}
                   </span>
                 </div>
               ))

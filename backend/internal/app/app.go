@@ -305,6 +305,11 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		return corsResponse(must(app.noteHandler.ListStarredNotes(ctx, req))), nil
 	}
 
+	// /recent
+	if path == "/recent" && method == "GET" {
+		return corsResponse(must(app.noteHandler.ListRecentNotes(ctx, req))), nil
+	}
+
 	// /folders
 	if path == "/folders" && method == "POST" {
 		return corsResponse(must(app.noteHandler.CreateFolder(ctx, req))), nil

@@ -1200,6 +1200,120 @@ func (m *MemoryAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata
 	return files, nil
 }
 
+// ListRecent lists recently modified files (proxy for viewed files in demo mode).
+func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
+	targetFolderID := "root"
+	if m.BaseFolderID != "" {
+		targetFolderID = m.BaseFolderID
+	}
+
+	if m.client == nil {
+		return m.listRecentMap(ctx, limit)
+	}
+
+	// Scan all and sort by ModifiedTime
+	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        getTableName(),
+		FilterExpression: aws.String("user_id = :uid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":uid": &types.AttributeValueMemberS{Value: m.userID},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var items []FileItem
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
+		return nil, err
+	}
+
+	// Build parent map
+	parentMap := make(map[string][]string)
+	for _, item := range items {
+		parentMap[item.ID] = item.Parents
+	}
+
+	// Filter
+	var files []adapter.FileMetadata
+	for _, item := range items {
+		if item.MIMEType == "application/vnd.google-apps.folder" || !strings.HasSuffix(item.Name, ".md") {
+			continue
+		}
+		if !m.isDescendant(item.Parents, targetFolderID, parentMap) {
+			continue
+		}
+		files = append(files, adapter.FileMetadata{
+			ID:           item.ID,
+			Name:         fromMemoryName(item.Name),
+			MIMEType:     item.MIMEType,
+			ModifiedTime: item.ModifiedTime,
+			Size:         item.Size,
+			ETag:         item.ETag,
+			Parents:      item.Parents,
+			Starred:      item.Starred,
+		})
+	}
+
+	// Sort by ModifiedTime desc
+	for i := 0; i < len(files); i++ {
+		for j := i + 1; j < len(files); j++ {
+			if files[i].ModifiedTime.Before(files[j].ModifiedTime) {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
+
+	if len(files) > limit {
+		files = files[:limit]
+	}
+
+	return files, nil
+}
+
+func (m *MemoryAdapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
+	targetFolderID := "root"
+	if m.BaseFolderID != "" {
+		targetFolderID = m.BaseFolderID
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	parentMap := make(map[string][]string)
+	for _, f := range m.files {
+		parentMap[f.ID] = f.Parents
+	}
+
+	var files []adapter.FileMetadata
+	for _, f := range m.files {
+		if f.MIMEType == "application/vnd.google-apps.folder" || !strings.HasSuffix(f.Name, ".md") {
+			continue
+		}
+		if !m.isDescendant(f.Parents, targetFolderID, parentMap) {
+			continue
+		}
+		meta := f.FileMetadata
+		meta.Name = fromMemoryName(meta.Name)
+		files = append(files, meta)
+	}
+
+	// Sort desc
+	for i := 0; i < len(files); i++ {
+		for j := i + 1; j < len(files); j++ {
+			if files[i].ModifiedTime.Before(files[j].ModifiedTime) {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
+
+	if len(files) > limit {
+		files = files[:limit]
+	}
+
+	return files, nil
+}
+
 func (m *MemoryAdapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
