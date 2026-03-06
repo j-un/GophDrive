@@ -3,7 +3,7 @@ services:
   # LocalStack - AWS Service Emulator
   # ============================================================================
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:4.0
     ports:
       - "4566:4566" # Map to host machine for external access
     environment:
