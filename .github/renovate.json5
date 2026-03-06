@@ -47,14 +47,14 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["^\\.go-version$"],
-      "matchStrings": ["(?<currentValue>.+)"],
-      "depNameTemplate": "golang",
+      "matchStrings": ["^(?<currentValue>[\\d\\.]+)"],
+      "depNameTemplate": "go",
       "datasourceTemplate": "golang-version"
     },
     {
       "customType": "regex",
       "managerFilePatterns": ["^\\.node-version$"],
-      "matchStrings": ["(?<currentValue>.+)"],
+      "matchStrings": ["^(?<currentValue>[\\d\\.]+)"],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version"
     },
