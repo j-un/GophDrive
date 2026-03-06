@@ -5,8 +5,10 @@
     ":separateMajorReleases",
     ":prHourlyLimitNone",
     ":prImmediately",
-    "helpers:pinGitHubActionDigests",
-    ":gomodTidy"
+    ":pinGitHubActionDigests"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ],
   "schedule": ["on Sunday"],
   "automerge": true,
