@@ -305,3 +305,26 @@ func TestMemoryAdapter_DeleteFile_Recursive(t *testing.T) {
 		t.Errorf("Child File should be deleted, got error: %v", err)
 	}
 }
+
+func TestMemoryAdapter_ListRecent(t *testing.T) {
+	m := NewMemoryAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	// Create files with different modified times (simulated by sequence)
+	f1, _ := m.CreateFile(ctx, "old.md", []byte("v1"), "root")
+	f2, _ := m.CreateFile(ctx, "new.md", []byte("v1"), "root")
+
+	recent, err := m.ListRecent(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListRecent failed: %v", err)
+	}
+
+	if len(recent) != 2 {
+		t.Fatalf("Expected 2 recent files, got %d", len(recent))
+	}
+
+	// Should be ordered by modified time desc (f2 should be most recent)
+	if recent[0].ID != f2.ID {
+		t.Errorf("Expected most recent file to be %s, got %s (f1=%s, f2=%s)", f2.ID, recent[0].ID, f1.ID, f2.ID)
+	}
+}

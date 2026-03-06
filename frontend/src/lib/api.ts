@@ -149,6 +149,13 @@ export async function listStarred(): Promise<FileItem[]> {
   return res.json();
 }
 
+export async function listRecent(limit?: number): Promise<FileItem[]> {
+  const query = limit ? `?limit=${limit}` : "";
+  const res = await apiFetch(`/recent${query}`);
+  if (!res.ok) return handleError(res, "Failed to list recent files");
+  return res.json();
+}
+
 export async function getFile(fileId: string): Promise<FileItem> {
   const res = await apiFetch(`/notes/${fileId}`);
   if (!res.ok) return handleError(res, "Failed to fetch file");

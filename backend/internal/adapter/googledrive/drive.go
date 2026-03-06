@@ -512,6 +512,58 @@ func (d *DriveAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata,
 	return files, nil
 }
 
+// ListRecent lists recently viewed files within the base folder.
+func (d *DriveAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
+	targetFolderID := "root"
+	if d.BaseFolderID != "" {
+		targetFolderID = d.BaseFolderID
+	}
+
+	// Search files ordered by viewedByMeTime.
+	// We include only .md files (or folders if we want, but let's stick to files for "Recent Files").
+	q := fmt.Sprintf("trashed = false and name contains '%s' and mimeType != 'application/vnd.google-apps.folder' and viewedByMeTime != null", mdExt)
+	fields := "files(id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred, viewedByMeTime)"
+
+	r, err := d.service.Files.List().
+		Q(q).
+		OrderBy("viewedByMeTime desc").
+		PageSize(int64(limit * 3)). // Fetch more to allow for filtering by base folder
+		Fields(googleapi.Field(fields)).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("unable to list recent files: %v", err)
+	}
+
+	ancestorCache := make(map[string]bool)
+	files := []adapter.FileMetadata{}
+	for _, f := range r.Files {
+		if !strings.HasSuffix(f.Name, mdExt) {
+			continue
+		}
+		// Recursive check to ensure it's within the base folder
+		if !d.isDescendant(ctx, f.Parents, targetFolderID, ancestorCache) {
+			continue
+		}
+
+		modTime, _ := time.Parse(time.RFC3339, f.ModifiedTime)
+		files = append(files, adapter.FileMetadata{
+			ID:           f.Id,
+			Name:         fromDriveName(f.Name),
+			MIMEType:     f.MimeType,
+			ModifiedTime: modTime,
+			Size:         f.Size,
+			ETag:         f.Md5Checksum,
+			Parents:      f.Parents,
+			Starred:      f.Starred,
+		})
+
+		if len(files) >= limit {
+			break
+		}
+	}
+	return files, nil
+}
+
 // SearchFiles searches for files matching the query within the base folder.
 func (d *DriveAdapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
