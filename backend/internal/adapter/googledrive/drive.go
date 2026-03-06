@@ -521,7 +521,7 @@ func (d *DriveAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fil
 
 	// Search files ordered by viewedByMeTime.
 	// We include only .md files (or folders if we want, but let's stick to files for "Recent Files").
-	q := fmt.Sprintf("trashed = false and name contains '%s' and mimeType != 'application/vnd.google-apps.folder' and viewedByMeTime != null", mdExt)
+	q := fmt.Sprintf("trashed = false and name contains '%s' and mimeType != 'application/vnd.google-apps.folder'", mdExt)
 	fields := "files(id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred, viewedByMeTime)"
 
 	r, err := d.service.Files.List().

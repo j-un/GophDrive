@@ -452,7 +452,7 @@ func (h *NoteHandler) ListRecentNotes(ctx context.Context, req events.APIGateway
 	files, err := storage.ListRecent(ctx, limit)
 	if err != nil {
 		fmt.Printf("ListRecent error: %v\n", err)
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to list recent notes"}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to list recent notes: %v", err)}, nil
 	}
 
 	body, _ := json.Marshal(files)
