@@ -15,6 +15,7 @@ type FileMetadata struct {
 	ETag         string    `json:"etag"`
 	Parents      []string  `json:"parents,omitempty"`
 	Starred      bool      `json:"starred"`
+	ViewedTime   time.Time `json:"viewedTime,omitempty"`
 }
 
 // File represents a file with its content.
