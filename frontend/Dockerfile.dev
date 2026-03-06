@@ -13,5 +13,6 @@ COPY . .
 # Expose port (Next.js Dev Server)
 EXPOSE 3000
 
-# Run chokidar proxy for macOS Docker polling issues alongside Next.js
-CMD node watcher.js & npm run dev
+# Run npm install on startup to ensure node_modules is always up-to-date,
+# then run chokidar proxy for macOS Docker polling issues alongside Next.js
+CMD npm install && node watcher.js & npm run dev
