@@ -380,7 +380,7 @@ export function Sidebar({
                 <div
                   key={`recent-${file.id}`}
                   onClick={() => {
-                    router.push(`/note/${file.id}`);
+                    router.push(`/note?id=${file.id}`);
                     onClose?.();
                   }}
                   style={{
