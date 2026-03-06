@@ -8,7 +8,7 @@
     "helpers:pinGitHubActionDigests",
     ":gomodTidy"
   ],
-  "schedule": ["at any time on Sunday"],
+  "schedule": ["on Sunday"],
   "automerge": true,
   "automergeType": "branch",
   "platformAutomerge": true,
