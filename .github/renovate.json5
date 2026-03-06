@@ -5,7 +5,7 @@
     ":separateMajorReleases",
     ":prHourlyLimitNone",
     ":prImmediately",
-    ":pinGitHubActionDigests"
+    "github-actions:pinDigests"
   ],
   "postUpdateOptions": [
     "gomodTidy"
