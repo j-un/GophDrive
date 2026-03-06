@@ -546,11 +546,14 @@ func (d *DriveAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fil
 		}
 
 		modTime, _ := time.Parse(time.RFC3339, f.ModifiedTime)
+		viewedTime, _ := time.Parse(time.RFC3339, f.ViewedByMeTime)
+
 		files = append(files, adapter.FileMetadata{
 			ID:           f.Id,
 			Name:         fromDriveName(f.Name),
 			MIMEType:     f.MimeType,
 			ModifiedTime: modTime,
+			ViewedTime:   viewedTime,
 			Size:         f.Size,
 			ETag:         f.Md5Checksum,
 			Parents:      f.Parents,
@@ -561,6 +564,16 @@ func (d *DriveAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fil
 			break
 		}
 	}
+
+	// Re-sort in memory as an extra safety measure (descending by ViewedTime)
+	for i := 0; i < len(files); i++ {
+		for j := i + 1; j < len(files); j++ {
+			if files[i].ViewedTime.Before(files[j].ViewedTime) {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
+
 	return files, nil
 }
 

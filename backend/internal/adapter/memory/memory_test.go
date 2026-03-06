@@ -323,7 +323,7 @@ func TestMemoryAdapter_ListRecent(t *testing.T) {
 		t.Fatalf("Expected 2 recent files, got %d", len(recent))
 	}
 
-	// Should be ordered by modified time desc (f2 should be most recent)
+	// Should be ordered by viewed time desc (f2 should be most recent)
 	if recent[0].ID != f2.ID {
 		t.Errorf("Expected most recent file to be %s, got %s (f1=%s, f2=%s)", f2.ID, recent[0].ID, f1.ID, f2.ID)
 	}

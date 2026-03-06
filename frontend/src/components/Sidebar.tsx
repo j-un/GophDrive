@@ -394,7 +394,11 @@ export function Sidebar({
                   }}
                   className="hover:bg-[var(--muted)]"
                 >
-                  <FileText size={16} color="var(--primary)" />
+                  <FileText
+                    size={16}
+                    color="var(--primary)"
+                    style={{ flexShrink: 0 }}
+                  />
                   <span
                     style={{
                       overflow: "hidden",
