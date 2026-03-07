@@ -295,7 +295,41 @@ export function Sidebar({
             >
               Starred
             </div>
-            {starredFolders.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 2 }).map((_, i) => (
+                <div
+                  key={`skeleton-star-${i}`}
+                  className="animate-pulse"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.5rem",
+                    margin: "0.25rem 0",
+                    borderRadius: "0.25rem",
+                    background: "var(--muted)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "50%",
+                      background: "var(--border)",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: "60%",
+                      height: "12px",
+                      borderRadius: "4px",
+                      background: "var(--border)",
+                    }}
+                  />
+                </div>
+              ))
+            ) : starredFolders.length === 0 ? (
               <div
                 style={{
                   padding: "0.5rem",
@@ -307,38 +341,44 @@ export function Sidebar({
                 No starred folders
               </div>
             ) : (
-              starredFolders.map((folder) => (
-                <div
-                  key={`starred-${folder.id}`}
-                  onClick={() => handleNavigate(folder.id, folder.name)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    borderRadius: "0.25rem",
-                    cursor: "pointer",
-                    background:
-                      currentFolderId === folder.id
-                        ? "var(--muted)"
-                        : "transparent",
-                    color: "var(--foreground)",
-                  }}
-                  className="hover:bg-[var(--muted)]"
-                >
-                  <Star size={16} fill="var(--yellow)" color="var(--yellow)" />
-                  <span
+              <div className="animate-fade-in">
+                {starredFolders.map((folder) => (
+                  <div
+                    key={`starred-${folder.id}`}
+                    onClick={() => handleNavigate(folder.id, folder.name)}
                     style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "0.9rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem",
+                      borderRadius: "0.25rem",
+                      cursor: "pointer",
+                      background:
+                        currentFolderId === folder.id
+                          ? "var(--muted)"
+                          : "transparent",
+                      color: "var(--foreground)",
                     }}
+                    className="hover:bg-[var(--muted)]"
                   >
-                    {folder.name}
-                  </span>
-                </div>
-              ))
+                    <Star
+                      size={16}
+                      fill="var(--yellow)"
+                      color="var(--yellow)"
+                    />
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {folder.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
             <div
               style={{
@@ -364,7 +404,41 @@ export function Sidebar({
             >
               <Clock size={14} /> Recent
             </div>
-            {recentFiles.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={`skeleton-recent-${i}`}
+                  className="animate-pulse"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.5rem",
+                    margin: "0.25rem 0",
+                    borderRadius: "0.25rem",
+                    background: "var(--muted)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "4px",
+                      background: "var(--border)",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: "80%",
+                      height: "12px",
+                      borderRadius: "4px",
+                      background: "var(--border)",
+                    }}
+                  />
+                </div>
+              ))
+            ) : recentFiles.length === 0 ? (
               <div
                 style={{
                   padding: "0.5rem",
@@ -376,41 +450,43 @@ export function Sidebar({
                 No recent files
               </div>
             ) : (
-              recentFiles.map((file) => (
-                <div
-                  key={`recent-${file.id}`}
-                  onClick={() => {
-                    router.push(`/note?id=${file.id}`);
-                    onClose?.();
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    borderRadius: "0.25rem",
-                    cursor: "pointer",
-                    color: "var(--foreground)",
-                  }}
-                  className="hover:bg-[var(--muted)]"
-                >
-                  <FileText
-                    size={16}
-                    color="var(--primary)"
-                    style={{ flexShrink: 0 }}
-                  />
-                  <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "0.9rem",
+              <div className="animate-fade-in">
+                {recentFiles.map((file) => (
+                  <div
+                    key={`recent-${file.id}`}
+                    onClick={() => {
+                      router.push(`/note?id=${file.id}`);
+                      onClose?.();
                     }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem",
+                      borderRadius: "0.25rem",
+                      cursor: "pointer",
+                      color: "var(--foreground)",
+                    }}
+                    className="hover:bg-[var(--muted)]"
                   >
-                    {file.name}
-                  </span>
-                </div>
-              ))
+                    <FileText
+                      size={16}
+                      color="var(--primary)"
+                      style={{ flexShrink: 0 }}
+                    />
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {file.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
             <div
               style={{
@@ -454,68 +530,121 @@ export function Sidebar({
 
           {/* Folder List */}
           {loading ? (
-            <div style={{ padding: "1rem", textAlign: "center", opacity: 0.5 }}>
-              Loading...
-            </div>
-          ) : (
-            folders.map((folder) => (
-              <div
-                key={folder.id}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "0.5rem",
-                  borderRadius: "0.25rem",
-                  cursor: "pointer",
-                  marginTop: "0.25rem",
-                  color: "var(--foreground)",
-                }}
-                className="hover:bg-[var(--muted)] group"
-                onClick={() => handleNavigate(folder.id, folder.name)}
-              >
+            <div className="animate-fade-in">
+              {Array.from({ length: 5 }).map((_, i) => (
                 <div
+                  key={`skeleton-folder-${i}`}
+                  className="animate-pulse"
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "0.5rem",
-                    overflow: "hidden",
+                    padding: "0.5rem",
+                    margin: "0.25rem 0",
+                    borderRadius: "0.25rem",
+                    background: "var(--muted)",
+                    justifyContent: "space-between",
                   }}
                 >
-                  <Folder
-                    size={18}
-                    style={{ color: "var(--foreground)", flexShrink: 0 }}
-                  />
-                  <span
+                  <div
                     style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      width: "80%",
                     }}
                   >
-                    {folder.name}
-                  </span>
+                    <div
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div
+                      style={{
+                        width: "70%",
+                        height: "14px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "50%",
+                      background: "var(--border)",
+                      flexShrink: 0,
+                    }}
+                  />
                 </div>
-
-                {/* Unified Menu Component */}
-                <NoteMenu
-                  isOpen={activeMenuId === folder.id}
-                  onToggle={(e) => {
-                    e.stopPropagation();
-                    setActiveMenuId(
-                      activeMenuId === folder.id ? null : folder.id,
-                    );
+              ))}
+            </div>
+          ) : (
+            <div className="animate-fade-in">
+              {folders.map((folder) => (
+                <div
+                  key={folder.id}
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "0.5rem",
+                    borderRadius: "0.25rem",
+                    cursor: "pointer",
+                    marginTop: "0.25rem",
+                    color: "var(--foreground)",
                   }}
-                  onClose={() => setActiveMenuId(null)}
-                  onStar={(e) => handleToggleStar(e, folder)}
-                  isStarred={folder.starred}
-                  onDelete={(e) => requestDeleteFolder(e, folder)}
-                  onRename={(e) => requestRenameFolder(e, folder)}
-                  align="right"
-                />
-              </div>
-            ))
+                  className="hover:bg-[var(--muted)] group"
+                  onClick={() => handleNavigate(folder.id, folder.name)}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Folder
+                      size={18}
+                      style={{ color: "var(--foreground)", flexShrink: 0 }}
+                    />
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {folder.name}
+                    </span>
+                  </div>
+
+                  {/* Unified Menu Component */}
+                  <NoteMenu
+                    isOpen={activeMenuId === folder.id}
+                    onToggle={(e) => {
+                      e.stopPropagation();
+                      setActiveMenuId(
+                        activeMenuId === folder.id ? null : folder.id,
+                      );
+                    }}
+                    onClose={() => setActiveMenuId(null)}
+                    onStar={(e) => handleToggleStar(e, folder)}
+                    isStarred={folder.starred}
+                    onDelete={(e) => requestDeleteFolder(e, folder)}
+                    onRename={(e) => requestRenameFolder(e, folder)}
+                    align="right"
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

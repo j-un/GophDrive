@@ -236,15 +236,7 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
     }
   };
 
-  if (loading && notes.length === 0) {
-    return (
-      <div
-        style={{ display: "flex", justifyContent: "center", padding: "3rem" }}
-      >
-        <div className="w-8 h-8 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  // Removed blocking loading spinner
 
   if (error) {
     return (
@@ -328,98 +320,193 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
           style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
         >
           {/* List View Implementation */}
-          {notes.length === 0 && (
-            <div className="text-center py-10 text-gray-500">
-              No notes found.
-            </div>
-          )}
-          {notes.map((note) => (
-            <div key={note.id} style={{ position: "relative" }}>
-              <Link
-                href={
-                  note.mimeType === "application/vnd.google-apps.folder"
-                    ? `?folderId=${note.id}`
-                    : `/note?id=${note.id}`
-                }
-                className="glass group"
-                style={{
-                  padding: "1rem",
-                  borderRadius: "0.5rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "var(--card)",
-                  color: "var(--card-foreground)",
-                  textDecoration: "none",
-                  border: "1px solid var(--border)",
-                }}
-              >
+          {loading && notes.length === 0 ? (
+            <div
+              className="animate-fade-in"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              {Array.from({ length: 5 }).map((_, i) => (
                 <div
+                  key={`skeleton-list-${i}`}
+                  className="glass animate-pulse"
                   style={{
+                    padding: "1rem",
+                    borderRadius: "0.5rem",
                     display: "flex",
                     alignItems: "center",
-                    gap: "1rem",
-                    flex: 1,
+                    justifyContent: "space-between",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {note.mimeType === "application/vnd.google-apps.folder" ? (
-                    <Folder size={20} style={{ color: "var(--primary)" }} />
-                  ) : (
-                    <FileText size={20} style={{ color: "var(--primary)" }} />
-                  )}
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{note.name}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1rem",
+                      flex: 1,
+                    }}
+                  >
                     <div
                       style={{
-                        fontSize: "0.75rem",
-                        opacity: 0.6,
-                        fontFamily: "monospace",
+                        width: "20px",
+                        height: "20px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.4rem",
+                        width: "100%",
                       }}
                     >
-                      ID: {note.id.substring(0, 8)}...
+                      <div
+                        style={{
+                          width: "30%",
+                          height: "16px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                        }}
+                      />
+                      <div
+                        style={{
+                          width: "20%",
+                          height: "12px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                        }}
+                      />
                     </div>
                   </div>
+                  <div
+                    style={{
+                      width: "80px",
+                      height: "14px",
+                      borderRadius: "4px",
+                      background: "var(--border)",
+                    }}
+                  />
                 </div>
-                <div style={{ fontSize: "0.875rem", opacity: 0.6 }}>
-                  {new Date(note.modifiedTime).toLocaleString(undefined, {
-                    year: "numeric",
-                    month: "numeric",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
-              </Link>
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  right: "1rem",
-                  transform: "translateY(-50%)",
-                  opacity: 0,
-                }}
-                className="group-hover:opacity-100 transition-opacity"
-              >
-                <NoteMenu
-                  isOpen={activeMenuId === note.id}
-                  onToggle={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setActiveMenuId(activeMenuId === note.id ? null : note.id);
-                  }}
-                  onClose={() => setActiveMenuId(null)}
-                  onDelete={(e) => requestDeleteNote(e, note)}
-                  onDuplicate={(e) => handleDuplicateNote(e, note)}
-                  onRename={(e) => requestRenameNote(e, note)}
-                  onStar={(e) => handleToggleStar(e, note)}
-                  isStarred={note.starred}
-                />
-              </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div
+              className="animate-fade-in"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              {notes.length === 0 && (
+                <div className="text-center py-10 text-gray-500">
+                  No notes found.
+                </div>
+              )}
+              {notes.map((note) => (
+                <div key={note.id} style={{ position: "relative" }}>
+                  <Link
+                    href={
+                      note.mimeType === "application/vnd.google-apps.folder"
+                        ? `?folderId=${note.id}`
+                        : `/note?id=${note.id}`
+                    }
+                    className="glass group"
+                    style={{
+                      padding: "1rem",
+                      borderRadius: "0.5rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: "var(--card)",
+                      color: "var(--card-foreground)",
+                      textDecoration: "none",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "1rem",
+                        flex: 1,
+                      }}
+                    >
+                      {note.mimeType ===
+                      "application/vnd.google-apps.folder" ? (
+                        <Folder size={20} style={{ color: "var(--primary)" }} />
+                      ) : (
+                        <FileText
+                          size={20}
+                          style={{ color: "var(--primary)" }}
+                        />
+                      )}
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{note.name}</div>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            opacity: 0.6,
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          ID: {note.id.substring(0, 8)}...
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "0.875rem", opacity: 0.6 }}>
+                      {new Date(note.modifiedTime).toLocaleString(undefined, {
+                        year: "numeric",
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </Link>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      right: "1rem",
+                      transform: "translateY(-50%)",
+                      opacity: 0,
+                    }}
+                    className="group-hover:opacity-100 transition-opacity"
+                  >
+                    <NoteMenu
+                      isOpen={activeMenuId === note.id}
+                      onToggle={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveMenuId(
+                          activeMenuId === note.id ? null : note.id,
+                        );
+                      }}
+                      onClose={() => setActiveMenuId(null)}
+                      onDelete={(e) => requestDeleteNote(e, note)}
+                      onDuplicate={(e) => handleDuplicateNote(e, note)}
+                      onRename={(e) => requestRenameNote(e, note)}
+                      onStar={(e) => handleToggleStar(e, note)}
+                      isStarred={note.starred}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div
+          className={!loading && notes.length > 0 ? "animate-fade-in" : ""}
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
@@ -490,103 +577,171 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
               </button>
             ))}
 
-          {notes.map((note) => (
-            <div key={note.id} style={{ position: "relative" }}>
-              <Link
-                href={
-                  note.mimeType === "application/vnd.google-apps.folder"
-                    ? `?folderId=${note.id}`
-                    : `/note?id=${note.id}`
-                }
-                onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
-                  if (note.mimeType === "application/vnd.google-apps.folder") {
-                    e.preventDefault();
-                    navigateToFolder(note.id);
-                  }
-                }}
-                className="glass"
-                style={{
-                  ...cardStyle,
-                  textDecoration: "none",
-                  color: "var(--card-foreground)",
-                  background: "var(--card)",
-                  justifyContent: "space-between",
-                  alignItems: "stretch",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    {note.mimeType === "application/vnd.google-apps.folder" ? (
-                      <Folder style={{ color: "var(--primary)" }} />
-                    ) : (
-                      <FileText style={{ color: "var(--primary)" }} />
-                    )}
-                    <h3
-                      style={{
-                        fontWeight: "bold",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={note.name}
-                    >
-                      {note.name}
-                    </h3>
-                  </div>
-                  <p
-                    style={{
-                      fontSize: "0.75rem",
-                      opacity: 0.6,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    ID: {note.id.substring(0, 8)}...
-                  </p>
-                </div>
-                <p
+          {loading && notes.length === 0
+            ? Array.from({ length: 7 }).map((_, i) => (
+                <div
+                  key={`skeleton-grid-${i}`}
+                  className="glass animate-pulse"
                   style={{
-                    fontSize: "0.75rem",
-                    opacity: 0.6,
-                    textAlign: "right",
+                    ...cardStyle,
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {new Date(note.modifiedTime).toLocaleString(undefined, {
-                    year: "numeric",
-                    month: "numeric",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </Link>
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div
+                        style={{
+                          width: "60%",
+                          height: "18px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        width: "40%",
+                        height: "12px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      width: "30%",
+                      height: "12px",
+                      borderRadius: "4px",
+                      background: "var(--border)",
+                      alignSelf: "flex-end",
+                      marginTop: "1rem",
+                    }}
+                  />
+                </div>
+              ))
+            : notes.map((note) => (
+                <div key={note.id} style={{ position: "relative" }}>
+                  <Link
+                    href={
+                      note.mimeType === "application/vnd.google-apps.folder"
+                        ? `?folderId=${note.id}`
+                        : `/note?id=${note.id}`
+                    }
+                    onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                      if (
+                        note.mimeType === "application/vnd.google-apps.folder"
+                      ) {
+                        e.preventDefault();
+                        navigateToFolder(note.id);
+                      }
+                    }}
+                    className="glass"
+                    style={{
+                      ...cardStyle,
+                      textDecoration: "none",
+                      color: "var(--card-foreground)",
+                      background: "var(--card)",
+                      justifyContent: "space-between",
+                      alignItems: "stretch",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        {note.mimeType ===
+                        "application/vnd.google-apps.folder" ? (
+                          <Folder style={{ color: "var(--primary)" }} />
+                        ) : (
+                          <FileText style={{ color: "var(--primary)" }} />
+                        )}
+                        <h3
+                          style={{
+                            fontWeight: "bold",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={note.name}
+                        >
+                          {note.name}
+                        </h3>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "0.75rem",
+                          opacity: 0.6,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        ID: {note.id.substring(0, 8)}...
+                      </p>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.75rem",
+                        opacity: 0.6,
+                        textAlign: "right",
+                      }}
+                    >
+                      {new Date(note.modifiedTime).toLocaleString(undefined, {
+                        year: "numeric",
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </Link>
 
-              <div
-                style={{ position: "absolute", top: "0.5rem", right: "0.5rem" }}
-              >
-                <NoteMenu
-                  isOpen={activeMenuId === note.id}
-                  onToggle={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setActiveMenuId(activeMenuId === note.id ? null : note.id);
-                  }}
-                  onClose={() => setActiveMenuId(null)}
-                  onDelete={(e) => requestDeleteNote(e, note)}
-                  onDuplicate={(e) => handleDuplicateNote(e, note)}
-                  onRename={(e) => requestRenameNote(e, note)}
-                  onStar={(e) => handleToggleStar(e, note)}
-                  isStarred={note.starred}
-                />
-              </div>
-            </div>
-          ))}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "0.5rem",
+                      right: "0.5rem",
+                    }}
+                  >
+                    <NoteMenu
+                      isOpen={activeMenuId === note.id}
+                      onToggle={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveMenuId(
+                          activeMenuId === note.id ? null : note.id,
+                        );
+                      }}
+                      onClose={() => setActiveMenuId(null)}
+                      onDelete={(e) => requestDeleteNote(e, note)}
+                      onDuplicate={(e) => handleDuplicateNote(e, note)}
+                      onRename={(e) => requestRenameNote(e, note)}
+                      onStar={(e) => handleToggleStar(e, note)}
+                      isStarred={note.starred}
+                    />
+                  </div>
+                </div>
+              ))}
         </div>
       )}
     </div>
