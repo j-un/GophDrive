@@ -4,26 +4,26 @@ set -e
 echo "Starting AWS Deployment Process..."
 
 # ---- Version Validation ----
-if [ -f .node-version ]; then
-  REQUIRED_NODE=$(cat .node-version | tr -d '[:space:]')
-  CURRENT_NODE=$(node -v | sed 's/^v//' | cut -d. -f1)
-  if [ "$CURRENT_NODE" != "$REQUIRED_NODE" ]; then
+if [ -f .tool-versions ]; then
+  REQUIRED_NODE_FULL=$(grep '^nodejs ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
+  REQUIRED_NODE_MAJOR=$(echo "$REQUIRED_NODE_FULL" | cut -d. -f1)
+  CURRENT_NODE_MAJOR=$(node -v | sed 's/^v//' | cut -d. -f1)
+  
+  if [ "$CURRENT_NODE_MAJOR" != "$REQUIRED_NODE_MAJOR" ]; then
     echo -e "\033[0;31mError: Node.js version mismatch.\033[0m"
-    echo "Required: $REQUIRED_NODE (from .node-version)"
-    echo "Current:  $CURRENT_NODE"
+    echo "Required (Major): $REQUIRED_NODE_MAJOR (from .tool-versions: $REQUIRED_NODE_FULL)"
+    echo "Current (Major):  $CURRENT_NODE_MAJOR"
     echo "Please switch your Node.js version (e.g., 'nvm use' or 'fnm use')."
     exit 1
   fi
-  echo "✅ Node.js version $REQUIRED_NODE matches."
-fi
+  echo "✅ Node.js version $REQUIRED_NODE_MAJOR.x matches."
 
-if [ -f .go-version ]; then
-  REQUIRED_GO=$(cat .go-version | tr -d '[:space:]')
+  REQUIRED_GO=$(grep '^golang ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
   # Handle cases like "1.26.0" matches "go1.26.0"
   CURRENT_GO=$(go version | awk '{print $3}' | sed 's/^go//')
   if [[ "$CURRENT_GO" != "$REQUIRED_GO"* ]]; then
     echo -e "\033[0;31mError: Go version mismatch.\033[0m"
-    echo "Required: $REQUIRED_GO (from .go-version)"
+    echo "Required: $REQUIRED_GO (from .tool-versions)"
     echo "Current:  $CURRENT_GO"
     echo "Please install or switch to the correct Go version."
     exit 1

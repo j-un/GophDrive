@@ -4,14 +4,11 @@ set -e
 echo "🐳 Setting up Pure Docker Environment..."
 
 # 1. Source versions from files
-if [ -f .node-version ]; then
-  export NODE_VERSION=$(cat .node-version | tr -d '[:space:]')
-  echo "🔹 Using Node.js version $NODE_VERSION (from .node-version)"
-fi
-
-if [ -f .go-version ]; then
-  export GO_VERSION=$(cat .go-version | tr -d '[:space:]')
-  echo "🔹 Using Go version $GO_VERSION (from .go-version)"
+if [ -f .tool-versions ]; then
+  export NODE_VERSION=$(grep '^nodejs ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
+  echo "🔹 Using Node.js version $NODE_VERSION (from .tool-versions)"
+  export GO_VERSION=$(grep '^golang ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
+  echo "🔹 Using Go version $GO_VERSION (from .tool-versions)"
 fi
 
 # 2. Build and Start Containers
