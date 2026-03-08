@@ -1,95 +1,139 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "enabledManagers": ["gomod", "npm", "dockerfile", "docker-compose", "github-actions", "regex"],
-  "separateMajorMinor": true,
-  "prHourlyLimit": 0,
-  "prConcurrentLimit": 0,
-  "minimumReleaseAge": null,
-  "postUpdateOptions": ["gomodTidy"],
-  "schedule": ["on Sunday"],
-  "automerge": true,
-  "automergeType": "branch",
-  "platformAutomerge": true,
-  "packageRules": [
-    {
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "automerge": true
-    },
-    {
-      "matchUpdateTypes": ["major"],
-      "automerge": false
-    },
-    {
-      "matchManagers": ["gomod"],
-      "groupName": "golang dependencies"
-    },
-    {
-      "matchManagers": ["npm"],
-      "groupName": "nodejs dependencies"
-    },
-    {
-      "matchManagers": ["dockerfile", "docker-compose"],
-      "groupName": "docker dependencies"
-    },
-    {
-      "matchManagers": ["github-actions"],
-      "groupName": "github actions dependencies",
-      "pinDigests": true
-    },
-    {
-      "matchPackageNames": ["golang", "node"],
-      "groupName": "tooling versions"
-    }
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
   ],
-  "customManagers": [
+  enabledManagers: [
+    'gomod',
+    'npm',
+    'dockerfile',
+    'docker-compose',
+    'github-actions',
+    'custom.regex',
+  ],
+  separateMajorMinor: true,
+  prHourlyLimit: 0,
+  prConcurrentLimit: 0,
+  minimumReleaseAge: null,
+  postUpdateOptions: [
+    'gomodTidy',
+  ],
+  schedule: [
+    'on Sunday',
+  ],
+  automerge: true,
+  automergeType: 'branch',
+  platformAutomerge: true,
+  packageRules: [
     {
-      "customType": "regex",
-      "fileMatch": ["(^|/)\\.tool-versions$"],
-      "matchStrings": ["golang\\s+(?<currentValue>[\\d\\.]+)"],
-      "depNameTemplate": "golang",
-      "datasourceTemplate": "golang-version"
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'pin',
+        'digest',
+      ],
+      automerge: true,
     },
     {
-      "customType": "regex",
-      "fileMatch": ["(^|/)\\.tool-versions$"],
-      "matchStrings": ["nodejs\\s+(?<currentValue>[\\d\\.]+)"],
-      "depNameTemplate": "node",
-      "datasourceTemplate": "node-version"
+      matchUpdateTypes: [
+        'major',
+      ],
+      automerge: false,
     },
     {
-      "customType": "regex",
-      "fileMatch": [
-        "(^|/)Dockerfile\\.dev$",
-        "^docker/base\\.Dockerfile$",
-        "^docker-compose\\.yml$"
+      matchManagers: [
+        'gomod',
       ],
-      "matchStrings": [
-        "GO_VERSION[:=]\\s*[\"']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?[\"']?"
-      ],
-      "depNameTemplate": "golang",
-      "datasourceTemplate": "golang-version"
+      groupName: 'golang dependencies',
     },
     {
-      "customType": "regex",
-      "fileMatch": [
-        "(^|/)Dockerfile\\.dev$",
-        "^docker/base\\.Dockerfile$",
-        "^docker-compose\\.yml$"
+      matchManagers: [
+        'npm',
       ],
-      "matchStrings": [
-        "NODE_VERSION[:=]\\s*[\"']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?[\"']?"
-      ],
-      "depNameTemplate": "node",
-      "datasourceTemplate": "node-version"
+      groupName: 'nodejs dependencies',
     },
     {
-      "customType": "regex",
-      "fileMatch": ["(^|/)Dockerfile\\.dev$", "^docker-compose\\.yml$"],
-      "matchStrings": ["github\\.com/air-verse/air@v(?<currentValue>[\\d.]+)"],
-      "depNameTemplate": "air-verse/air",
-      "datasourceTemplate": "github-tags"
-    }
-  ]
+      matchManagers: [
+        'dockerfile',
+        'docker-compose',
+      ],
+      groupName: 'docker dependencies',
+    },
+    {
+      matchManagers: [
+        'github-actions',
+      ],
+      groupName: 'github actions dependencies',
+      pinDigests: true,
+    },
+    {
+      matchPackageNames: [
+        'golang',
+        'node',
+      ],
+      groupName: 'tooling versions',
+    },
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)\\.tool-versions$/',
+      ],
+      matchStrings: [
+        'golang\\s+(?<currentValue>[\\d\\.]+)',
+      ],
+      depNameTemplate: 'golang',
+      datasourceTemplate: 'golang-version',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)\\.tool-versions$/',
+      ],
+      matchStrings: [
+        'nodejs\\s+(?<currentValue>[\\d\\.]+)',
+      ],
+      depNameTemplate: 'node',
+      datasourceTemplate: 'node-version',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)Dockerfile\\.dev$/',
+        '/^docker/base\\.Dockerfile$/',
+        '/^docker-compose\\.yml$/',
+      ],
+      matchStrings: [
+        'GO_VERSION[:=]\\s*["\']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?["\']?',
+      ],
+      depNameTemplate: 'golang',
+      datasourceTemplate: 'golang-version',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)Dockerfile\\.dev$/',
+        '/^docker/base\\.Dockerfile$/',
+        '/^docker-compose\\.yml$/',
+      ],
+      matchStrings: [
+        'NODE_VERSION[:=]\\s*["\']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?["\']?',
+      ],
+      depNameTemplate: 'node',
+      datasourceTemplate: 'node-version',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)Dockerfile\\.dev$/',
+        '/^docker-compose\\.yml$/',
+      ],
+      matchStrings: [
+        'github\\.com/air-verse/air@v(?<currentValue>[\\d.]+)',
+      ],
+      depNameTemplate: 'air-verse/air',
+      datasourceTemplate: 'github-tags',
+    },
+  ],
 }
-
