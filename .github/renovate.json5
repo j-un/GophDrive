@@ -25,6 +25,14 @@
   automergeType: 'branch',
   platformAutomerge: true,
   packageRules: [
+    // eslint-plugin-react (dep of eslint-config-next) does not support ESLint 10 yet.
+    // Remove this constraint once eslint-plugin-react adds ESLint 10 to its peerDependencies.
+    // Tracking: https://github.com/jsx-eslint/eslint-plugin-react/issues/3838
+    {
+      matchPackageNames: ['eslint'],
+      matchFileNames: ['frontend/package.json'],
+      allowedVersions: '<10.0.0',
+    },
     {
       matchUpdateTypes: [
         'minor',
