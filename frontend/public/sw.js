@@ -1,11 +1,11 @@
-const CACHE_NAME = "gophdrive-20260307-01";
+const CACHE_NAME = "gophdrive-20260311-01";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
   "/wasm_exec.js",
   "/core.wasm",
   "/favicon.ico",
-  "/icon-512x512.svg",
+  "/icon-512x512.png",
 ];
 
 self.addEventListener("install", (event) => {
