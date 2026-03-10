@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="frontend/public/icon-512x512.png" alt="GophDrive Logo" width="180">
+  <br>
+  <sub>The Go Gopher was designed by <a href="https://reneefrench.blogspot.com/">Renée French</a>, licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</sub>
+</p>
+
 # GophDrive
 
 GophDrive is a highly secure, serverless Markdown note-taking application designed for AWS. It leverages your own Google Drive for storage, ensuring you maintain complete control and privacy over your data.
