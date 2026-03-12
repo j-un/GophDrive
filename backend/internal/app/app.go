@@ -161,8 +161,19 @@ func NewApp(ctx context.Context) *App {
 		}
 	}
 
+	// Allowed Emails (login restriction)
+	var allowedEmails []string
+	if raw := os.Getenv("ALLOWED_EMAILS"); raw != "" {
+		for _, email := range strings.Split(raw, ",") {
+			email = strings.TrimSpace(email)
+			if email != "" {
+				allowedEmails = append(allowedEmails, email)
+			}
+		}
+	}
+
 	// Auth Handler (needs Auth Service and Storage Provider)
-	authHandler := handler.NewAuthHandler(authService, storageProvider, jwtSecret)
+	authHandler := handler.NewAuthHandler(authService, storageProvider, jwtSecret, allowedEmails)
 
 	// Note Handler
 	noteHandler := handler.NewNoteHandler(storageProvider, jwtSecret)

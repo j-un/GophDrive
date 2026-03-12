@@ -63,6 +63,7 @@ export class ComputeStack extends cdk.Stack {
         API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
         FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
         GOOGLE_REDIRECT_URL: `${process.env.FRONTEND_URL || "http://localhost:3000"}/api/auth/callback`,
+        ALLOWED_EMAILS: process.env.ALLOWED_EMAILS || "",
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 128,
