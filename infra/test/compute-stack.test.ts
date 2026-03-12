@@ -58,6 +58,7 @@ describe("ComputeStack", () => {
           GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
           JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
           API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
+          ALLOWED_EMAILS: Match.anyValue(),
         }),
       },
     });

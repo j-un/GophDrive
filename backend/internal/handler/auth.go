@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -24,11 +25,27 @@ type AuthHandler struct {
 	authService     *auth.AuthService
 	storageProvider adapter.StorageProvider
 	jwtSecret       string
+	allowedEmails   []string
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(s *auth.AuthService, sp adapter.StorageProvider, jwtSecret string) *AuthHandler {
-	return &AuthHandler{authService: s, storageProvider: sp, jwtSecret: jwtSecret}
+func NewAuthHandler(s *auth.AuthService, sp adapter.StorageProvider, jwtSecret string, allowedEmails []string) *AuthHandler {
+	return &AuthHandler{authService: s, storageProvider: sp, jwtSecret: jwtSecret, allowedEmails: allowedEmails}
+}
+
+// isEmailAllowed checks if the given email is allowed to login.
+// If allowedEmails is empty, all emails are allowed.
+func isEmailAllowed(email string, allowedEmails []string) bool {
+	if len(allowedEmails) == 0 {
+		return true
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, allowed := range allowedEmails {
+		if strings.ToLower(strings.TrimSpace(allowed)) == email {
+			return true
+		}
+	}
+	return false
 }
 
 // Login initiates the Google OAuth2 flow.
@@ -70,6 +87,12 @@ func (h *AuthHandler) Callback(ctx context.Context, req events.APIGatewayProxyRe
 	if err != nil {
 		fmt.Printf("Userinfo error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to get user info"}, nil
+	}
+
+	// Check if the user's email is allowed
+	if !isEmailAllowed(userinfo.Email, h.allowedEmails) {
+		fmt.Printf("Access denied for email: %s\n", userinfo.Email)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusForbidden, Body: "Access denied: your email is not authorized"}, nil
 	}
 
 	// Save Token (Refresh Token) to DynamoDB

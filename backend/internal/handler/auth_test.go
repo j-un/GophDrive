@@ -17,11 +17,72 @@ import (
 	"golang.org/x/oauth2"
 )
 
+func TestIsEmailAllowed(t *testing.T) {
+	tests := []struct {
+		name          string
+		email         string
+		allowedEmails []string
+		want          bool
+	}{
+		{
+			name:          "empty list allows all",
+			email:         "anyone@example.com",
+			allowedEmails: nil,
+			want:          true,
+		},
+		{
+			name:          "empty slice allows all",
+			email:         "anyone@example.com",
+			allowedEmails: []string{},
+			want:          true,
+		},
+		{
+			name:          "matching email is allowed",
+			email:         "user@gmail.com",
+			allowedEmails: []string{"user@gmail.com"},
+			want:          true,
+		},
+		{
+			name:          "non-matching email is denied",
+			email:         "other@gmail.com",
+			allowedEmails: []string{"user@gmail.com"},
+			want:          false,
+		},
+		{
+			name:          "case insensitive match",
+			email:         "User@Gmail.COM",
+			allowedEmails: []string{"user@gmail.com"},
+			want:          true,
+		},
+		{
+			name:          "whitespace is trimmed",
+			email:         "  user@gmail.com  ",
+			allowedEmails: []string{" user@gmail.com "},
+			want:          true,
+		},
+		{
+			name:          "multiple allowed emails",
+			email:         "user2@gmail.com",
+			allowedEmails: []string{"user1@gmail.com", "user2@gmail.com"},
+			want:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isEmailAllowed(tt.email, tt.allowedEmails)
+			if got != tt.want {
+				t.Errorf("isEmailAllowed(%q, %v) = %v, want %v", tt.email, tt.allowedEmails, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAuthHandler_Refresh(t *testing.T) {
 	secret := "test-secret"
 	authService := auth.NewAuthService(nil, nil, "", crypto.NewMockEncryptor())
 	storageProvider := memory.NewProvider(nil, authService)
-	h := NewAuthHandler(authService, storageProvider, secret)
+	h := NewAuthHandler(authService, storageProvider, secret, nil)
 
 	userID := "test-user"
 	// 1. Save a token for the user in DynamoDB (mocked)
@@ -104,7 +165,7 @@ func TestDemoLogin_CreatesWelcomeNotes(t *testing.T) {
 	// Setup dependencies with nil Dynamo but Mock KMS to avoid panics
 	authService := auth.NewAuthService(nil, nil, "", crypto.NewMockEncryptor())
 	storageProvider := memory.NewProvider(nil, authService)
-	handler := NewAuthHandler(authService, storageProvider, "test-secret")
+	handler := NewAuthHandler(authService, storageProvider, "test-secret", nil)
 
 	// Execute DemoLogin
 	ctx := context.Background()
