@@ -1,0 +1,31 @@
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 0;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.footer:hover {
+  opacity: 0.8;
+}
+
+.link {
+  color: var(--foreground);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.link:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.separator {
+  color: var(--foreground);
+  opacity: 0.3;
+  user-select: none;
+}

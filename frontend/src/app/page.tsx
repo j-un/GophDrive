@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
 import { useAuth } from "@/context/AuthContext";
+import Footer from "@/components/Footer";
 
 function HomeContent() {
   const { isReady, error } = useWasm();
@@ -139,6 +140,7 @@ function HomeContent() {
           {renderActions()}
         </div>
       </div>
+      <Footer />
     </main>
   );
 }
@@ -154,6 +156,7 @@ export default function Home() {
               <p className="opacity-60">Loading...</p>
             </div>
           </div>
+          <Footer />
         </main>
       }
     >
