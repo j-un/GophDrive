@@ -59,6 +59,7 @@ services:
       - /app/node_modules # Prevent overwriting node_modules
       - /app/.next # Isolate .next build cache from the host bind-mount
       - ./core:/workspace/core # Optional visibility for debugging
+      - ./docs:/docs # Mount docs for dynamic privacy/terms rendering
     environment:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
@@ -66,6 +67,9 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8080
       # SSR -> Backend (Container to Container)
       - INTERNAL_API_URL=http://backend:8080
+      # Optional: Privacy Policy and Terms of Service URLs
+      - NEXT_PUBLIC_PRIVACY_POLICY_URL=${PRIVACY_POLICY_URL:-}
+      - NEXT_PUBLIC_TERMS_OF_SERVICE_URL=${TERMS_OF_SERVICE_URL:-}
     depends_on:
       - backend
 

@@ -128,6 +128,10 @@ export GOOGLE_CLIENT_SECRET="your-google-client-secret"
 export CUSTOM_DOMAIN_NAME="gophdrive.your-domain.com"
 export CERTIFICATE_ARN="arn:aws:acm:us-east-1:123456789012:certificate/uuid"
 
+# Optional: Privacy Policy and Terms of Service (required for Google OAuth production approval)
+export PRIVACY_POLICY_URL="/privacy"
+export TERMS_OF_SERVICE_URL="/terms"
+
 ./scripts/deploy-aws.sh
 ```
 
@@ -138,6 +142,16 @@ The script will automatically:
 4. Extract the generated `FRONTEND_URL`.
 5. Build the Next.js static frontend using the correct URL context.
 6. Deploy the frontend assets to the S3 Bucket and invalidate the CloudFront cache.
+
+### 4. Privacy Policy & Terms of Service
+
+Google OAuth production approval requires a privacy policy and terms of service URL. Since GophDrive is a self-hosted application, **you** are responsible for providing these documents.
+
+Template documents are available in [`docs/`](docs/) to help you get started:
+- [`PRIVACY_POLICY_TEMPLATE.md`](docs/PRIVACY_POLICY_TEMPLATE.md)
+- [`TERMS_OF_SERVICE_TEMPLATE.md`](docs/TERMS_OF_SERVICE_TEMPLATE.md)
+
+Set the `PRIVACY_POLICY_URL` and `TERMS_OF_SERVICE_URL` environment variables during deployment to display links in the application footer.
 
 ---
 

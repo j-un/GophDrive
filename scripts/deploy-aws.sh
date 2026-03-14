@@ -61,6 +61,17 @@ fi
 # Note: NEXT_PUBLIC_API_URL should be empty for CloudFront proxying (relative paths)
 export NEXT_PUBLIC_API_URL="/api"
 
+# Optional: Privacy Policy and Terms of Service URLs
+# These are baked into the frontend at build time.
+if [ -n "${PRIVACY_POLICY_URL}" ]; then
+  export NEXT_PUBLIC_PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL}"
+  echo "  Privacy Policy URL: ${PRIVACY_POLICY_URL}"
+fi
+if [ -n "${TERMS_OF_SERVICE_URL}" ]; then
+  export NEXT_PUBLIC_TERMS_OF_SERVICE_URL="${TERMS_OF_SERVICE_URL}"
+  echo "  Terms of Service URL: ${TERMS_OF_SERVICE_URL}"
+fi
+
 # ---- SSM Parameter Store: Manage Secrets ----
 echo "Managing secrets in SSM Parameter Store..."
 

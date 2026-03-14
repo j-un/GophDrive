@@ -79,7 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // console.log("AuthContext check:", { loading, user, pathname });
     if (loading) return;
 
-    const isPublic = pathname === "/" || pathname.startsWith("/auth");
+    const isPublic =
+      pathname === "/" ||
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/privacy") ||
+      pathname.startsWith("/terms");
 
     // If we are on public page, just let it be.
     if (isPublic) return;
