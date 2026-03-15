@@ -36,7 +36,7 @@
     "eslint": "^9.22.0",
     "eslint-config-next": "16.1.6",
     "fake-indexeddb": "^6.2.5",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.0",
     "npm-run-all2": "^8.0.0",
     "typescript": "^5",
     "vitest": "^4.0.18"
