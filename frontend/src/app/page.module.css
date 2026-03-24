@@ -17,6 +17,16 @@
   /* Glass effect handled by global .glass class */
 }
 
+.logoContainer {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.logo {
+  border-radius: 1rem;
+}
+
 .title {
   font-size: 2rem;
   font-weight: 700;
@@ -85,4 +95,46 @@
   display: block;
   margin-top: 0.5rem;
   word-break: break-all;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0 1rem;
+  opacity: 0.5;
+}
+
+.infoSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.infoItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.infoIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  opacity: 0.5;
+}
+
+.infoText {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  opacity: 0.5;
+  margin: 0;
+}
+
+.infoLink {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.infoLink:hover {
+  text-decoration: underline;
 }

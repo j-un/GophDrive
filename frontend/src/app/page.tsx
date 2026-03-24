@@ -2,13 +2,22 @@
 
 import { Suspense } from "react";
 import { useWasm } from "@/hooks/useWasm";
-import { CheckCircle, AlertCircle, LogIn } from "lucide-react";
+import {
+  CheckCircle,
+  AlertCircle,
+  LogIn,
+  Github,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import styles from "./page.module.css";
 
 import { useAuth } from "@/context/AuthContext";
 import Footer from "@/components/Footer";
+
+const GITHUB_URL = "https://github.com/j-un/GophDrive";
 
 function HomeContent() {
   const { isReady, error } = useWasm();
@@ -79,6 +88,16 @@ function HomeContent() {
   return (
     <main className={styles.main}>
       <div className={`${styles.card} glass`}>
+        <div className={styles.logoContainer}>
+          <Image
+            src="/icon-512x512.png"
+            alt="GophDrive"
+            width={160}
+            height={160}
+            className={styles.logo}
+            priority
+          />
+        </div>
         <h1 className={styles.title}>GophDrive</h1>
         <p
           style={{ opacity: 0.6, marginBottom: "1.5rem", textAlign: "center" }}
@@ -138,6 +157,33 @@ function HomeContent() {
 
           {/* Actions always visible */}
           {renderActions()}
+        </div>
+
+        <hr className={styles.divider} />
+
+        <div className={styles.infoSection}>
+          <div className={styles.infoItem}>
+            <ShieldCheck size={16} className={styles.infoIcon} />
+            <p className={styles.infoText}>
+              This service is invite-only. Only Google accounts approved by the
+              administrator can log in.
+            </p>
+          </div>
+          <div className={styles.infoItem}>
+            <Github size={16} className={styles.infoIcon} />
+            <p className={styles.infoText}>
+              This is a self-hosted instance of{" "}
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.infoLink}
+              >
+                GophDrive
+              </a>
+              , an open-source serverless note app.
+            </p>
+          </div>
         </div>
       </div>
       <Footer />
