@@ -97,7 +97,7 @@ export async function apiFetch(
     refreshPromise = null;
 
     if (success) {
-      // Retry original request with new token
+      // Retry original request with new token (direct fetch, no recursive apiFetch to avoid infinite loop)
       const newToken = getToken();
       const newHeaders: Record<string, string> = {
         ...((init?.headers as Record<string, string>) || {}),
@@ -105,8 +105,15 @@ export async function apiFetch(
       if (newToken) {
         newHeaders["Authorization"] = `Bearer ${newToken}`;
       }
-      // Re-run apiFetch (it will have a new timestamp)
-      return apiFetch(path, { ...init, headers: newHeaders });
+      const retryTimestamp = Date.now();
+      const retrySeparator = path.includes("?") ? "&" : "?";
+      const retryUrl = `${API_BASE}${path}${retrySeparator}_t=${retryTimestamp}`;
+      return fetchFn(retryUrl, {
+        ...init,
+        headers: newHeaders,
+        credentials: "include",
+        cache: "no-store",
+      });
     } else {
       clearToken();
     }

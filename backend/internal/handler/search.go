@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -55,6 +56,9 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 
 	files, err := storage.SearchFiles(ctx, query)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("SearchFiles error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to search files"}, nil
 	}
