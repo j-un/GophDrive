@@ -52,6 +52,9 @@ func (h *NoteHandler) ListNotes(ctx context.Context, req events.APIGatewayProxyR
 
 	files, err := storage.ListFiles(ctx, folderID)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("ListFiles error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to list notes: %v", err)}, nil
 	}
@@ -93,6 +96,9 @@ func (h *NoteHandler) CreateFolder(ctx context.Context, req events.APIGatewayPro
 
 	folder, err := storage.CreateFolder(ctx, payload.Name, parents)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("CreateFolder error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to create folder: %v", err)}, nil
 	}
@@ -123,6 +129,9 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 	if err != nil {
 		if errors.Is(err, adapter.ErrNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
+		}
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 		}
 		fmt.Printf("GetFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to get note: %v", err)}, nil
@@ -182,6 +191,9 @@ func (h *NoteHandler) CreateNote(ctx context.Context, req events.APIGatewayProxy
 
 	file, err := storage.CreateFile(ctx, input.Name, []byte(input.Content), folderID)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("CreateFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to create note: %v", err)}, nil
 	}
@@ -228,6 +240,9 @@ func (h *NoteHandler) UpdateNote(ctx context.Context, req events.APIGatewayProxy
 		if errors.Is(err, adapter.ErrNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
 		}
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("SaveFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to update note: %v", err)}, nil
 	}
@@ -256,6 +271,9 @@ func (h *NoteHandler) DeleteNote(ctx context.Context, req events.APIGatewayProxy
 
 	err = storage.DeleteFile(ctx, id)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("DeleteFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to delete note: %v", err)}, nil
 	}
@@ -279,6 +297,9 @@ func (h *NoteHandler) DuplicateNote(ctx context.Context, req events.APIGatewayPr
 	if err != nil {
 		if errors.Is(err, adapter.ErrNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
+		}
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 		}
 		fmt.Printf("DuplicateFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to duplicate note: %v", err)}, nil
@@ -321,6 +342,9 @@ func (h *NoteHandler) RenameNote(ctx context.Context, req events.APIGatewayProxy
 	if err != nil {
 		if errors.Is(err, adapter.ErrNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
+		}
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 		}
 		fmt.Printf("RenameFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to rename note: %v", err)}, nil
@@ -369,25 +393,23 @@ func (h *NoteHandler) PatchNote(ctx context.Context, req events.APIGatewayProxyR
 			if errors.Is(err, adapter.ErrNotFound) {
 				return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
 			}
+			if errors.Is(err, adapter.ErrUnauthorized) {
+				return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+			}
 			fmt.Printf("RenameFile error: %v\n", err)
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to rename note: %v", err)}, nil
 		}
 	}
 
-	// Handle Starred update
-	// Note: If both Name and Starred are present, we process both.
-	// Since RenameFile and SetStarred both return updated metadata, we simply update `updatedFile`.
-	// In a real generic implementation we might want to fetch once, apply all changes, and save once.
-	// But our StorageAdapter is granular.
-	// If Name was updated, `updatedFile` holds the new state.
-	// If we then call SetStarred, we modify the backend again.
-	// This is slightly inefficient (2 DB calls) but safe for now.
 	if input.Starred != nil {
 		var err error
 		updatedFile, err = storage.SetStarred(ctx, id, *input.Starred)
 		if err != nil {
 			if errors.Is(err, adapter.ErrNotFound) {
 				return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note not found"}, nil
+			}
+			if errors.Is(err, adapter.ErrUnauthorized) {
+				return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 			}
 			fmt.Printf("SetStarred error: %v\n", err)
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to update starred status: %v", err)}, nil
@@ -421,6 +443,9 @@ func (h *NoteHandler) ListStarredNotes(ctx context.Context, req events.APIGatewa
 
 	files, err := storage.ListStarred(ctx)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("ListStarred error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to list starred notes"}, nil
 	}
@@ -451,6 +476,9 @@ func (h *NoteHandler) ListRecentNotes(ctx context.Context, req events.APIGateway
 
 	files, err := storage.ListRecent(ctx, limit)
 	if err != nil {
+		if errors.Is(err, adapter.ErrUnauthorized) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
 		fmt.Printf("ListRecent error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to list recent notes: %v", err)}, nil
 	}

@@ -67,7 +67,7 @@ func (d *DriveAdapter) ListFiles(ctx context.Context, folderID string) ([]adapte
 		Fields(googleapi.Field(fields)).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to list files: %v", err)
+		return nil, wrapDriveError(err, "unable to list files")
 	}
 
 	files := []adapter.FileMetadata{}
@@ -114,7 +114,7 @@ func (d *DriveAdapter) CreateFolder(ctx context.Context, name string, parents []
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to create folder: %v", err)
+		return nil, wrapDriveError(err, "unable to create folder")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -136,7 +136,7 @@ func (d *DriveAdapter) EnsureRootFolder(ctx context.Context, name string) (strin
 	q := fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false", name)
 	r, err := d.service.Files.List().Q(q).Fields("files(id)").Do()
 	if err != nil {
-		return "", fmt.Errorf("unable to search for root folder: %v", err)
+		return "", wrapDriveError(err, "unable to search for root folder")
 	}
 
 	if len(r.Files) > 0 {
@@ -163,7 +163,7 @@ func (d *DriveAdapter) ListRootFolders(ctx context.Context) ([]adapter.FileMetad
 		Fields(googleapi.Field(fields)).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to list root folders: %v", err)
+		return nil, wrapDriveError(err, "unable to list root folders")
 	}
 
 	files := []adapter.FileMetadata{}
@@ -191,7 +191,7 @@ func (d *DriveAdapter) GetFile(ctx context.Context, fileID string) (*adapter.Fil
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to get file metadata: %v", err)
+		return nil, wrapDriveError(err, "unable to get file metadata")
 	}
 
 	// 2. Get Content (only if not a folder)
@@ -199,7 +199,7 @@ func (d *DriveAdapter) GetFile(ctx context.Context, fileID string) (*adapter.Fil
 	if f.MimeType != "application/vnd.google-apps.folder" {
 		resp, err := d.service.Files.Get(fileID).Download()
 		if err != nil {
-			return nil, fmt.Errorf("unable to download file: %v", err)
+			return nil, wrapDriveError(err, "unable to download file")
 		}
 		defer resp.Body.Close()
 
@@ -244,10 +244,7 @@ func (d *DriveAdapter) SaveFile(ctx context.Context, fileID string, content []by
 		if isPreconditionFailed(err) {
 			return nil, adapter.ErrPreconditionFailed
 		}
-		if isNotFound(err) {
-			return nil, adapter.ErrNotFound
-		}
-		return nil, fmt.Errorf("unable to update file: %v", err)
+		return nil, wrapDriveError(err, "unable to update file")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -278,6 +275,32 @@ func isNotFound(err error) bool {
 	return false
 }
 
+// isAuthError detects authentication/authorization failures from Google APIs.
+// This covers both googleapi.Error (HTTP 401/403) and oauth2 token refresh failures.
+func isAuthError(err error) bool {
+	var gErr *googleapi.Error
+	if errors.As(err, &gErr) {
+		return gErr.Code == 401 || gErr.Code == 403
+	}
+	// oauth2 token refresh failures surface as plain errors containing "oauth2"
+	// e.g. "oauth2: cannot fetch token: 400 Bad Request"
+	msg := err.Error()
+	return strings.Contains(msg, "oauth2: cannot fetch token") ||
+		strings.Contains(msg, "token expired") ||
+		strings.Contains(msg, "invalid_grant")
+}
+
+// wrapDriveError converts known Google API error types into adapter sentinel errors.
+func wrapDriveError(err error, msg string) error {
+	if isNotFound(err) {
+		return adapter.ErrNotFound
+	}
+	if isAuthError(err) {
+		return fmt.Errorf("%s: %w", msg, adapter.ErrUnauthorized)
+	}
+	return fmt.Errorf("%s: %v", msg, err)
+}
+
 // CreateFile creates a new file in the specified folder.
 func (d *DriveAdapter) CreateFile(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
 	parents := []string{folderID}
@@ -299,7 +322,7 @@ func (d *DriveAdapter) CreateFile(ctx context.Context, name string, content []by
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to create file: %v", err)
+		return nil, wrapDriveError(err, "unable to create file")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -317,7 +340,7 @@ func (d *DriveAdapter) CreateFile(ctx context.Context, name string, content []by
 // DeleteFile deletes a file by its ID.
 func (d *DriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
 	if err := d.service.Files.Delete(fileID).SupportsAllDrives(true).Do(); err != nil {
-		return fmt.Errorf("unable to delete file: %v", err)
+		return wrapDriveError(err, "unable to delete file")
 	}
 	return nil
 }
@@ -327,7 +350,7 @@ func (d *DriveAdapter) DuplicateFile(ctx context.Context, fileID string) (*adapt
 	// 1. Get original file to generate new name
 	orig, err := d.service.Files.Get(fileID).SupportsAllDrives(true).Fields("name, parents").Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to get file for duplication: %v", err)
+		return nil, wrapDriveError(err, "unable to get file for duplication")
 	}
 
 	newName := fmt.Sprintf("Copy of %s", fromDriveName(orig.Name))
@@ -342,7 +365,7 @@ func (d *DriveAdapter) DuplicateFile(ctx context.Context, fileID string) (*adapt
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to duplicate file: %v", err)
+		return nil, wrapDriveError(err, "unable to duplicate file")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -362,10 +385,7 @@ func (d *DriveAdapter) RenameFile(ctx context.Context, fileID string, newName st
 	// 1. Get current metadata to check if it's a folder
 	current, err := d.service.Files.Get(fileID).Fields("mimeType").Do()
 	if err != nil {
-		if isNotFound(err) {
-			return nil, adapter.ErrNotFound
-		}
-		return nil, fmt.Errorf("unable to fetch file metadata for rename: %v", err)
+		return nil, wrapDriveError(err, "unable to fetch file metadata for rename")
 	}
 
 	name := newName
@@ -382,7 +402,7 @@ func (d *DriveAdapter) RenameFile(ctx context.Context, fileID string, newName st
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to rename file: %v", err)
+		return nil, wrapDriveError(err, "unable to rename file")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -409,7 +429,7 @@ func (d *DriveAdapter) SetStarred(ctx context.Context, fileID string, starred bo
 		Fields("id, name, mimeType, modifiedTime, size, md5Checksum, parents, starred").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to update starred status: %v", err)
+		return nil, wrapDriveError(err, "unable to update starred status")
 	}
 
 	modTime, _ := time.Parse(time.RFC3339, res.ModifiedTime)
@@ -479,7 +499,7 @@ func (d *DriveAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata,
 		Fields(googleapi.Field(fields)).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to list starred files: %v", err)
+		return nil, wrapDriveError(err, "unable to list starred files")
 	}
 
 	ancestorCache := make(map[string]bool)
@@ -531,7 +551,7 @@ func (d *DriveAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fil
 		Fields(googleapi.Field(fields)).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to list recent files: %v", err)
+		return nil, wrapDriveError(err, "unable to list recent files")
 	}
 
 	ancestorCache := make(map[string]bool)
@@ -595,7 +615,7 @@ func (d *DriveAdapter) SearchFiles(ctx context.Context, query string) ([]adapter
 		Fields(googleapi.Field(fields)).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("unable to search files: %v", err)
+		return nil, wrapDriveError(err, "unable to search files")
 	}
 
 	ancestorCache := make(map[string]bool)
