@@ -146,7 +146,7 @@ function NoteContent() {
             }>(lockRes);
             if (lockData.user_id) {
               setLockedBy(lockData.user_id);
-              setLockExpires(lockData.expires_at);
+              setLockExpires(lockData.expires_at ?? null);
             } else {
               setLockedBy("Another User");
               setLockExpires(Math.floor(Date.now() / 1000) + 300);
@@ -262,8 +262,8 @@ function NoteContent() {
             }>(remoteRes);
             const remoteEtag = remoteRes.headers.get("ETag") || remoteData.etag;
             setConflictRemote({
-              content: remoteData.content,
-              etag: remoteEtag,
+              content: remoteData.content ?? "",
+              etag: remoteEtag ?? "",
             });
             setConflictLocal(newContent);
           }
@@ -274,7 +274,7 @@ function NoteContent() {
 
         const data = await parseJson<{ etag?: string }>(res);
         const newEtag = res.headers.get("ETag") || data.etag;
-        setEtag(newEtag);
+        setEtag(newEtag ?? "");
 
         // Update local cache (clean)
         const now = new Date().toISOString();
@@ -333,7 +333,7 @@ function NoteContent() {
     }).then(async (res) => {
       if (res.ok) {
         const data = await parseJson<{ etag?: string }>(res);
-        setEtag(res.headers.get("ETag") || data.etag);
+        setEtag(res.headers.get("ETag") || data.etag || "");
         setConflictRemote(null);
         setConflictLocal(null);
       } else {
