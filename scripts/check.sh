@@ -35,6 +35,8 @@ docker compose exec -T -w /workspace/core air-wasm go test ./...
 echo -e "\n${GREEN}==> Checking Frontend (Next.js/TS) <==${NC}"
 echo "Running prettier (auto-format)..."
 docker compose exec -T frontend npx --yes prettier --write .
+echo "Running TypeScript type check..."
+docker compose exec -T frontend npx --yes tsc --noEmit
 echo "Running eslint..."
 docker compose exec -T frontend npm run lint
 echo "Running frontend unit tests..."
