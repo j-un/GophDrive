@@ -124,11 +124,13 @@ function handler(event) {
             httpStatus: 404, // S3 returns 404 if file not found (or 403 if permissive)
             responseHttpStatus: 200,
             responsePagePath: "/index.html",
+            ttl: cdk.Duration.seconds(0),
           },
           {
             httpStatus: 403, // Handle S3 403 (access denied) as 200 index.html for SPA
             responseHttpStatus: 200,
             responsePagePath: "/index.html",
+            ttl: cdk.Duration.seconds(0),
           },
         ],
       },

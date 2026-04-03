@@ -5,6 +5,7 @@ import {
   clearToken,
   isLoggedIn,
   apiFetch,
+  parseJson,
   listFiles,
   createNote,
   updateNote,
@@ -34,13 +35,23 @@ const localStorageMock = (() => {
 Object.defineProperty(globalThis, "localStorage", { value: localStorageMock });
 
 // Fake fetch helper
-function fakeFetch(status: number, body: unknown = {}): typeof fetch {
+function fakeFetch(
+  status: number,
+  body: unknown = {},
+  contentType = "application/json",
+): typeof fetch {
   return vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
+    headers: {
+      get: (name: string) => {
+        if (name.toLowerCase() === "content-type") return contentType;
+        return null;
+      },
+    },
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
-  } as Response);
+  } as unknown as Response);
 }
 
 describe("Token management", () => {
@@ -197,5 +208,48 @@ describe("API functions", () => {
 
     const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("q=hello%20world");
+  });
+});
+
+describe("parseJson", () => {
+  it("parses JSON when Content-Type is application/json", async () => {
+    const res = {
+      headers: { get: () => "application/json" },
+      json: () => Promise.resolve({ ok: true }),
+    } as unknown as Response;
+
+    const result = await parseJson(res);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("throws when Content-Type is text/html", async () => {
+    const res = {
+      headers: { get: () => "text/html" },
+      json: () => Promise.resolve({}),
+    } as unknown as Response;
+
+    await expect(parseJson(res)).rejects.toThrow(
+      "Server returned an unexpected response",
+    );
+  });
+
+  it("throws when Content-Type is missing", async () => {
+    const res = {
+      headers: { get: () => null },
+      json: () => Promise.resolve({}),
+    } as unknown as Response;
+
+    await expect(parseJson(res)).rejects.toThrow(
+      "Server returned an unexpected response",
+    );
+  });
+
+  it("listFiles throws on HTML response from server", async () => {
+    setFetchFn(fakeFetch(200, [], "text/html"));
+
+    await expect(listFiles()).rejects.toThrow(
+      "Server returned an unexpected response",
+    );
+    resetFetchFn();
   });
 });
