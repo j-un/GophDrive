@@ -25,6 +25,7 @@ import { useOffline } from "@/hooks/useOffline";
 import { saveNoteLocal, getNoteLocal, deleteNoteLocal } from "@/lib/idb";
 import {
   apiFetch,
+  parseJson,
   duplicateNote,
   deleteFile,
   renameNote,
@@ -139,7 +140,10 @@ function NoteContent() {
         });
         if (lockRes.status === 409 || lockRes.status === 423) {
           try {
-            const lockData = await lockRes.json();
+            const lockData = await parseJson<{
+              user_id?: string;
+              expires_at?: number;
+            }>(lockRes);
             if (lockData.user_id) {
               setLockedBy(lockData.user_id);
               setLockExpires(lockData.expires_at);
@@ -166,7 +170,13 @@ function NoteContent() {
         }
         if (!res.ok) throw new Error("Failed to load note");
 
-        const data = await res.json();
+        const data = await parseJson<{
+          content?: string;
+          name?: string;
+          modifiedTime?: string;
+          parents?: string[];
+          etag?: string;
+        }>(res);
         setContent(data.content || "");
         setTitle(data.name || "Untitled Note");
         if (data.modifiedTime) setModifiedTime(data.modifiedTime);
@@ -246,7 +256,10 @@ function NoteContent() {
           console.warn("Conflict detected (412)");
           const remoteRes = await apiFetch(`/notes/${id}`);
           if (remoteRes.ok) {
-            const remoteData = await remoteRes.json();
+            const remoteData = await parseJson<{
+              content?: string;
+              etag?: string;
+            }>(remoteRes);
             const remoteEtag = remoteRes.headers.get("ETag") || remoteData.etag;
             setConflictRemote({
               content: remoteData.content,
@@ -259,7 +272,7 @@ function NoteContent() {
 
         if (!res.ok) throw new Error(`Failed to save: ${res.status}`);
 
-        const data = await res.json();
+        const data = await parseJson<{ etag?: string }>(res);
         const newEtag = res.headers.get("ETag") || data.etag;
         setEtag(newEtag);
 
@@ -319,7 +332,7 @@ function NoteContent() {
       },
     }).then(async (res) => {
       if (res.ok) {
-        const data = await res.json();
+        const data = await parseJson<{ etag?: string }>(res);
         setEtag(res.headers.get("ETag") || data.etag);
         setConflictRemote(null);
         setConflictLocal(null);

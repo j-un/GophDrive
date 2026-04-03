@@ -44,7 +44,7 @@ async function refreshSession(): Promise<boolean> {
       credentials: "include",
     });
     if (res.ok) {
-      const data = await res.json();
+      const data = await parseJson<{ token?: string }>(res);
       if (data.token) {
         setToken(data.token);
       }
@@ -132,6 +132,16 @@ export interface FileItem {
   starred?: boolean;
 }
 
+export async function parseJson<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get("Content-Type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "Server returned an unexpected response. Please try again later.",
+    );
+  }
+  return res.json();
+}
+
 async function handleError(res: Response, defaultMsg: string): Promise<never> {
   const text = await res.text();
   throw new Error(`${defaultMsg}${text ? `: ${text}` : ""}`);
@@ -140,33 +150,33 @@ async function handleError(res: Response, defaultMsg: string): Promise<never> {
 export async function getHealth(): Promise<{ status: string }> {
   const res = await apiFetch("/health");
   if (!res.ok) return handleError(res, "Health check failed");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function listFiles(folderId?: string): Promise<FileItem[]> {
   const query = folderId ? `?folderId=${encodeURIComponent(folderId)}` : "";
   const res = await apiFetch(`/notes${query}`);
   if (!res.ok) return handleError(res, "Failed to list files");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function listStarred(): Promise<FileItem[]> {
   const res = await apiFetch("/starred");
   if (!res.ok) return handleError(res, "Failed to list starred files");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function listRecent(limit?: number): Promise<FileItem[]> {
   const query = limit ? `?limit=${limit}` : "";
   const res = await apiFetch(`/recent${query}`);
   if (!res.ok) return handleError(res, "Failed to list recent files");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function getFile(fileId: string): Promise<FileItem> {
   const res = await apiFetch(`/notes/${fileId}`);
   if (!res.ok) return handleError(res, "Failed to fetch file");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function createFolder(
@@ -179,7 +189,7 @@ export async function createFolder(
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) return handleError(res, "Failed to create folder");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function createNote(
@@ -193,7 +203,7 @@ export async function createNote(
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) return handleError(res, "Failed to create note");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function updateNote(
@@ -216,7 +226,7 @@ export async function updateNote(
     throw new Error("Conflict");
   }
   if (!res.ok) return handleError(res, "Failed to update note");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function renameNote(id: string, name: string): Promise<FileItem> {
@@ -226,13 +236,13 @@ export async function renameNote(id: string, name: string): Promise<FileItem> {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) return handleError(res, "Failed to rename note");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function duplicateNote(id: string): Promise<FileItem> {
   const res = await apiFetch(`/notes/${id}/copy`, { method: "POST" });
   if (!res.ok) return handleError(res, "Failed to duplicate note");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function starFile(
@@ -245,7 +255,7 @@ export async function starFile(
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) return handleError(res, "Failed to update starred status");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function deleteFile(fileId: string): Promise<void> {
@@ -318,7 +328,7 @@ export async function getBreadcrumbs(
 export async function listDriveFolders(): Promise<FileItem[]> {
   const res = await apiFetch("/auth/drive/folders");
   if (!res.ok) return handleError(res, "Failed to list drive folders");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function updateUser(settings: {
@@ -339,11 +349,11 @@ export interface User {
 export async function getUser(): Promise<User> {
   const res = await apiFetch("/auth/user");
   if (!res.ok) return handleError(res, "Failed to get user profile");
-  return res.json();
+  return parseJson(res);
 }
 
 export async function searchFiles(query: string): Promise<FileItem[]> {
   const res = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) return handleError(res, "Failed to search files");
-  return res.json();
+  return parseJson(res);
 }
