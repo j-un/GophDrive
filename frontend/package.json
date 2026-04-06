@@ -18,7 +18,7 @@
     "@uiw/react-codemirror": "^4.25.4",
     "clsx": "^2.1.1",
     "framer-motion": "^12.34.0",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.0.0",
     "next": "16.2.2",
     "next-themes": "^0.4.6",
     "react": "19.2.4",
@@ -38,7 +38,7 @@
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.0.0",
     "npm-run-all2": "^8.0.0",
-    "typescript": "^5",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.18"
   }
 }
