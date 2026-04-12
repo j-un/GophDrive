@@ -1,7 +1,7 @@
 ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-bookworm
 
-ARG GO_VERSION=1.26.1
+ARG GO_VERSION=1.26.2
 
 # Install basic utilities
 RUN apt-get update && apt-get install -y \
