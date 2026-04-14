@@ -89,7 +89,7 @@ services:
       - .:/workspace # Mount entire workspace so it can reach ./core and ./frontend/public
     working_dir: /workspace
     command: >
-      bash -c " go install github.com/air-verse/air@v1.65.0 &&  cd core &&  export GOOS=js GOARCH=wasm && air -c .air.toml "
+      bash -c " go install github.com/air-verse/air@v1.65.1 &&  cd core &&  export GOOS=js GOARCH=wasm && air -c .air.toml "
     depends_on:
       - frontend
 
