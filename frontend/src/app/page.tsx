@@ -6,7 +6,7 @@ import {
   CheckCircle,
   AlertCircle,
   LogIn,
-  Github,
+  Code2,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect } from "react";
@@ -170,7 +170,7 @@ function HomeContent() {
             </p>
           </div>
           <div className={styles.infoItem}>
-            <Github size={16} className={styles.infoIcon} />
+            <Code2 size={16} className={styles.infoIcon} />
             <p className={styles.infoText}>
               This is a self-hosted instance of{" "}
               <a
