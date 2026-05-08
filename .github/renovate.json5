@@ -13,6 +13,9 @@
   separateMajorMinor: true,
   prHourlyLimit: 0,
   prConcurrentLimit: 0,
+  // Supply-chain attack hardening: wait 7 days after a release before opening a PR.
+  // Compromised versions are usually yanked / disclosed within this window.
+  minimumReleaseAge: '7 days',
   postUpdateOptions: [
     'gomodTidy',
   ],
