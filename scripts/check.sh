@@ -29,7 +29,8 @@ section "Infrastructure (AWS CDK / TS)"
 mise x node -- bash -c '
   cd infra &&
   npx --yes prettier --write . &&
-  npm run lint
+  npm run lint &&
+  npx --yes tsc --noEmit
 '
 
 echo -e "\n${GREEN}=== All checks passed ===${NC}"
