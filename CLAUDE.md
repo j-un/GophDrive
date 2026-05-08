@@ -6,29 +6,34 @@ GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, sing
 
 ## Mandatory Post-Change Checklist
 
-1. **Run `./scripts/check.sh`** (fmt + vet + test + prettier + tsc + eslint + vitest across all stacks) and ensure it passes. Requires the dev compose stack to be running.
-2. **If `core/` changed** → `frontend/public/core.wasm` must be regenerated. The `air-wasm` container does this automatically while `dev.sh` is up; otherwise run `./scripts/internal/build-wasm.sh`.
+1. **Run `./scripts/check.sh`** (fmt + vet + test + prettier + tsc + eslint + vitest across all stacks) and ensure it passes. Runs entirely on the host via `mise x` — no DynamoDB Local / overmind required.
+2. **If `core/` changed** → `frontend/public/core.wasm` must be regenerated. The `wasm` overmind process does this automatically while `dev.sh` / `overmind start` is up; otherwise run `./scripts/internal/build-wasm.sh`.
 3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → bump `CACHE_NAME` in `frontend/public/sw.js` to `gophdrive-YYYYMMDD-NN`. The PWA service worker is only re-evaluated when `sw.js` changes by ≥1 byte; skipping this leaves users on stale code or a JS↔Wasm signature mismatch. Mention the bump in the commit message (e.g. `feat: ... and PWA cache v20260508-01`).
 
 ## Common Commands
 
-Development runs entirely in Docker Compose (LocalStack + Go backend + Next.js + Wasm watcher + infra toolbox). Host needs Docker only — Go and Node versions come from `.tool-versions` and are baked into images.
+Local dev runs natively on the host. Toolchain versions come from `.tool-versions` via [mise](https://mise.jdx.dev/). The only Docker piece is **DynamoDB Local** (everything else AWS — KMS / SSM / Lambda / API Gateway — is bypassed in `DEV_MODE=true` via `MockEncryptor` + `EnvResolver` + `cmd/server`). Process orchestration is [overmind](https://github.com/DarthSim/overmind) reading the root `Procfile`.
+
+Required CLIs on the host: `mise`, `overmind`, `docker`, `aws`.
 
 ```bash
-./scripts/dev.sh                  # Build & start full dev stack, deploy infra into LocalStack
-./scripts/check.sh                # REQUIRED after any change (needs stack running)
-./scripts/tests.sh                # All unit suites in a one-shot test-runner container (no stack needed)
+./scripts/setup.sh                # First-time: mise install, npm ci, DynamoDB Local + tables, .env
+./scripts/dev.sh                  # Boot DynamoDB Local + overmind start (backend/frontend/wasm)
+./scripts/check.sh                # REQUIRED after any change
+./scripts/tests.sh                # All unit suites on host (no DynamoDB Local needed)
 ./scripts/internal/build-wasm.sh  # Manual core/ → core.wasm rebuild
 ./scripts/deploy-aws.sh           # Production deploy (needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 ```
 
+`overmind connect <backend|frontend|wasm>` attaches to a single process for log inspection or restart (`Ctrl-c` inside, then `overmind restart <name>` from another shell).
+
 ### Single-test invocation
 
 ```bash
-docker compose exec backend  go test ./internal/handler -run TestName -count=1
-docker compose exec -w /workspace/core air-wasm go test ./markdown -run TestName -count=1
-docker compose exec frontend npx vitest run src/lib/api.test.ts
-docker compose exec -w /workspace/infra infra npx vitest run test/compute-stack.test.ts
+mise x go   -- bash -c 'cd backend  && go test ./internal/handler -run TestName -count=1'
+mise x go   -- bash -c 'cd core     && go test ./markdown        -run TestName -count=1'
+mise x node -- bash -c 'cd frontend && npx vitest run src/lib/api.test.ts'
+mise x node -- bash -c 'cd infra    && npx vitest run test/compute-stack.test.ts'
 ```
 
 ## Architecture
@@ -69,7 +74,7 @@ The router strips a leading `/api` prefix because CloudFront proxies `/api/*` to
 `internal/secret.Resolver` chooses between:
 
 - **Production** `SSMResolver` → SSM Parameter Store keys `/gophdrive/jwt-secret`, `/gophdrive/google-client-secret`, `/gophdrive/api-gateway-secret`. `deploy-aws.sh` auto-generates JWT and gateway secrets on first deploy.
-- **`DEV_MODE=true`** `EnvResolver` reads env vars directly; KMS is replaced by `crypto.MockEncryptor`. LocalStack is seeded with dummy SSM values by `scripts/internal/deploy-local.sh`.
+- **`DEV_MODE=true`** `EnvResolver` reads env vars directly (loaded by overmind from the root `.env`); KMS is replaced by `crypto.MockEncryptor`. No SSM, no LocalStack — DynamoDB Local is the only AWS surface.
 
 DynamoDB tables: `UserTokens` (encrypted refresh tokens, key=`user_id`), `EditingSessions` (key=`file_id`, TTL=`expires_at`), `FileStore` (memory-adapter persistence, key=`pk`).
 

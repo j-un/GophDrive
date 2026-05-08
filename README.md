@@ -31,7 +31,7 @@ You can experience GophDrive's interface and functionality using the demo mode a
 - **Frontend**: Next.js (App Router), React, TypeScript, CSS Modules
 - **Backend (API)**: Go (standard library/AWS Lambda Go), compiled for `provided.al2023` ARM64 Lambda
 - **Shared Core**: Go (compiled to WebAssembly)
-- **Infrastructure**: AWS CDK (TypeScript), LocalStack for local development
+- **Infrastructure**: AWS CDK (TypeScript). Local dev runs natively on the host with DynamoDB Local in Docker
 - **Database (Meta/Sessions)**: Amazon DynamoDB
 - **Auth**: Google OAuth 2.0 + Custom JWTs
 
@@ -72,31 +72,48 @@ GophDrive/
 ├── frontend/           # Next.js SPA Frontend
 ├── infra/              # Infrastructure as Code (AWS CDK definitions)
 ├── scripts/            # Automation scripts for local dev and AWS deployment
-└── docker-compose.yml  # Local development environment using LocalStack
+├── Procfile            # overmind process map (backend / frontend / wasm watcher)
+└── docker-compose.yml  # DynamoDB Local only — everything else runs on the host
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Docker](https://www.docker.com/) and Docker Compose
-- [AWS CLI](https://aws.amazon.com/cli/) (configured with credentials for deployment)
-- [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) (`npm install -g aws-cdk`)
+- [mise](https://mise.jdx.dev/) — toolchain manager (reads `.tool-versions` for Go and Node)
+- [overmind](https://github.com/DarthSim/overmind) — Procfile-based process supervisor (`brew install overmind`)
+- [Docker](https://www.docker.com/) — only used to run DynamoDB Local
+- [AWS CLI](https://aws.amazon.com/cli/) — used by `setup.sh` to create local DynamoDB tables, and for AWS deployment
+- [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) (`npm install -g aws-cdk`) — for AWS deployment
 
 ### Local Development
 
-The easiest way to start developing is using the provided automation scripts which leverage Docker and LocalStack.
-
-1. **Start the local environment**:
+1. **First-time setup**:
    ```bash
-   ./scripts/dev.sh
+   ./scripts/setup.sh
    ```
-   This script will start LocalStack, compile the Go services, deploy the local backend to LocalStack, compile the WebAssembly bridge, and start the Next.js development server.
+   Installs Go/Node via mise, runs `npm ci` for `frontend/` and `infra/`, starts DynamoDB Local in Docker, creates the three DynamoDB tables, builds an initial `core.wasm`, and copies `.env.example` to `.env`.
 
-2. **Access the Application**:
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
+2. **Boot the dev stack**:
+   ```bash
+   ./scripts/dev.sh        # equivalent to: docker compose up -d dynamodb-local && overmind start
+   ```
+   `overmind` runs three processes from the root `Procfile`:
+   - `backend`  — Go API on `:8080` (Air hot reload, `cmd/server/main.go` HTTP wrapper)
+   - `frontend` — Next.js on `:3000` (`npm run dev`, native FS watch)
+   - `wasm`     — Air watcher recompiling `core/` to `frontend/public/core.wasm` on change
 
-- *Note: If you modify files in the `core/` directory, the Wasm module will be automatically recompiled by the `air-wasm` Docker container, though you can manually trigger it with `./scripts/internal/build-wasm.sh` if needed.*
+3. **Access the Application**: [http://localhost:3000](http://localhost:3000)
+
+Useful overmind commands:
+
+```bash
+overmind connect backend   # tail one process and Ctrl-c to restart
+overmind restart frontend  # restart a single process from another shell
+overmind kill              # stop everything
+```
+
+- *Note: If `core/` changes, the Wasm watcher auto-rebuilds. To regenerate manually run `./scripts/internal/build-wasm.sh`.*
 
 ## Deployment (AWS Production)
 

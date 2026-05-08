@@ -1,34 +1,13 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Boot the local dev stack: ensures DynamoDB Local is up, then runs overmind.
+# Run ./scripts/setup.sh once before the first invocation.
+set -euo pipefail
 
-echo "🐳 Setting up Pure Docker Environment..."
+cd "$(dirname "$0")/.."
 
-# 1. Source versions from files
-if [ -f .tool-versions ]; then
-  export NODE_VERSION=$(grep '^nodejs ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
-  echo "🔹 Using Node.js version $NODE_VERSION (from .tool-versions)"
-  export GO_VERSION=$(grep '^golang ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
-  echo "🔹 Using Go version $GO_VERSION (from .tool-versions)"
+if ! docker compose ps --status running --services | grep -q '^dynamodb-local$'; then
+  echo "==> Starting DynamoDB Local"
+  docker compose up -d dynamodb-local
 fi
 
-# 2. Build and Start Containers
-echo "🚀 Building and starting containers..."
-docker compose up -d --build
-
-# 2. Wait for LocalStack
-echo "⏳ Waiting for LocalStack (in container)..."
-# We check from host perspective (localhost:4566) since it's mapped
-while ! curl -s http://localhost:4566/_localstack/health | grep -E '"dynamodb": "(available|running)"'; do
-  sleep 2
-  echo "   Still waiting for LocalStack..."
-done
-echo "✅ LocalStack is ready."
-
-# 3. Deploy Infrastructure via Infra Container
-echo "📦 Deploying Infrastructure..."
-docker compose exec infra ./scripts/internal/deploy-local.sh
-
-echo "🎉 Environment is ready!"
-echo "   - Frontend: http://localhost:3000"
-echo "   - Backend:  http://localhost:8080"
-echo "   - LocalStack: http://localhost:4566"
+exec overmind start

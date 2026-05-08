@@ -2,8 +2,10 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/main"
-  cmd = "bash ../scripts/internal/build-wasm.sh"
+  # core/ produces a Wasm artifact for the frontend, not a runnable binary.
+  # Generate a no-op shim so air's post-build "run" step has something to exec.
+  bin = "./tmp/noop"
+  cmd = "bash ../scripts/internal/build-wasm.sh && mkdir -p tmp && printf '#!/bin/sh\\nexit 0\\n' > tmp/noop && chmod +x tmp/noop"
   delay = 1000
   exclude_dir = ["tmp"]
   exclude_regex = ["_test.go"]
