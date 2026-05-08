@@ -152,7 +152,3 @@ Template documents are available in [`docs/`](docs/) to help you get started:
 - [`TERMS_OF_SERVICE_TEMPLATE.md`](docs/TERMS_OF_SERVICE_TEMPLATE.md)
 
 Set the `PRIVACY_POLICY_URL` and `TERMS_OF_SERVICE_URL` environment variables during deployment to display links in the application footer.
-
----
-
-*See `PROJECT_GUIDE.md` for deeper architectural details and contribution guidelines.*
