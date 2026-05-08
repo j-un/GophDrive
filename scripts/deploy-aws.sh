@@ -1,35 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "Starting AWS Deployment Process..."
 
-# ---- Version Validation ----
-if [ -f .tool-versions ]; then
-  REQUIRED_NODE_FULL=$(grep '^nodejs ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
-  REQUIRED_NODE_MAJOR=$(echo "$REQUIRED_NODE_FULL" | cut -d. -f1)
-  CURRENT_NODE_MAJOR=$(node -v | sed 's/^v//' | cut -d. -f1)
-  
-  if [ "$CURRENT_NODE_MAJOR" != "$REQUIRED_NODE_MAJOR" ]; then
-    echo -e "\033[0;31mError: Node.js version mismatch.\033[0m"
-    echo "Required (Major): $REQUIRED_NODE_MAJOR (from .tool-versions: $REQUIRED_NODE_FULL)"
-    echo "Current (Major):  $CURRENT_NODE_MAJOR"
-    echo "Please switch your Node.js version (e.g., 'nvm use' or 'fnm use')."
-    exit 1
-  fi
-  echo "✅ Node.js version $REQUIRED_NODE_MAJOR.x matches."
-
-  REQUIRED_GO=$(grep '^golang ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
-  # Handle cases like "1.26.0" matches "go1.26.0"
-  CURRENT_GO=$(go version | awk '{print $3}' | sed 's/^go//')
-  if [[ "$CURRENT_GO" != "$REQUIRED_GO"* ]]; then
-    echo -e "\033[0;31mError: Go version mismatch.\033[0m"
-    echo "Required: $REQUIRED_GO (from .tool-versions)"
-    echo "Current:  $CURRENT_GO"
-    echo "Please install or switch to the correct Go version."
-    exit 1
-  fi
-  echo "✅ Go version $REQUIRED_GO matches."
+# ---- Toolchain (mise) ----
+# Pin Go and Node to .tool-versions via mise so the deploy is independent of
+# whatever asdf / nvm / Homebrew version is currently active in the user's shell.
+if ! command -v mise >/dev/null 2>&1; then
+  echo -e "\033[0;31mError: mise not found.\033[0m Install with 'brew install mise'." >&2
+  exit 1
 fi
+mise install go node >/dev/null
+eval "$(mise env -s bash)"
+echo "✅ Using node $(node -v) / go $(go version | awk '{print $3}') (via mise)"
 
 # ---- Validation ----
 if [ -z "${GOOGLE_CLIENT_ID}" ] || [ -z "${GOOGLE_CLIENT_SECRET}" ]; then
@@ -129,6 +112,9 @@ echo "  Frontend URL: $FRONTEND_URL"
 echo "  S3 Bucket: $BUCKET_NAME"
 
 # 4. Build Frontend
+echo "Rebuilding core.wasm so the deploy never ships a stale Wasm artifact..."
+./scripts/internal/build-wasm.sh
+
 echo "Building Frontend with real FRONTEND_URL..."
 cd frontend
 rm -rf out .next
