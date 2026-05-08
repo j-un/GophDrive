@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
+# Run every unit test suite on the host. No DynamoDB Local / overmind required.
 set -euo pipefail
 
-# =============================================================================
-# run-tests.sh — Launch the test-runner container via docker compose
-# =============================================================================
+cd "$(dirname "$0")/.."
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-cd "$PROJECT_DIR"
+PASS=0; FAIL=0; RESULTS=()
 
-if [ -f .tool-versions ]; then
-  export GO_VERSION=$(grep '^golang ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
-  export NODE_VERSION=$(grep '^nodejs ' .tool-versions | awk '{print $2}' | tr -d '[:space:]')
+run_suite() {
+  local name="$1"; shift
+  echo -e "\n${CYAN}${BOLD}━━━ ${name} ━━━${NC}"
+  if "$@"; then
+    RESULTS+=("${GREEN}✓ ${name}${NC}"); ((PASS++)) || true
+  else
+    RESULTS+=("${RED}✗ ${name}${NC}"); ((FAIL++)) || true
+  fi
+}
+
+run_suite "backend (go test)"  mise x go   -- bash -c 'cd backend  && go test ./... -count=1 -cover'
+run_suite "core (go test)"     mise x go   -- bash -c 'cd core     && go test ./... -count=1 -cover'
+run_suite "frontend (vitest)"  mise x node -- bash -c 'cd frontend && npx vitest run'
+run_suite "infra (vitest)"     mise x node -- bash -c 'cd infra    && npx vitest run'
+
+echo -e "\n${BOLD}━━━ Summary ━━━${NC}"
+for r in "${RESULTS[@]}"; do echo -e "  $r"; done
+echo
+
+if [ "$FAIL" -gt 0 ]; then
+  echo -e "${RED}${BOLD}${FAIL} suite(s) failed.${NC}"; exit 1
+else
+  echo -e "${GREEN}${BOLD}All ${PASS} suites passed.${NC}"
 fi
-
-echo "Building and running test-runner container (Go: $GO_VERSION, Node: $NODE_VERSION)..."
-docker compose run --rm --build test-runner

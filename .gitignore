@@ -27,6 +27,7 @@ backend/api
 coverage/
 backend/coverage.txt
 backend/tmp/
+core/tmp/
 *.exe
 *.test
 
