@@ -6,7 +6,6 @@
   enabledManagers: [
     'gomod',
     'npm',
-    'dockerfile',
     'docker-compose',
     'github-actions',
     'custom.regex',
@@ -14,7 +13,6 @@
   separateMajorMinor: true,
   prHourlyLimit: 0,
   prConcurrentLimit: 0,
-  minimumReleaseAge: null,
   postUpdateOptions: [
     'gomodTidy',
   ],
@@ -62,7 +60,6 @@
     },
     {
       matchManagers: [
-        'dockerfile',
         'docker-compose',
       ],
       groupName: 'docker dependencies',
@@ -108,34 +105,7 @@
     {
       customType: 'regex',
       managerFilePatterns: [
-        '/(^|/)Dockerfile\\.dev$/',
-        '/^docker/base\\.Dockerfile$/',
-        '/^docker-compose\\.yml$/',
-      ],
-      matchStrings: [
-        'GO_VERSION[:=]\\s*["\']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?["\']?',
-      ],
-      depNameTemplate: 'golang',
-      datasourceTemplate: 'golang-version',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)Dockerfile\\.dev$/',
-        '/^docker/base\\.Dockerfile$/',
-        '/^docker-compose\\.yml$/',
-      ],
-      matchStrings: [
-        'NODE_VERSION[:=]\\s*["\']?(?:\\$\\{[^:]+:-)?(?<currentValue>[\\d\\.]+)\\}?["\']?',
-      ],
-      depNameTemplate: 'node',
-      datasourceTemplate: 'node-version',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)Dockerfile\\.dev$/',
-        '/^docker-compose\\.yml$/',
+        '/^scripts/setup\\.sh$/',
       ],
       matchStrings: [
         'github\\.com/air-verse/air@v(?<currentValue>[\\d.]+)',
