@@ -2,14 +2,6 @@ package model
 
 import "time"
 
-// UserToken represents the user's OAuth2 token stored in DynamoDB.
-type UserToken struct {
-	UserID                string    `json:"user_id" dynamodbav:"user_id"`
-	EncryptedRefreshToken string    `json:"encrypted_refresh_token" dynamodbav:"encrypted_refresh_token"`
-	BaseFolderID          string    `json:"base_folder_id" dynamodbav:"base_folder_id"` // Root folder for the app
-	UpdatedAt             time.Time `json:"updated_at" dynamodbav:"updated_at"`
-}
-
 // EditingSession represents an active editing session (lock) on a file.
 type EditingSession struct {
 	FileID    string `json:"file_id" dynamodbav:"file_id"`

@@ -96,13 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.push("/");
       return;
     }
-
-    if (!user.base_folder_id && pathname !== "/setup") {
-      console.warn(
-        "AuthContext: Redirecting to /setup because base_folder_id is missing",
-      );
-      router.push("/setup");
-    }
   }, [user, loading, pathname, router]);
 
   return (

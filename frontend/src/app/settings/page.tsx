@@ -1,18 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { updateUser, apiFetch } from "@/lib/api";
-import FolderSelector from "@/components/FolderSelector";
+import { apiFetch } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Loader2, ArrowLeft, Save } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
-  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
-  const [saving, setSaving] = useState(false);
 
   const handleLogout = async () => {
     if (confirm("Are you sure you want to logout?")) {
@@ -24,21 +20,6 @@ export default function SettingsPage() {
       localStorage.removeItem("session_token");
       await refreshUser();
       router.push("/");
-    }
-  };
-
-  const handleSave = async () => {
-    if (!selectedFolderId || selectedFolderId === user?.base_folder_id) return;
-    setSaving(true);
-    try {
-      await updateUser({ base_folder_id: selectedFolderId });
-      await refreshUser();
-      router.push("/notes");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save settings");
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -131,7 +112,6 @@ export default function SettingsPage() {
           padding: "1.5rem",
           borderRadius: "0.5rem",
           border: "1px solid var(--border)",
-          marginBottom: "2rem",
         }}
       >
         <h2
@@ -163,21 +143,6 @@ export default function SettingsPage() {
           >
             {user?.id}
           </code>
-
-          <span style={{ color: "var(--muted-foreground)" }}>
-            Current Base Folder ID
-          </span>
-          <code
-            style={{
-              background: "var(--muted)",
-              color: "var(--foreground)",
-              padding: "0.25rem 0.5rem",
-              borderRadius: "0.25rem",
-              fontFamily: "monospace",
-            }}
-          >
-            {user?.base_folder_id}
-          </code>
         </div>
 
         <div
@@ -197,75 +162,6 @@ export default function SettingsPage() {
             }}
           >
             Logout
-          </button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          background: "var(--card)",
-          padding: "1.5rem",
-          borderRadius: "0.5rem",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: "1.125rem",
-            fontWeight: 600,
-            marginBottom: "1rem",
-          }}
-        >
-          Storage Settings
-        </h2>
-        <p style={{ marginBottom: "1rem", color: "var(--muted-foreground)" }}>
-          Change the root folder used by GophDrive.
-        </p>
-
-        <FolderSelector
-          selectedId={selectedFolderId || user?.base_folder_id}
-          onSelect={setSelectedFolderId}
-        />
-
-        <div
-          style={{
-            marginTop: "1.5rem",
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <button
-            onClick={handleSave}
-            disabled={
-              !selectedFolderId ||
-              selectedFolderId === user?.base_folder_id ||
-              saving
-            }
-            className="btn btn-primary"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              opacity:
-                !selectedFolderId ||
-                selectedFolderId === user?.base_folder_id ||
-                saving
-                  ? 0.5
-                  : 1,
-              cursor:
-                !selectedFolderId ||
-                selectedFolderId === user?.base_folder_id ||
-                saving
-                  ? "not-allowed"
-                  : "pointer",
-            }}
-          >
-            {saving ? (
-              <Loader2 className="animate-spin" size={18} />
-            ) : (
-              <Save size={18} />
-            )}
-            Save Changes
           </button>
         </div>
       </div>

@@ -325,22 +325,6 @@ export async function getBreadcrumbs(
   return breadcrumbs;
 }
 
-export async function listDriveFolders(): Promise<FileItem[]> {
-  const res = await apiFetch("/auth/drive/folders");
-  if (!res.ok) return handleError(res, "Failed to list drive folders");
-  return parseJson(res);
-}
-
-export async function updateUser(settings: {
-  base_folder_id?: string;
-}): Promise<void> {
-  const res = await apiFetch("/auth/user", {
-    method: "PATCH",
-    body: JSON.stringify(settings),
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) return handleError(res, "Failed to update user settings");
-}
 export interface User {
   id: string;
   base_folder_id: string;

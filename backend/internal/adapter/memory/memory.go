@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 	"github.com/jun/gophdrive/backend/internal/adapter"
-	"github.com/jun/gophdrive/backend/internal/auth"
 )
 
 const mdExt = ".md"
@@ -55,10 +54,44 @@ type MemoryAdapter struct {
 }
 
 const (
-	maxDemoContentSize = 256 * 1024 // 256KB
-	maxDemoTitleLength = 255
-	maxDemoItemCount   = 50
+	// maxContentSize bounds a single note body. 256KB stays well under DDB's
+	// 400KB item-size cap and leaves room for metadata.
+	maxContentSize = 256 * 1024
+	// maxTitleLength caps how long a file or folder name can be.
+	maxTitleLength = 255
+	// maxDemoItemCount limits demo-user data only — real (Google-authenticated)
+	// users have no item-count limit.
+	maxDemoItemCount = 50
+	demoUserPrefix   = "demo-user-"
 )
+
+// isDemoUser reports whether ephemeral demo-user limits/TTL apply.
+func (m *MemoryAdapter) isDemoUser() bool {
+	return strings.HasPrefix(m.userID, demoUserPrefix)
+}
+
+// itemTTL returns the DynamoDB TTL for a newly-written item. Demo users get
+// a 60-minute expiry so their data auto-cleans; real users get 0 (omitted by
+// omitempty), meaning the item never expires.
+func (m *MemoryAdapter) itemTTL() int64 {
+	if !m.isDemoUser() {
+		return 0
+	}
+	return time.Now().Add(60 * time.Minute).Unix()
+}
+
+// checkItemLimit enforces the demo-user item count cap. Real users are
+// uncapped at this layer.
+func (m *MemoryAdapter) checkItemLimit(ctx context.Context) error {
+	if !m.isDemoUser() {
+		return nil
+	}
+	count, _ := m.countUserItems(ctx)
+	if count >= maxDemoItemCount {
+		return fmt.Errorf("item limit reached for demo mode (max %d items)", maxDemoItemCount)
+	}
+	return nil
+}
 
 func (m *MemoryAdapter) countUserItems(ctx context.Context) (int, error) {
 	if m.client == nil {
@@ -94,7 +127,7 @@ type FileItem struct {
 	Parents      []string  `dynamodbav:"parents"`
 	Starred      bool      `dynamodbav:"starred"`
 	Content      []byte    `dynamodbav:"content"`
-	TTL          int64     `dynamodbav:"ttl"`
+	TTL          int64     `dynamodbav:"ttl,omitempty"`
 }
 
 func NewMemoryAdapter(client *dynamodb.Client, userID string, baseFolderID string) *MemoryAdapter {
@@ -216,8 +249,8 @@ func (m *MemoryAdapter) GetFile(ctx context.Context, fileID string) (*adapter.Fi
 }
 
 func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
-	if len(content) > maxDemoContentSize {
-		return nil, fmt.Errorf("content too large (max %d bytes)", maxDemoContentSize)
+	if len(content) > maxContentSize {
+		return nil, fmt.Errorf("content too large (max %d bytes)", maxContentSize)
 	}
 
 	if m.client == nil {
@@ -250,7 +283,7 @@ func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []b
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      f.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -272,16 +305,15 @@ func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []b
 }
 
 func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
-	if len(name) > maxDemoTitleLength {
-		return nil, fmt.Errorf("name too long (max %d characters)", maxDemoTitleLength)
+	if len(name) > maxTitleLength {
+		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
-	if len(content) > maxDemoContentSize {
-		return nil, fmt.Errorf("content too large (max %d bytes)", maxDemoContentSize)
+	if len(content) > maxContentSize {
+		return nil, fmt.Errorf("content too large (max %d bytes)", maxContentSize)
 	}
 
-	count, _ := m.countUserItems(ctx)
-	if count >= maxDemoItemCount {
-		return nil, fmt.Errorf("item limit reached for demo mode (max %d items)", maxDemoItemCount)
+	if err := m.checkItemLimit(ctx); err != nil {
+		return nil, err
 	}
 
 	targetFolderID := folderID
@@ -322,7 +354,7 @@ func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []b
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      f.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -344,13 +376,12 @@ func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []b
 }
 
 func (m *MemoryAdapter) CreateFolder(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
-	if len(name) > maxDemoTitleLength {
-		return nil, fmt.Errorf("name too long (max %d characters)", maxDemoTitleLength)
+	if len(name) > maxTitleLength {
+		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
 
-	count, _ := m.countUserItems(ctx)
-	if count >= maxDemoItemCount {
-		return nil, fmt.Errorf("item limit reached for demo mode (max %d items)", maxDemoItemCount)
+	if err := m.checkItemLimit(ctx); err != nil {
+		return nil, err
 	}
 
 	targetParents := parents
@@ -390,7 +421,7 @@ func (m *MemoryAdapter) CreateFolder(ctx context.Context, name string, parents [
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      nil,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -460,7 +491,7 @@ func (m *MemoryAdapter) createRootFolder(ctx context.Context, name string) (stri
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      nil,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -531,9 +562,8 @@ func (m *MemoryAdapter) DeleteFile(ctx context.Context, fileID string) error {
 }
 
 func (m *MemoryAdapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
-	count, _ := m.countUserItems(ctx)
-	if count >= maxDemoItemCount {
-		return nil, fmt.Errorf("item limit reached for demo mode (max %d items)", maxDemoItemCount)
+	if err := m.checkItemLimit(ctx); err != nil {
+		return nil, err
 	}
 
 	if m.client == nil {
@@ -580,7 +610,7 @@ func (m *MemoryAdapter) DuplicateFile(ctx context.Context, fileID string) (*adap
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      f.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -844,7 +874,7 @@ func (m *MemoryAdapter) duplicateFileDynamo(ctx context.Context, fileID string) 
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Content:      f.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -866,8 +896,8 @@ func (m *MemoryAdapter) duplicateFileDynamo(ctx context.Context, fileID string) 
 }
 
 func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
-	if len(newName) > maxDemoTitleLength {
-		return nil, fmt.Errorf("name too long (max %d characters)", maxDemoTitleLength)
+	if len(newName) > maxTitleLength {
+		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
 
 	if m.client == nil {
@@ -902,7 +932,7 @@ func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName s
 		Parents:      orig.Parents,
 		Starred:      orig.Starred,
 		Content:      orig.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -949,7 +979,7 @@ func (m *MemoryAdapter) SetStarred(ctx context.Context, fileID string, starred b
 		Parents:      orig.Parents,
 		Starred:      orig.Starred,
 		Content:      orig.Content,
-		TTL:          time.Now().Add(60 * time.Minute).Unix(),
+		TTL:          m.itemTTL(),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -1004,41 +1034,33 @@ func (m *MemoryAdapter) renameFileMap(ctx context.Context, fileID string, newNam
 	return &f.FileMetadata, nil
 }
 
-// Provider implements adapter.StorageProvider backed by DynamoDB (or Memory if nil).
+// Provider implements adapter.StorageProvider backed by DynamoDB.
+//
+// When client is nil, adapters use an in-memory map (used by tests). The
+// per-user adapter cache lets the in-memory fallback retain state across
+// calls within a single test or Lambda invocation.
 type Provider struct {
-	client      *dynamodb.Client
-	authService *auth.AuthService
-	stores      map[string]*MemoryAdapter
-	mu          sync.Mutex
+	client *dynamodb.Client
+	stores map[string]*MemoryAdapter
+	mu     sync.Mutex
 }
 
-func NewProvider(client *dynamodb.Client, authService *auth.AuthService) *Provider {
+func NewProvider(client *dynamodb.Client) *Provider {
 	return &Provider{
-		client:      client,
-		authService: authService,
-		stores:      make(map[string]*MemoryAdapter),
+		client: client,
+		stores: make(map[string]*MemoryAdapter),
 	}
 }
 
-func (p *Provider) GetAdapter(ctx context.Context, userID string) (adapter.StorageAdapter, error) {
+// GetAdapter returns the per-user adapter, refreshing its baseFolderID from
+// the caller's session every call so the value reflects the JWT.
+func (p *Provider) GetAdapter(ctx context.Context, userID, baseFolderID string) (adapter.StorageAdapter, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.stores[userID]; !ok {
-		// Fetch BaseFolderID from auth service if available
-		var baseFolderID string
-		if p.authService != nil {
-			if token, err := p.authService.GetUserToken(ctx, userID); err == nil {
-				baseFolderID = token.BaseFolderID
-			}
-		}
 		p.stores[userID] = NewMemoryAdapter(p.client, userID, baseFolderID)
-	}
-	// Update BaseFolderID if it changed (simple approach: always update on get?)
-	// For now, let's just update it if we have the service.
-	if p.authService != nil {
-		if token, err := p.authService.GetUserToken(ctx, userID); err == nil {
-			p.stores[userID].BaseFolderID = token.BaseFolderID
-		}
+	} else {
+		p.stores[userID].BaseFolderID = baseFolderID
 	}
 	return p.stores[userID], nil
 }

@@ -11,33 +11,16 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/jun/gophdrive/backend/internal/adapter"
-	"github.com/jun/gophdrive/backend/internal/adapter/googledrive"
 	"github.com/jun/gophdrive/backend/internal/adapter/memory"
 	"github.com/jun/gophdrive/backend/internal/auth"
-	"github.com/jun/gophdrive/backend/internal/crypto"
 	"github.com/jun/gophdrive/backend/internal/handler"
 	"github.com/jun/gophdrive/backend/internal/secret"
 	"github.com/jun/gophdrive/backend/internal/session"
 )
-
-// HybridProvider delegates to either Google Drive or Memory provider based on user ID.
-type HybridProvider struct {
-	googleProvider adapter.StorageProvider
-	memoryProvider adapter.StorageProvider
-}
-
-func (h *HybridProvider) GetAdapter(ctx context.Context, userID string) (adapter.StorageAdapter, error) {
-	if strings.HasPrefix(userID, "demo-user-") {
-		return h.memoryProvider.GetAdapter(ctx, userID)
-	}
-	return h.googleProvider.GetAdapter(ctx, userID)
-}
 
 // App holds the dependencies for the Lambda function.
 type App struct {
@@ -56,35 +39,16 @@ func NewApp(ctx context.Context) *App {
 		panic(fmt.Sprintf("unable to load SDK config, %v", err))
 	}
 
-	// DynamoDB Client
+	devMode := os.Getenv("DEV_MODE") == "true"
+
 	dynamoClient := dynamodb.NewFromConfig(cfg)
-	if os.Getenv("DEV_MODE") == "true" {
-		fmt.Println("Using In-Memory/DynamoDB Hybrid Storage (DEV_MODE=true)")
-	}
-
-	// KMS Client
-	var kmsService crypto.Encryptor
-	if os.Getenv("DEV_MODE") == "true" {
-		kmsService = crypto.NewMockEncryptor()
-		fmt.Println("Using MockEncryptor (DEV_MODE=true)")
-	} else {
-		kmsClient := kms.NewFromConfig(cfg)
-		kmsKeyID := os.Getenv("KMS_KEY_ID")
-		if kmsKeyID == "" {
-			kmsKeyID = "alias/gophdrive-token-key"
-		}
-		kmsService = crypto.NewKMSService(kmsClient, kmsKeyID)
-	}
-
-	// Auth Service (UserTokens Table)
-	userTokensTable := os.Getenv("USER_TOKENS_TABLE")
-	if userTokensTable == "" {
-		userTokensTable = "UserTokens"
+	if devMode {
+		fmt.Println("Using DynamoDB-backed storage (DEV_MODE=true)")
 	}
 
 	// ---------- Secret Resolver ----------
 	var resolver secret.Resolver
-	if os.Getenv("DEV_MODE") == "true" {
+	if devMode {
 		resolver = secret.NewEnvResolver()
 		fmt.Println("Using EnvResolver (DEV_MODE=true)")
 	} else {
@@ -92,7 +56,6 @@ func NewApp(ctx context.Context) *App {
 		fmt.Println("Using SSMResolver (SSM Parameter Store)")
 	}
 
-	// Resolve secrets from SSM Parameter Store (or env vars in DEV_MODE)
 	googleClientSecretParam := os.Getenv("GOOGLE_CLIENT_SECRET_PARAM")
 	if googleClientSecretParam == "" {
 		googleClientSecretParam = "/gophdrive/google-client-secret"
@@ -121,47 +84,34 @@ func NewApp(ctx context.Context) *App {
 		log.Printf("WARNING: failed to resolve API_GATEWAY_SECRET: %v", err)
 	}
 
-	// OAuth2 Config
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+
 	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
 	if redirectURL == "" {
-		if os.Getenv("DEV_MODE") == "true" {
+		if devMode {
 			redirectURL = "http://localhost:8080/auth/callback"
 		} else {
-			frontendURL := os.Getenv("FRONTEND_URL")
-			if frontendURL == "" {
-				frontendURL = "http://localhost:3000"
-			}
 			redirectURL = frontendURL + "/api/auth/callback"
 		}
 	}
 
+	// OIDC-only scopes — Drive scope was removed when storage moved to DynamoDB.
 	oauthConfig := &oauth2.Config{
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientID:     googleClientID,
 		ClientSecret: googleClientSecret,
 		RedirectURL:  redirectURL,
-		Scopes: []string{
-			"https://www.googleapis.com/auth/drive",
-			"https://www.googleapis.com/auth/userinfo.email",
-		},
-		Endpoint: google.Endpoint,
+		Scopes:       []string{"openid", "email", "profile"},
+		Endpoint:     google.Endpoint,
 	}
 
-	authService := auth.NewAuthService(oauthConfig, dynamoClient, userTokensTable, kmsService)
-	// Storage Provider
-	var storageProvider adapter.StorageProvider
-	if os.Getenv("DEV_MODE") == "true" {
-		// Use DynamoDB-backed "Memory" provider for persistence in LocalStack
-		storageProvider = memory.NewProvider(dynamoClient, authService)
-		fmt.Println("Using MemoryProvider (DEV_MODE=true) with DynamoDB persistence")
-	} else {
-		// Production: Hybrid Provider (Google Drive + Demo Memory)
-		storageProvider = &HybridProvider{
-			googleProvider: googledrive.NewProvider(authService),
-			memoryProvider: memory.NewProvider(dynamoClient, authService),
-		}
-	}
+	verifier := auth.NewGoogleVerifier(googleClientID)
 
-	// Allowed Emails (login restriction)
+	storageProvider := memory.NewProvider(dynamoClient)
+
 	var allowedEmails []string
 	if raw := os.Getenv("ALLOWED_EMAILS"); raw != "" {
 		for _, email := range strings.Split(raw, ",") {
@@ -172,16 +122,19 @@ func NewApp(ctx context.Context) *App {
 		}
 	}
 
-	// Auth Handler (needs Auth Service and Storage Provider)
-	authHandler := handler.NewAuthHandler(authService, storageProvider, jwtSecret, allowedEmails)
+	authHandler := handler.NewAuthHandler(handler.AuthHandlerDeps{
+		Exchanger:       oauthConfig,
+		Verifier:        verifier,
+		StorageProvider: storageProvider,
+		JWTSecret:       jwtSecret,
+		AllowedEmails:   allowedEmails,
+		FrontendURL:     frontendURL,
+		DevMode:         devMode,
+	})
 
-	// Note Handler
 	noteHandler := handler.NewNoteHandler(storageProvider, jwtSecret)
-
-	// Search Handler
 	searchHandler := handler.NewSearchHandler(storageProvider, jwtSecret)
 
-	// Session Manager (EditingSessions Table)
 	sessionsTable := os.Getenv("EDITING_SESSIONS_TABLE")
 	if sessionsTable == "" {
 		sessionsTable = "EditingSessions"
@@ -189,7 +142,6 @@ func NewApp(ctx context.Context) *App {
 	lockManager := session.NewLockManager(dynamoClient, sessionsTable)
 	sessionHandler := handler.NewSessionHandler(lockManager, jwtSecret)
 
-	// Sync Handler
 	syncHandler := handler.NewSyncHandler(jwtSecret)
 
 	return &App{
@@ -209,13 +161,10 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 
 	fmt.Printf("Request: %s %s\n", method, path)
 
-	// CORS Preflight
 	if method == "OPTIONS" {
 		return corsResponse(events.APIGatewayProxyResponse{StatusCode: 204}), nil
 	}
 
-	// Security: Verify Request Origin (CloudFront only)
-	// Skip check for OPTIONS (preflight) and if DEV_MODE is true
 	if os.Getenv("DEV_MODE") != "true" {
 		if req.Headers["X-Origin-Verify"] != app.apiGatewaySecret && req.Headers["x-origin-verify"] != app.apiGatewaySecret {
 			fmt.Printf("Security Block: Missing or invalid X-Origin-Verify header\n")
@@ -226,13 +175,10 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		}
 	}
 
-	// Router logic
-	// Strip /api prefix if present (for CloudFront proxying)
 	if strings.HasPrefix(path, "/api") {
 		path = strings.TrimPrefix(path, "/api")
 	}
 
-	// Helper to ensure PathParameters is initialized
 	if req.PathParameters == nil {
 		req.PathParameters = make(map[string]string)
 	}
@@ -254,14 +200,8 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		if path == "/auth/refresh" && method == "POST" {
 			return corsResponse(must(app.authHandler.Refresh(ctx, req))), nil
 		}
-		if path == "/auth/drive/folders" && method == "GET" {
-			return corsResponse(must(app.authHandler.ListDriveFolders(ctx, req))), nil
-		}
 		if path == "/auth/user" && method == "GET" {
 			return corsResponse(must(app.authHandler.GetUser(ctx, req))), nil
-		}
-		if path == "/auth/user" && method == "PATCH" {
-			return corsResponse(must(app.authHandler.UpdateUser(ctx, req))), nil
 		}
 	}
 
@@ -273,9 +213,7 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		if path == "/notes" && method == "POST" {
 			return corsResponse(must(app.noteHandler.CreateNote(ctx, req))), nil
 		}
-		// /notes/{id}
 		if len(path) > len("/notes/") {
-			// Robust ID extraction
 			pathParts := strings.Split(strings.Trim(path, "/"), "/")
 			id := pathParts[len(pathParts)-1]
 			req.PathParameters["id"] = id
@@ -287,41 +225,34 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 				return corsResponse(must(app.noteHandler.UpdateNote(ctx, req))), nil
 			}
 			if method == "POST" && strings.HasSuffix(path, "/delete") {
-				// Handle POST /notes/{id}/delete
 				if len(pathParts) >= 2 && pathParts[len(pathParts)-1] == "delete" {
 					req.PathParameters["id"] = pathParts[len(pathParts)-2]
 				}
 				return corsResponse(must(app.noteHandler.DeleteNote(ctx, req))), nil
 			}
 			if method == "POST" && strings.HasSuffix(path, "/copy") {
-				// Handle POST /notes/{id}/copy
 				if len(pathParts) >= 2 && pathParts[len(pathParts)-1] == "copy" {
 					req.PathParameters["id"] = pathParts[len(pathParts)-2]
 				}
 				return corsResponse(must(app.noteHandler.DuplicateNote(ctx, req))), nil
 			}
-
 			if method == "PATCH" {
 				return corsResponse(must(app.noteHandler.PatchNote(ctx, req))), nil
 			}
-
 			if method == "DELETE" {
 				return corsResponse(must(app.noteHandler.DeleteNote(ctx, req))), nil
 			}
 		}
 	}
 
-	// /starred
 	if path == "/starred" && method == "GET" {
 		return corsResponse(must(app.noteHandler.ListStarredNotes(ctx, req))), nil
 	}
 
-	// /recent
 	if path == "/recent" && method == "GET" {
 		return corsResponse(must(app.noteHandler.ListRecentNotes(ctx, req))), nil
 	}
 
-	// /folders
 	if path == "/folders" && method == "POST" {
 		return corsResponse(must(app.noteHandler.CreateFolder(ctx, req))), nil
 	}
@@ -347,12 +278,10 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		}
 	}
 
-	// /sync
 	if path == "/sync/check" && method == "POST" {
 		return corsResponse(must(app.syncHandler.CheckConflict(ctx, req))), nil
 	}
 
-	// /search
 	if path == "/search" && method == "GET" {
 		return corsResponse(must(app.searchHandler.Search(ctx, req))), nil
 	}

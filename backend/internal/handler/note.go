@@ -25,12 +25,12 @@ func NewNoteHandler(provider adapter.StorageProvider, jwtSecret string) *NoteHan
 
 // getStorageAdapter creates a new storage adapter for the authenticated user.
 func (h *NoteHandler) getStorageAdapter(ctx context.Context, req events.APIGatewayProxyRequest) (adapter.StorageAdapter, error) {
-	userID, err := GetUserID(req, h.jwtSecret)
+	claims, err := GetSessionClaims(req, h.jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("unauthorized: %w", err)
 	}
 
-	storage, err := h.storageProvider.GetAdapter(ctx, userID)
+	storage, err := h.storageProvider.GetAdapter(ctx, claims.UserID, claims.BaseFolderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storage adapter: %w", err)
 	}

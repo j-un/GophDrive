@@ -85,17 +85,6 @@ AWS_CMD="aws --endpoint-url=http://localhost:8000 --region=ap-northeast-1"
 
 table_exists() { $AWS_CMD dynamodb describe-table --table-name "$1" >/dev/null 2>&1; }
 
-if ! table_exists UserTokens; then
-  $AWS_CMD dynamodb create-table \
-    --table-name UserTokens \
-    --attribute-definitions AttributeName=user_id,AttributeType=S \
-    --key-schema AttributeName=user_id,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST >/dev/null
-  ok "created UserTokens"
-else
-  ok "UserTokens exists"
-fi
-
 if ! table_exists EditingSessions; then
   $AWS_CMD dynamodb create-table \
     --table-name EditingSessions \

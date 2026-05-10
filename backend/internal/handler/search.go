@@ -25,16 +25,15 @@ func NewSearchHandler(storageProvider adapter.StorageProvider, jwtSecret string)
 	}
 }
 
-// getStorageAdapter extracts UserID and gets the storage adapter.
-// (Duplicated helper or could be shared if extracted)
+// getStorageAdapter extracts session claims and returns the storage adapter
+// scoped to the user's base folder.
 func (h *SearchHandler) getStorageAdapter(ctx context.Context, req events.APIGatewayProxyRequest) (adapter.StorageAdapter, error) {
-	// Reusing GetUserID from auth.go (assuming it's in this package)
-	userID, err := GetUserID(req, h.jwtSecret)
+	claims, err := GetSessionClaims(req, h.jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("unauthorized: %w", err)
 	}
 
-	storage, err := h.storageProvider.GetAdapter(ctx, userID)
+	storage, err := h.storageProvider.GetAdapter(ctx, claims.UserID, claims.BaseFolderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storage adapter: %w", err)
 	}

@@ -1,242 +1,68 @@
+// Package auth verifies Google-issued ID tokens used by GophDrive's login flow.
+//
+// Refresh tokens are no longer stored — the application uses Google purely as
+// an OIDC identity provider. Sessions are established via a self-issued JWT
+// after the ID token has been validated.
 package auth
 
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"sync"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/jun/gophdrive/backend/internal/crypto"
-	"github.com/jun/gophdrive/backend/internal/model"
-	"golang.org/x/oauth2"
+	"google.golang.org/api/idtoken"
 )
 
-// AuthService handles OAuth2 authentication flows and token management.
-type AuthService struct {
-	oauthConfig  *oauth2.Config
-	dynamoClient *dynamodb.Client
-	tableName    string
-	kmsService   crypto.Encryptor
-
-	// In-memory fallback
-	tokens map[string]model.UserToken
-	mu     sync.RWMutex
+// Claims is the subset of Google ID token claims the application trusts after
+// signature and audience validation.
+type Claims struct {
+	Subject       string
+	Email         string
+	EmailVerified bool
+	Name          string
 }
 
-// Config returns the OAuth2 config.
-func (s *AuthService) Config() *oauth2.Config {
-	return s.oauthConfig
+// Verifier validates a raw ID token string and returns its trusted claims.
+// Implementations must reject tokens with bad signatures, wrong audience,
+// or expired/missing required claims.
+type Verifier interface {
+	Verify(ctx context.Context, rawIDToken string) (*Claims, error)
 }
 
-// NewAuthService creates a new AuthService.
-// The oauthConfig should be constructed by the caller (e.g., from environment variables).
-func NewAuthService(oauthConfig *oauth2.Config, dynamoClient *dynamodb.Client, tableName string, kmsService crypto.Encryptor) *AuthService {
-	return &AuthService{
-		oauthConfig:  oauthConfig,
-		dynamoClient: dynamoClient,
-		tableName:    tableName,
-		kmsService:   kmsService,
-		tokens:       make(map[string]model.UserToken),
-	}
+// GoogleVerifier validates ID tokens against Google's published JWKS.
+type GoogleVerifier struct {
+	audience string
 }
 
-// GenerateAuthURL returns the URL to redirect the user to for Google login.
-func (s *AuthService) GenerateAuthURL(state string) string {
-	return s.oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+// NewGoogleVerifier returns a Verifier that requires the given audience
+// (the Google OAuth client ID issued for this application).
+func NewGoogleVerifier(audience string) *GoogleVerifier {
+	return &GoogleVerifier{audience: audience}
 }
 
-// ExchangeCode exchanges the authorization code for an access token.
-func (s *AuthService) ExchangeCode(ctx context.Context, code string) (*oauth2.Token, error) {
-	return s.oauthConfig.Exchange(ctx, code)
-}
-
-// SaveToken encrypts the refresh token and stores it in DynamoDB.
-func (s *AuthService) SaveToken(ctx context.Context, userID string, token *oauth2.Token) error {
-	if token.RefreshToken == "" {
-		return fmt.Errorf("no refresh token in response")
-	}
-
-	// Encrypt Refresh Token
-	encrypted, err := s.kmsService.Encrypt(ctx, token.RefreshToken)
+// Verify validates the ID token's signature, expiration, and audience using
+// google.golang.org/api/idtoken, then projects the claims into the app's
+// Claims struct.
+func (v *GoogleVerifier) Verify(ctx context.Context, rawIDToken string) (*Claims, error) {
+	payload, err := idtoken.Validate(ctx, rawIDToken, v.audience)
 	if err != nil {
-		return fmt.Errorf("failed to encrypt refresh token: %w", err)
+		return nil, fmt.Errorf("validate id token: %w", err)
 	}
 
-	// Check for existing token to preserve BaseFolderID
-	var baseFolderID string
-	if existing, err := s.GetUserToken(ctx, userID); err == nil {
-		baseFolderID = existing.BaseFolderID
+	c := &Claims{}
+	if s, ok := payload.Claims["sub"].(string); ok {
+		c.Subject = s
 	}
-
-	userToken := model.UserToken{
-		UserID:                userID,
-		EncryptedRefreshToken: encrypted,
-		BaseFolderID:          baseFolderID,
-		UpdatedAt:             time.Now(),
+	if s, ok := payload.Claims["email"].(string); ok {
+		c.Email = s
 	}
-
-	// In-memory fallback
-	if s.dynamoClient == nil {
-		s.mu.Lock()
-		s.tokens[userID] = userToken
-		s.mu.Unlock()
-		return nil
+	if b, ok := payload.Claims["email_verified"].(bool); ok {
+		c.EmailVerified = b
 	}
-
-	item, err := attributevalue.MarshalMap(userToken)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user token: %w", err)
+	if s, ok := payload.Claims["name"].(string); ok {
+		c.Name = s
 	}
-
-	_, err = s.dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(s.tableName),
-		Item:      item,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to save token to DynamoDB: %w", err)
+	if c.Subject == "" {
+		return nil, fmt.Errorf("id token missing subject claim")
 	}
-
-	return nil
-}
-
-// GetUserToken retrieves the UserToken from DynamoDB.
-func (s *AuthService) GetUserToken(ctx context.Context, userID string) (*model.UserToken, error) {
-	var userToken model.UserToken
-
-	if s.dynamoClient == nil {
-		s.mu.RLock()
-		t, ok := s.tokens[userID]
-		s.mu.RUnlock()
-		if !ok {
-			return nil, fmt.Errorf("user not found")
-		}
-		userToken = t
-	} else {
-		out, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String(s.tableName),
-			Key: map[string]types.AttributeValue{
-				"user_id": &types.AttributeValueMemberS{Value: userID},
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get item from DynamoDB: %w", err)
-		}
-		if out.Item == nil {
-			return nil, fmt.Errorf("user not found")
-		}
-
-		err = attributevalue.UnmarshalMap(out.Item, &userToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal user token: %w", err)
-		}
-	}
-	return &userToken, nil
-}
-
-// UpdateBaseFolderID updates the BaseFolderID for a user.
-func (s *AuthService) UpdateBaseFolderID(ctx context.Context, userID, folderID string) error {
-	// Simple update using UpdateItem to avoid overwriting other fields race (though unlikely here)
-	if s.dynamoClient == nil {
-		s.mu.Lock()
-		if t, ok := s.tokens[userID]; ok {
-			t.BaseFolderID = folderID
-			s.tokens[userID] = t
-		}
-		s.mu.Unlock()
-		return nil
-	}
-
-	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(s.tableName),
-		Key: map[string]types.AttributeValue{
-			"user_id": &types.AttributeValueMemberS{Value: userID},
-		},
-		UpdateExpression: aws.String("SET base_folder_id = :fid, updated_at = :now"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":fid": &types.AttributeValueMemberS{Value: folderID},
-			":now": &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update base folder id: %w", err)
-	}
-
-	return nil
-}
-
-// GetTestTokens returns the internal token map (for testing only).
-func (s *AuthService) GetTestTokens() map[string]model.UserToken {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Create a copy to avoid race
-	tokens := make(map[string]model.UserToken)
-	for k, v := range s.tokens {
-		tokens[k] = v
-	}
-	return tokens
-}
-
-// GetBaseFolderID returns the BaseFolderID for a user (for testing only).
-func (s *AuthService) GetBaseFolderID(ctx context.Context, userID string) (string, error) {
-	token, err := s.GetUserToken(ctx, userID)
-	if err != nil {
-		return "", err
-	}
-	return token.BaseFolderID, nil
-}
-
-// GetClient returns an authenticated http.Client for the user.
-func (s *AuthService) GetClient(ctx context.Context, userID string) (*http.Client, error) {
-	var userToken model.UserToken
-
-	if s.dynamoClient == nil {
-		s.mu.RLock()
-		t, ok := s.tokens[userID]
-		s.mu.RUnlock()
-		if !ok {
-			return nil, fmt.Errorf("user not found")
-		}
-		userToken = t
-	} else {
-		// Get from DynamoDB
-		out, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String(s.tableName),
-			Key: map[string]types.AttributeValue{
-				"user_id": &types.AttributeValueMemberS{Value: userID},
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get item from DynamoDB: %w", err)
-		}
-		if out.Item == nil {
-			return nil, fmt.Errorf("user not found")
-		}
-
-		err = attributevalue.UnmarshalMap(out.Item, &userToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal user token: %w", err)
-		}
-	}
-
-	// Decrypt Refresh Token
-	refreshToken, err := s.kmsService.Decrypt(ctx, userToken.EncryptedRefreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt refresh token: %w", err)
-	}
-
-	// Create Token Source
-	token := &oauth2.Token{
-		RefreshToken: refreshToken,
-		Expiry:       time.Now().Add(-1 * time.Hour), // Force refresh
-	}
-
-	tokenSource := s.oauthConfig.TokenSource(ctx, token)
-
-	return oauth2.NewClient(ctx, tokenSource), nil
+	return c, nil
 }

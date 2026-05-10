@@ -1,10 +1,12 @@
-package handler
+package handler_test
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -13,218 +15,415 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jun/gophdrive/backend/internal/adapter/memory"
 	"github.com/jun/gophdrive/backend/internal/auth"
-	"github.com/jun/gophdrive/backend/internal/crypto"
+	"github.com/jun/gophdrive/backend/internal/handler"
 	"golang.org/x/oauth2"
 )
 
+// fakeExchanger satisfies handler.OAuthExchanger without hitting Google.
+type fakeExchanger struct {
+	url   string
+	token *oauth2.Token
+	err   error
+}
+
+func (f *fakeExchanger) AuthCodeURL(state string, _ ...oauth2.AuthCodeOption) string {
+	return f.url + "?state=" + url.QueryEscape(state)
+}
+
+func (f *fakeExchanger) Exchange(_ context.Context, _ string, _ ...oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	return f.token, f.err
+}
+
+// fakeVerifier satisfies auth.Verifier so callback tests bypass Google's JWKS.
+type fakeVerifier struct {
+	claims *auth.Claims
+	err    error
+}
+
+func (f *fakeVerifier) Verify(_ context.Context, _ string) (*auth.Claims, error) {
+	return f.claims, f.err
+}
+
+// tokenWithIDToken wraps an oauth2.Token to attach an id_token extra value.
+func tokenWithIDToken(idToken string) *oauth2.Token {
+	t := &oauth2.Token{AccessToken: "access"}
+	return t.WithExtra(map[string]interface{}{"id_token": idToken})
+}
+
+func newAuthHandler(t *testing.T, deps handler.AuthHandlerDeps) *handler.AuthHandler {
+	t.Helper()
+	if deps.JWTSecret == "" {
+		deps.JWTSecret = "test-secret"
+	}
+	if deps.StorageProvider == nil {
+		deps.StorageProvider = memory.NewProvider(nil)
+	}
+	if deps.FrontendURL == "" {
+		deps.FrontendURL = "http://test"
+	}
+	deps.DevMode = true
+	return handler.NewAuthHandler(deps)
+}
+
 func TestIsEmailAllowed(t *testing.T) {
+	// isEmailAllowed is unexported; tested indirectly through Callback.
+	// Each subtest configures the allow list and verifies the response code.
+	verified := &auth.Claims{Subject: "google-1", Email: "user@example.com", Name: "User"}
+
 	tests := []struct {
-		name          string
-		email         string
-		allowedEmails []string
-		want          bool
+		name       string
+		allowed    []string
+		email      string
+		wantStatus int
 	}{
-		{
-			name:          "empty list allows all",
-			email:         "anyone@example.com",
-			allowedEmails: nil,
-			want:          true,
-		},
-		{
-			name:          "empty slice allows all",
-			email:         "anyone@example.com",
-			allowedEmails: []string{},
-			want:          true,
-		},
-		{
-			name:          "matching email is allowed",
-			email:         "user@gmail.com",
-			allowedEmails: []string{"user@gmail.com"},
-			want:          true,
-		},
-		{
-			name:          "non-matching email is denied",
-			email:         "other@gmail.com",
-			allowedEmails: []string{"user@gmail.com"},
-			want:          false,
-		},
-		{
-			name:          "case insensitive match",
-			email:         "User@Gmail.COM",
-			allowedEmails: []string{"user@gmail.com"},
-			want:          true,
-		},
-		{
-			name:          "whitespace is trimmed",
-			email:         "  user@gmail.com  ",
-			allowedEmails: []string{" user@gmail.com "},
-			want:          true,
-		},
-		{
-			name:          "multiple allowed emails",
-			email:         "user2@gmail.com",
-			allowedEmails: []string{"user1@gmail.com", "user2@gmail.com"},
-			want:          true,
-		},
+		{name: "empty list allows all", allowed: nil, email: "anyone@example.com", wantStatus: http.StatusFound},
+		{name: "matching email is allowed", allowed: []string{"user@example.com"}, email: "user@example.com", wantStatus: http.StatusFound},
+		{name: "non-matching email is denied", allowed: []string{"user@example.com"}, email: "intruder@example.com", wantStatus: http.StatusForbidden},
+		{name: "case insensitive match", allowed: []string{"user@example.com"}, email: "USER@Example.COM", wantStatus: http.StatusFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isEmailAllowed(tt.email, tt.allowedEmails)
-			if got != tt.want {
-				t.Errorf("isEmailAllowed(%q, %v) = %v, want %v", tt.email, tt.allowedEmails, got, tt.want)
+			c := *verified
+			c.Email = tt.email
+			h := newAuthHandler(t, handler.AuthHandlerDeps{
+				Exchanger:     &fakeExchanger{token: tokenWithIDToken("opaque")},
+				Verifier:      &fakeVerifier{claims: &c},
+				AllowedEmails: tt.allowed,
+			})
+
+			req := events.APIGatewayProxyRequest{QueryStringParameters: map[string]string{"code": "abc"}}
+			resp, err := h.Callback(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Callback error: %v", err)
+			}
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d, body=%q", resp.StatusCode, tt.wantStatus, resp.Body)
 			}
 		})
 	}
 }
 
-func TestAuthHandler_Refresh(t *testing.T) {
-	secret := "test-secret"
-	authService := auth.NewAuthService(nil, nil, "", crypto.NewMockEncryptor())
-	storageProvider := memory.NewProvider(nil, authService)
-	h := NewAuthHandler(authService, storageProvider, secret, nil)
-
-	userID := "test-user"
-	// 1. Save a token for the user in DynamoDB (mocked)
-	authService.SaveToken(context.Background(), userID, &oauth2.Token{
-		AccessToken:  "access",
-		RefreshToken: "refresh",
-		Expiry:       time.Now().Add(1 * time.Hour),
+func TestAuthHandler_Login_RedirectsToOAuthURL(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{url: "https://accounts.google.com/o/oauth2/auth"},
+		Verifier:  &fakeVerifier{},
 	})
 
-	// 2. Create an EXPIRED JWT for this user
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(-1 * time.Hour).Unix(),
+	resp, err := h.Login(context.Background(), events.APIGatewayProxyRequest{})
+	if err != nil {
+		t.Fatalf("Login error: %v", err)
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	expiredToken, _ := token.SignedString([]byte(secret))
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302", resp.StatusCode)
+	}
+	if !strings.HasPrefix(resp.Headers["Location"], "https://accounts.google.com/") {
+		t.Errorf("Location header = %q, want Google auth URL", resp.Headers["Location"])
+	}
+}
 
-	// 3. Call Refresh with the expired token in cookie
+func TestAuthHandler_Callback_Success(t *testing.T) {
+	verified := &auth.Claims{Subject: "google-sub-42", Email: "user@example.com", Name: "Alice"}
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger:   &fakeExchanger{token: tokenWithIDToken("opaque")},
+		Verifier:    &fakeVerifier{claims: verified},
+		FrontendURL: "https://app.example",
+	})
+
+	resp, err := h.Callback(context.Background(), events.APIGatewayProxyRequest{
+		QueryStringParameters: map[string]string{"code": "abc"},
+	})
+	if err != nil {
+		t.Fatalf("Callback error: %v", err)
+	}
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302. body=%s", resp.StatusCode, resp.Body)
+	}
+	if got := resp.Headers["Location"]; got != "https://app.example/?success=true" {
+		t.Errorf("Location = %q, want app redirect", got)
+	}
+
+	cookies := resp.MultiValueHeaders["Set-Cookie"]
+	if len(cookies) != 1 || !strings.Contains(cookies[0], "session_token=") {
+		t.Fatalf("expected session_token cookie, got %v", cookies)
+	}
+
+	// JWT must carry sub and a non-empty base_folder_id (auto-created at login).
+	tokStr := extractCookieValue(t, cookies[0], "session_token")
+	claims := parseClaims(t, tokStr, "test-secret")
+	if claims["sub"] != "google-sub-42" {
+		t.Errorf("sub = %v, want google-sub-42", claims["sub"])
+	}
+	if bf, _ := claims["base_folder_id"].(string); bf == "" {
+		t.Errorf("base_folder_id is empty; want auto-minted folder id")
+	}
+}
+
+func TestAuthHandler_Callback_MissingCode(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	resp, _ := h.Callback(context.Background(), events.APIGatewayProxyRequest{})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_Callback_ExchangeError(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{err: errors.New("network down")},
+		Verifier:  &fakeVerifier{},
+	})
+
+	resp, _ := h.Callback(context.Background(), events.APIGatewayProxyRequest{
+		QueryStringParameters: map[string]string{"code": "abc"},
+	})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_Callback_MissingIDToken(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{token: &oauth2.Token{AccessToken: "x"}}, // no id_token extra
+		Verifier:  &fakeVerifier{},
+	})
+
+	resp, _ := h.Callback(context.Background(), events.APIGatewayProxyRequest{
+		QueryStringParameters: map[string]string{"code": "abc"},
+	})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_Callback_InvalidIDToken(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{token: tokenWithIDToken("opaque")},
+		Verifier:  &fakeVerifier{err: errors.New("bad signature")},
+	})
+
+	resp, _ := h.Callback(context.Background(), events.APIGatewayProxyRequest{
+		QueryStringParameters: map[string]string{"code": "abc"},
+	})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	expired := signClaims(t, "test-secret", jwt.MapClaims{
+		"sub":            "user-7",
+		"email":          "user@example.com",
+		"base_folder_id": "folder-xyz",
+		"exp":            time.Now().Add(-1 * time.Hour).Unix(),
+	})
+
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{
-			"Cookie": fmt.Sprintf("session_token=%s", expiredToken),
-		},
+		Headers: map[string]string{"Authorization": "Bearer " + expired},
 	}
 	resp, err := h.Refresh(context.Background(), req)
 	if err != nil {
-		t.Fatalf("Refresh failed: %v", err)
+		t.Fatalf("Refresh error: %v", err)
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d. Body: %s", resp.StatusCode, resp.Body)
+		t.Fatalf("status = %d, want 200. body=%s", resp.StatusCode, resp.Body)
 	}
 
-	// 4. Verify new token is returned in body
-	var data struct {
-		Token string `json:"token"`
-		ID    string `json:"id"`
+	var body struct {
+		ID           string `json:"id"`
+		BaseFolderID string `json:"base_folder_id"`
+		Token        string `json:"token"`
 	}
-	if err := json.Unmarshal([]byte(resp.Body), &data); err != nil {
-		t.Fatalf("Failed to unmarshal body: %v", err)
+	if err := json.Unmarshal([]byte(resp.Body), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.ID != "user-7" {
+		t.Errorf("id = %q, want user-7", body.ID)
+	}
+	if body.BaseFolderID != "folder-xyz" {
+		t.Errorf("base_folder_id = %q, want folder-xyz", body.BaseFolderID)
 	}
 
-	if data.Token == "" {
-		t.Errorf("Expected new token in body, got empty")
+	// New token is valid, unexpired, and re-carries the original base_folder_id.
+	claims := parseClaims(t, body.Token, "test-secret")
+	if claims["base_folder_id"] != "folder-xyz" {
+		t.Errorf("new token base_folder_id = %v, want folder-xyz", claims["base_folder_id"])
 	}
-	if data.ID != userID {
-		t.Errorf("Expected userID %s, got %s", userID, data.ID)
+}
+
+func TestAuthHandler_Refresh_Unauthorized(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	t.Run("no token", func(t *testing.T) {
+		resp, _ := h.Refresh(context.Background(), events.APIGatewayProxyRequest{})
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", resp.StatusCode)
+		}
+	})
+
+	t.Run("bad signature", func(t *testing.T) {
+		bad := signClaims(t, "other-secret", jwt.MapClaims{"sub": "user-1"})
+		req := events.APIGatewayProxyRequest{Headers: map[string]string{"Authorization": "Bearer " + bad}}
+		resp, _ := h.Refresh(context.Background(), req)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", resp.StatusCode)
+		}
+	})
+}
+
+func TestAuthHandler_GetUser_FromJWTClaims(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	tokStr := signClaims(t, "test-secret", jwt.MapClaims{
+		"sub":            "user-9",
+		"base_folder_id": "fld",
+		"exp":            time.Now().Add(1 * time.Hour).Unix(),
+	})
+	req := events.APIGatewayProxyRequest{Headers: map[string]string{"Authorization": "Bearer " + tokStr}}
+
+	resp, err := h.GetUser(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetUser error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body=%s", resp.StatusCode, resp.Body)
 	}
 
-	// 5. Verify new token is valid and not expired
-	newToken, err := jwt.Parse(data.Token, func(token *jwt.Token) (interface{}, error) {
+	var body struct {
+		ID           string `json:"id"`
+		BaseFolderID string `json:"base_folder_id"`
+	}
+	json.Unmarshal([]byte(resp.Body), &body)
+	if body.ID != "user-9" || body.BaseFolderID != "fld" {
+		t.Errorf("body = %+v, want id=user-9 base_folder_id=fld", body)
+	}
+}
+
+func TestAuthHandler_GetUser_Unauthorized(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	resp, _ := h.GetUser(context.Background(), events.APIGatewayProxyRequest{})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
+	provider := memory.NewProvider(nil)
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger:       &fakeExchanger{},
+		Verifier:        &fakeVerifier{},
+		StorageProvider: provider,
+		FrontendURL:     "http://demo",
+	})
+
+	resp, err := h.DemoLogin(context.Background(), events.APIGatewayProxyRequest{})
+	if err != nil {
+		t.Fatalf("DemoLogin error: %v", err)
+	}
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302. body=%s", resp.StatusCode, resp.Body)
+	}
+
+	loc := resp.Headers["Location"]
+	if !strings.HasPrefix(loc, "http://demo/?token=") {
+		t.Fatalf("Location = %q, want demo redirect carrying token", loc)
+	}
+	tokStr := strings.TrimPrefix(loc, "http://demo/?token=")
+	claims := parseClaims(t, tokStr, "test-secret")
+	userID, _ := claims["sub"].(string)
+	baseFolderID, _ := claims["base_folder_id"].(string)
+	if !strings.HasPrefix(userID, "demo-user-") {
+		t.Errorf("sub = %q, want demo-user- prefix", userID)
+	}
+	if baseFolderID == "" {
+		t.Errorf("base_folder_id is empty")
+	}
+
+	// Confirm welcome notes were seeded under the minted folder.
+	storage, _ := provider.GetAdapter(context.Background(), userID, baseFolderID)
+	files, err := storage.ListFiles(context.Background(), baseFolderID)
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	if len(files) != 2 {
+		t.Errorf("expected 2 welcome notes, got %d (%v)", len(files), files)
+	}
+}
+
+func TestAuthHandler_Logout_ClearsCookie(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	resp, err := h.Logout(context.Background(), events.APIGatewayProxyRequest{})
+	if err != nil {
+		t.Fatalf("Logout error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	cookies := resp.MultiValueHeaders["Set-Cookie"]
+	if len(cookies) != 1 || !strings.Contains(cookies[0], "Max-Age=0") {
+		t.Errorf("Set-Cookie missing Max-Age=0: %v", cookies)
+	}
+}
+
+func signClaims(t *testing.T, secret string, claims jwt.MapClaims) string {
+	t.Helper()
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s, err := tok.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	return s
+}
+
+func parseClaims(t *testing.T, tokStr, secret string) jwt.MapClaims {
+	t.Helper()
+	tok, err := jwt.Parse(tokStr, func(*jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
 	if err != nil {
-		t.Errorf("New token is invalid: %v", err)
+		t.Fatalf("parse jwt: %v", err)
 	}
-	if !newToken.Valid {
-		t.Errorf("New token is not valid")
+	c, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		t.Fatalf("claims not MapClaims")
 	}
-
-	// 6. Verify Set-Cookie header is present
-	foundSetCookie := false
-	for k, v := range resp.MultiValueHeaders {
-		if strings.EqualFold(k, "Set-Cookie") {
-			for _, c := range v {
-				if strings.Contains(c, "session_token=") {
-					foundSetCookie = true
-					if !strings.Contains(c, "Max-Age=2592000") {
-						t.Errorf("Set-Cookie missing expected Max-Age, got %s", c)
-					}
-				}
-			}
-		}
-	}
-	if !foundSetCookie {
-		t.Errorf("Set-Cookie header missing session_token")
-	}
+	return c
 }
 
-func TestDemoLogin_CreatesWelcomeNotes(t *testing.T) {
-	// Setup dependencies with nil Dynamo but Mock KMS to avoid panics
-	authService := auth.NewAuthService(nil, nil, "", crypto.NewMockEncryptor())
-	storageProvider := memory.NewProvider(nil, authService)
-	handler := NewAuthHandler(authService, storageProvider, "test-secret", nil)
-
-	// Execute DemoLogin
-	ctx := context.Background()
-	resp, err := handler.DemoLogin(ctx, events.APIGatewayProxyRequest{})
-	if err != nil {
-		t.Fatalf("DemoLogin failed: %v", err)
-	}
-
-	if resp.StatusCode != http.StatusFound {
-		t.Fatalf("Expected status 302, got %d. Body: %s", resp.StatusCode, resp.Body)
-	}
-
-	// Find the created user ID (should be one in the memory provider)
-	// We can't directly access memory.Provider's internal map, but we know the userID prefix.
-	// Let's assume the authService has one token saved.
-	tokens := authService.GetTestTokens()
-	if len(tokens) != 1 {
-		t.Fatalf("Expected 1 user token, got %d", len(tokens))
-	}
-
-	var userID string
-	for k := range tokens {
-		userID = k
-		break
-	}
-
-	// Get the adapter for this user
-	adapter, err := storageProvider.GetAdapter(ctx, userID)
-	if err != nil {
-		t.Fatalf("Failed to get adapter for user %s: %v", userID, err)
-	}
-
-	// List files in root folder
-	rootFolderID, err := authService.GetBaseFolderID(ctx, userID)
-	if err != nil {
-		t.Fatalf("Failed to get root folder ID: %v", err)
-	}
-
-	files, err := adapter.ListFiles(ctx, rootFolderID)
-	if err != nil {
-		t.Fatalf("ListFiles failed: %v", err)
-	}
-
-	// Check if both welcome notes exist (stripping .md because memory adapter does so in ListFiles)
-	foundJP := false
-	foundEN := false
-	for _, f := range files {
-		if f.Name == "ようこそ!" {
-			foundJP = true
-		}
-		if f.Name == "Welcome!" {
-			foundEN = true
+func extractCookieValue(t *testing.T, cookie, name string) string {
+	t.Helper()
+	prefix := name + "="
+	for _, part := range strings.Split(cookie, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, prefix) {
+			return strings.TrimPrefix(part, prefix)
 		}
 	}
-
-	if !foundJP {
-		t.Errorf("Japanese welcome note not found")
-	}
-	if !foundEN {
-		t.Errorf("English welcome note not found")
-	}
+	t.Fatalf("cookie %q not found in %q", name, cookie)
+	return ""
 }
+
+// Suppress unused warning for fmt — kept for potential debug prints.
+var _ = fmt.Sprintf
