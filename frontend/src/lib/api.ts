@@ -341,3 +341,13 @@ export async function searchFiles(query: string): Promise<FileItem[]> {
   if (!res.ok) return handleError(res, "Failed to search files");
   return parseJson(res);
 }
+
+export async function exportNotes(): Promise<{ blob: Blob; filename: string }> {
+  const res = await apiFetch("/export");
+  if (!res.ok) return handleError(res, "Failed to export notes");
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match ? match[1] : "gophdrive-export.zip";
+  return { blob, filename };
+}

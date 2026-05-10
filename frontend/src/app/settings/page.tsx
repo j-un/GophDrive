@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, exportNotes } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Download } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleLogout = async () => {
     if (confirm("Are you sure you want to logout?")) {
@@ -20,6 +23,27 @@ export default function SettingsPage() {
       localStorage.removeItem("session_token");
       await refreshUser();
       router.push("/");
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportNotes();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed", e);
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -104,6 +128,68 @@ export default function SettingsPage() {
           <span style={{ color: "var(--muted-foreground)" }}>Theme</span>
           <ThemeToggle />
         </div>
+      </div>
+
+      <div
+        style={{
+          background: "var(--card)",
+          padding: "1.5rem",
+          borderRadius: "0.5rem",
+          border: "1px solid var(--border)",
+          marginBottom: "2rem",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "1.125rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+          }}
+        >
+          Export
+        </h2>
+        <p
+          style={{
+            color: "var(--muted-foreground)",
+            fontSize: "0.875rem",
+            marginBottom: "1rem",
+          }}
+        >
+          Download every note as a ZIP archive. Folder hierarchy is preserved.
+        </p>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="btn"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            background: "transparent",
+            color: "var(--foreground)",
+            borderColor: "var(--border)",
+            opacity: exporting ? 0.6 : 1,
+            cursor: exporting ? "not-allowed" : "pointer",
+          }}
+        >
+          {exporting ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Download size={16} />
+          )}
+          {exporting ? "Exporting..." : "Export all notes (.zip)"}
+        </button>
+        {exportError && (
+          <p
+            style={{
+              color: "var(--destructive)",
+              fontSize: "0.875rem",
+              marginTop: "0.75rem",
+            }}
+          >
+            {exportError}
+          </p>
+        )}
       </div>
 
       <div

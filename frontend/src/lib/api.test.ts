@@ -11,6 +11,7 @@ import {
   updateNote,
   deleteFile,
   searchFiles,
+  exportNotes,
   setFetchFn,
   resetFetchFn,
 } from "./api";
@@ -208,6 +209,42 @@ describe("API functions", () => {
 
     const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("q=hello%20world");
+  });
+
+  it("exportNotes returns blob and parses Content-Disposition filename", async () => {
+    const fakeBlob = { size: 42 } as Blob;
+    const headers: Record<string, string> = {
+      "Content-Disposition":
+        'attachment; filename="gophdrive-export-20260511.zip"',
+      "Content-Type": "application/zip",
+    };
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) => headers[name] ?? null,
+      },
+      blob: () => Promise.resolve(fakeBlob),
+    } as unknown as Response);
+    setFetchFn(mockFetch as typeof fetch);
+
+    const result = await exportNotes();
+    expect(result.blob).toBe(fakeBlob);
+    expect(result.filename).toBe("gophdrive-export-20260511.zip");
+  });
+
+  it("exportNotes falls back to default filename when header is missing", async () => {
+    const fakeBlob = { size: 0 } as Blob;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      blob: () => Promise.resolve(fakeBlob),
+    } as unknown as Response);
+    setFetchFn(mockFetch as typeof fetch);
+
+    const result = await exportNotes();
+    expect(result.filename).toBe("gophdrive-export.zip");
   });
 });
 
