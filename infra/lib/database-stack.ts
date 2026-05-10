@@ -6,40 +6,18 @@ import { Construct } from "constructs";
  * DatabaseStack
  *
  * Defines the DynamoDB tables for GophDrive:
- * - UserTokens: Stores encrypted OAuth2 refresh tokens per user.
- * - EditingSessions: Manages file-level edit session locks with TTL.
+ * - EditingSessions: file-level edit session locks with TTL.
+ * - FileStore: notes and folders, plus ephemeral demo-user data with TTL.
  */
 export class DatabaseStack extends cdk.Stack {
-  /** UserTokens table — stores encrypted refresh tokens. */
-  public readonly userTokensTable: dynamodb.Table;
-
   /** EditingSessions table — session lock management with TTL. */
   public readonly editingSessionsTable: dynamodb.Table;
 
-  /** FileStore table — storage for Demo Mode files with TTL. */
+  /** FileStore table — primary storage for notes and folders. */
   public readonly fileStoreTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
-    // ==========================================================================
-    // UserTokens Table
-    // --------------------------------------------------------------------------
-    // PK: user_id (string)
-    // Attributes: encrypted_refresh_token, updated_at
-    // Point-in-time recovery enabled for safety.
-    // ==========================================================================
-    this.userTokensTable = new dynamodb.Table(this, "UserTokensTable", {
-      partitionKey: {
-        name: "user_id",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: {
-        pointInTimeRecoveryEnabled: true,
-      },
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
 
     // ==========================================================================
     // EditingSessions Table
@@ -63,11 +41,10 @@ export class DatabaseStack extends cdk.Stack {
     );
 
     // ==========================================================================
-    // FileStore Table (for Demo Mode)
+    // FileStore Table
     // --------------------------------------------------------------------------
-    // PK: pk (string)
-    // Attributes: user_id, ttl
-    // TTL automatically removes expired demo files.
+    // PK: pk (string) — corresponds to the file/folder ID.
+    // Attributes: user_id, ttl (only set for demo users)
     // ==========================================================================
     this.fileStoreTable = new dynamodb.Table(this, "FileStoreTable", {
       partitionKey: {
@@ -76,17 +53,12 @@ export class DatabaseStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl",
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Demo data is ephemeral
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     // ==========================================================================
     // Outputs
     // ==========================================================================
-    new cdk.CfnOutput(this, "UserTokensTableName", {
-      value: this.userTokensTable.tableName,
-      description: "DynamoDB table for OAuth2 refresh tokens",
-    });
-
     new cdk.CfnOutput(this, "EditingSessionsTableName", {
       value: this.editingSessionsTable.tableName,
       description: "DynamoDB table for file editing session locks",
@@ -94,7 +66,7 @@ export class DatabaseStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "FileStoreTableName", {
       value: this.fileStoreTable.tableName,
-      description: "DynamoDB table for demo mode files",
+      description: "DynamoDB table for notes and folders",
     });
   }
 }

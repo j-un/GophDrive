@@ -1,7 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as kms from "aws-cdk-lib/aws-kms";
 import { ComputeStack } from "../lib/compute-stack";
 
 describe("ComputeStack", () => {
@@ -13,9 +12,6 @@ describe("ComputeStack", () => {
     // Create mock dependency stacks
     const depStack = new cdk.Stack(app, "DepStack");
 
-    const userTokensTable = new dynamodb.Table(depStack, "UserTokens", {
-      partitionKey: { name: "user_id", type: dynamodb.AttributeType.STRING },
-    });
     const editingSessionsTable = new dynamodb.Table(
       depStack,
       "EditingSessions",
@@ -26,13 +22,10 @@ describe("ComputeStack", () => {
     const fileStoreTable = new dynamodb.Table(depStack, "FileStore", {
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
     });
-    const tokenEncryptionKey = new kms.Key(depStack, "Key");
 
     const stack = new ComputeStack(app, "TestComputeStack", {
-      userTokensTable,
       editingSessionsTable,
       fileStoreTable,
-      tokenEncryptionKey,
     });
     template = Template.fromStack(stack);
   });
@@ -51,15 +44,30 @@ describe("ComputeStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          USER_TOKENS_TABLE: Match.anyValue(),
           EDITING_SESSIONS_TABLE: Match.anyValue(),
           FILE_STORE_TABLE: Match.anyValue(),
-          KMS_KEY_ID: Match.anyValue(),
           GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
           JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
           API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
           ALLOWED_EMAILS: Match.anyValue(),
         }),
+      },
+    });
+  });
+
+  test("Lambda env does not include legacy KMS / UserTokens vars", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.not(
+          Match.objectLike({ KMS_KEY_ID: Match.anyValue() }),
+        ),
+      },
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.not(
+          Match.objectLike({ USER_TOKENS_TABLE: Match.anyValue() }),
+        ),
       },
     });
   });
@@ -92,7 +100,6 @@ describe("ComputeStack", () => {
   });
 
   test("grants Lambda read/write access to DynamoDB tables", () => {
-    // Lambda should have IAM policy allowing DynamoDB access
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {
         Statement: Match.arrayWith([

@@ -11,21 +11,6 @@ describe("DatabaseStack", () => {
     template = Template.fromStack(stack);
   });
 
-  test("creates UserTokens DynamoDB table", () => {
-    template.hasResourceProperties("AWS::DynamoDB::Table", {
-      KeySchema: [
-        {
-          AttributeName: "user_id",
-          KeyType: "HASH",
-        },
-      ],
-      BillingMode: "PAY_PER_REQUEST",
-      PointInTimeRecoverySpecification: {
-        PointInTimeRecoveryEnabled: true,
-      },
-    });
-  });
-
   test("creates EditingSessions DynamoDB table", () => {
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       KeySchema: [
@@ -58,16 +43,6 @@ describe("DatabaseStack", () => {
     });
   });
 
-  test("UserTokens table has RETAIN removal policy", () => {
-    template.hasResource("AWS::DynamoDB::Table", {
-      Properties: {
-        KeySchema: [{ AttributeName: "user_id", KeyType: "HASH" }],
-      },
-      DeletionPolicy: "Retain",
-      UpdateReplacePolicy: "Retain",
-    });
-  });
-
   test("EditingSessions table has DELETE removal policy", () => {
     template.hasResource("AWS::DynamoDB::Table", {
       Properties: {
@@ -77,23 +52,21 @@ describe("DatabaseStack", () => {
     });
   });
 
-  test("FileStore table has DELETE removal policy", () => {
+  test("FileStore table has RETAIN removal policy", () => {
     template.hasResource("AWS::DynamoDB::Table", {
       Properties: {
         KeySchema: [{ AttributeName: "pk", KeyType: "HASH" }],
       },
-      DeletionPolicy: "Delete",
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
     });
   });
 
-  test("creates exactly 3 DynamoDB tables", () => {
-    template.resourceCountIs("AWS::DynamoDB::Table", 3);
+  test("creates exactly 2 DynamoDB tables", () => {
+    template.resourceCountIs("AWS::DynamoDB::Table", 2);
   });
 
   test("outputs table names", () => {
-    template.hasOutput("UserTokensTableName", {
-      Value: Match.objectLike({ Ref: Match.anyValue() }),
-    });
     template.hasOutput("EditingSessionsTableName", {
       Value: Match.objectLike({ Ref: Match.anyValue() }),
     });

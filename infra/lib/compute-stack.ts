@@ -4,15 +4,12 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as kms from "aws-cdk-lib/aws-kms";
 import * as path from "path";
 import { execSync } from "child_process";
 
 interface ComputeStackProps extends cdk.StackProps {
-  userTokensTable: dynamodb.Table;
   editingSessionsTable: dynamodb.Table;
   fileStoreTable: dynamodb.Table;
-  tokenEncryptionKey: kms.Key;
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -53,10 +50,8 @@ export class ComputeStack extends cdk.Stack {
         },
       }),
       environment: {
-        USER_TOKENS_TABLE: props.userTokensTable.tableName,
         EDITING_SESSIONS_TABLE: props.editingSessionsTable.tableName,
         FILE_STORE_TABLE: props.fileStoreTable.tableName,
-        KMS_KEY_ID: props.tokenEncryptionKey.keyId,
         GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
         GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
         JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
@@ -70,10 +65,8 @@ export class ComputeStack extends cdk.Stack {
     });
 
     // Grant Permissions
-    props.userTokensTable.grantReadWriteData(backendFunction);
     props.editingSessionsTable.grantReadWriteData(backendFunction);
     props.fileStoreTable.grantReadWriteData(backendFunction);
-    props.tokenEncryptionKey.grantEncryptDecrypt(backendFunction);
 
     // Grant SSM Parameter Store read access for secrets
     backendFunction.addToRolePolicy(

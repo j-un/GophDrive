@@ -39,7 +39,7 @@ func makeRequest(method, path, body string) events.APIGatewayProxyRequest {
 }
 
 func TestNoteHandler_CreateAndList(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -90,7 +90,7 @@ func TestNoteHandler_CreateAndList(t *testing.T) {
 }
 
 func TestNoteHandler_GetNote(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -127,7 +127,7 @@ func TestNoteHandler_GetNote(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -169,7 +169,7 @@ func TestNoteHandler_UpdateNote(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -202,7 +202,7 @@ func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
 }
 
 func TestNoteHandler_DeleteNote(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -234,7 +234,7 @@ func TestNoteHandler_DeleteNote(t *testing.T) {
 }
 
 func TestNoteHandler_Unauthorized(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -254,7 +254,7 @@ func TestNoteHandler_Unauthorized(t *testing.T) {
 }
 
 func TestNoteHandler_DuplicateNote(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -302,7 +302,7 @@ func TestNoteHandler_DuplicateNote(t *testing.T) {
 }
 
 func TestNoteHandler_CreateFolder(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -326,7 +326,7 @@ func TestNoteHandler_CreateFolder(t *testing.T) {
 }
 
 func TestNoteHandler_RenameNote(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -355,7 +355,7 @@ func TestNoteHandler_RenameNote(t *testing.T) {
 }
 
 func TestNoteHandler_PatchNote_Star(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -384,7 +384,7 @@ func TestNoteHandler_PatchNote_Star(t *testing.T) {
 }
 
 func TestNoteHandler_ListStarredNotes(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -422,7 +422,7 @@ func TestNoteHandler_ListStarredNotes(t *testing.T) {
 }
 
 func TestNoteHandler_GetNote_NotFound(t *testing.T) {
-	provider := memory.NewProvider(nil, nil)
+	provider := memory.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
