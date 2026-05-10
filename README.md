@@ -6,8 +6,8 @@
 
 # GophDrive
 
-GophDrive is a highly secure, serverless Markdown note-taking application designed for AWS. It leverages your own Google Drive for storage, ensuring you maintain complete control and privacy over your data.
-Built with extensibility in mind, GophDrive uses a clean adapter pattern that allows for future support of alternative storage providers.
+GophDrive is a serverless Markdown note-taking application designed for AWS. Notes are stored in DynamoDB inside your own AWS account, with point-in-time recovery and a one-click ZIP export. Google is used purely as an OIDC identity provider — no Drive scope, no third-party data access.
+Built with extensibility in mind, GophDrive uses a clean adapter pattern that leaves room for future storage backends.
 
 ## Live Demo
 
@@ -19,11 +19,12 @@ You can experience GophDrive's interface and functionality using the demo mode a
 
 ## Key Features
 
-- **Google Drive Integration**: Your notes are safely stored as Markdown files directly in a designated folder in your Google Drive.
+- **Self-hosted Storage**: Notes live in a DynamoDB table inside your own AWS account. Point-in-time recovery is enabled (35-day any-second restore) and `RemovalPolicy.RETAIN` protects against accidental teardown.
+- **One-click ZIP Export**: Download every note as a ZIP archive that mirrors your folder hierarchy — see Settings.
 - **Serverless Architecture**: Built on AWS Lambda, API Gateway, DynamoDB, S3, and CloudFront for high availability, automatic scaling, and low cost.
 - **Client-Side Processing (WebAssembly)**: Core logic, including Markdown processing and conflict resolution, is written in Go and compiled to WebAssembly (Wasm) for fast, secure execution directly in your browser.
 - **Real-Time Conflict Management**: Session-based locking ensures that concurrent edits don't result in data loss.
-- **Demo Mode**: Try out the application functionality (using browser memory) without connecting a Google account.
+- **Demo Mode**: Try out the application functionality without setting up Google OAuth — demo data is auto-cleaned after 60 minutes via DynamoDB TTL.
 - **Custom Domains**: Easily map your own domain name (with TLS 1.3 enforcement) via the automated AWS CDK deployment scripts.
 
 ## Tech Stack
@@ -32,35 +33,37 @@ You can experience GophDrive's interface and functionality using the demo mode a
 - **Backend (API)**: Go (standard library/AWS Lambda Go), compiled for `provided.al2023` ARM64 Lambda
 - **Shared Core**: Go (compiled to WebAssembly)
 - **Infrastructure**: AWS CDK (TypeScript). Local dev runs natively on the host with DynamoDB Local in Docker
-- **Database (Meta/Sessions)**: Amazon DynamoDB
-- **Auth**: Google OAuth 2.0 + Custom JWTs
+- **Database**: Amazon DynamoDB (notes/folders + edit-session locks)
+- **Auth**: Google OIDC (sign-in only) + self-issued HS256 JWT sessions
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     User([User / Browser])
-    GoogleDrive[Google Drive API]
-    
+    Google[Google OIDC<br/>sign-in only]
+
     subgraph AWS [AWS Cloud]
         CF[CloudFront]
-        S3[(S3 Bucket<br/>Frontend Assets)]
+        S3Front[(S3 Bucket<br/>Frontend Assets)]
         API[API Gateway]
         Lambda[Lambda<br/>Go Backend]
-        Dynamo[(DynamoDB)]
+        Dynamo[(DynamoDB<br/>FileStore + EditingSessions)]
+        BodyStore[(S3 Bucket<br/>BodyStore)]
+        SSM[(SSM Parameter Store<br/>JWT / OAuth secrets)]
     end
 
     %% Access Flow
     User -->|HTTPS| CF
-    CF -->|Static Assets| S3
+    CF -->|Static Assets| S3Front
     CF -->|/api/*| API
-    
+
     %% Main Application Flow
     API -->|Proxy| Lambda
-    Lambda <-->|OAuth / Files| GoogleDrive
-    
-    %% Backend Dependencies
-    Lambda -.->|Encrypts Tokens<br/>via KMS| Dynamo
+    Lambda -->|notes / folders| Dynamo
+    Lambda -.->|reserved for image / file uploads| BodyStore
+    Lambda -.->|verify ID token| Google
+    Lambda -.->|read secrets| SSM
 ```
 
 ## Project Structure
@@ -92,7 +95,7 @@ GophDrive/
    ```bash
    ./scripts/setup.sh
    ```
-   Installs Go/Node via mise, runs `npm ci` for `frontend/` and `infra/`, starts DynamoDB Local in Docker, creates the three DynamoDB tables, builds an initial `core.wasm`, and copies `.env.example` to `.env`.
+   Installs Go/Node via mise, runs `npm ci` for `frontend/` and `infra/`, starts DynamoDB Local in Docker, creates the two DynamoDB tables (`FileStore`, `EditingSessions`), builds an initial `core.wasm`, and copies `.env.example` to `.env`.
 
 2. **Boot the dev stack**:
    ```bash
@@ -114,17 +117,19 @@ overmind kill              # stop everything
 ```
 
 - *Note: If `core/` changes, the Wasm watcher auto-rebuilds. To regenerate manually run `./scripts/internal/build-wasm.sh`.*
+- *To exercise the live Google OAuth flow on localhost (instead of Demo login), see [`docs/local-google-oauth.md`](docs/local-google-oauth.md).*
 
 ## Deployment (AWS Production)
 
 GophDrive includes an automated script for deploying the entire stack to your AWS account.
 
 ### 1. Configure Google OAuth
-Before deploying, you must create a Google Cloud Project and configure OAuth 2.0 Credentials:
+Before deploying, create a Google Cloud Project and configure OAuth 2.0 credentials:
 - Go to the [Google Cloud Console](https://console.cloud.google.com).
 - Create a project and navigate to **APIs & Services > Credentials**.
-- Create an **OAuth client ID** (Web application).
+- Create an **OAuth client ID** (Web application). Required scopes: `openid`, `email`, `profile` only — no Drive scope is needed.
 - Set the Authorized Redirect URI to your intended domain's `/api/auth/callback` path (e.g., `https://gophdrive.example.com/api/auth/callback` or the CloudFront URL after deployment).
+- For an equivalent setup against `localhost`, see [`docs/local-google-oauth.md`](docs/local-google-oauth.md).
 
 ### 2. AWS CDK Bootstrap (First Time Only)
 If this is your first time deploying AWS CDK to this region/account, you must bootstrap it:
@@ -169,3 +174,8 @@ Template documents are available in [`docs/`](docs/) to help you get started:
 - [`TERMS_OF_SERVICE_TEMPLATE.md`](docs/TERMS_OF_SERVICE_TEMPLATE.md)
 
 Set the `PRIVACY_POLICY_URL` and `TERMS_OF_SERVICE_URL` environment variables during deployment to display links in the application footer.
+
+## Operations
+
+- **Backup & restore**: DynamoDB PITR is enabled on `FileStore` (35-day any-second restore). The Settings page also offers a one-click ZIP export of every note. Procedures for both paths live in [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
+- **Local OAuth verification**: To exercise the live Google sign-in flow on localhost (instead of relying on Demo login), follow [`docs/local-google-oauth.md`](docs/local-google-oauth.md).
