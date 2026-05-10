@@ -19,8 +19,10 @@ func main() {
 		body, _ := io.ReadAll(r.Body)
 
 		headers := make(map[string]string)
+		multiHeaders := make(map[string][]string)
 		for k, v := range r.Header {
 			headers[k] = v[0]
+			multiHeaders[k] = v
 		}
 
 		queryParams := make(map[string]string)
@@ -32,6 +34,7 @@ func main() {
 			Path:                  r.URL.Path,
 			HTTPMethod:            r.Method,
 			Headers:               headers,
+			MultiValueHeaders:     multiHeaders,
 			QueryStringParameters: queryParams,
 			Body:                  string(body),
 			IsBase64Encoded:       false,
@@ -45,6 +48,15 @@ func main() {
 
 		for k, v := range resp.Headers {
 			w.Header().Set(k, v)
+		}
+		// In production, API Gateway emits each MultiValueHeaders entry as its
+		// own response header. Mirror that here so Set-Cookie (and any other
+		// repeatable header set only via MultiValueHeaders) actually reaches
+		// the browser in DEV_MODE.
+		for k, vs := range resp.MultiValueHeaders {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
 		}
 		w.WriteHeader(resp.StatusCode)
 		// Lambda + API Gateway encode binary bodies as base64. Decode here so
