@@ -46,11 +46,51 @@ describe("ComputeStack", () => {
         Variables: Match.objectLike({
           EDITING_SESSIONS_TABLE: Match.anyValue(),
           FILE_STORE_TABLE: Match.anyValue(),
+          BODY_STORE_BUCKET: Match.anyValue(),
           GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
           JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
           API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
           ALLOWED_EMAILS: Match.anyValue(),
         }),
+      },
+    });
+  });
+
+  test("creates BodyStore S3 bucket with public access blocked", () => {
+    template.resourceCountIs("AWS::S3::Bucket", 1);
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: Match.arrayWith([
+          Match.objectLike({
+            ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" },
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("BodyStore bucket has RETAIN removal policy", () => {
+    template.hasResource("AWS::S3::Bucket", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
+  });
+
+  test("Lambda has read/write IAM access to BodyStore bucket", () => {
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["s3:GetObject", "s3:PutObject"]),
+            Effect: "Allow",
+          }),
+        ]),
       },
     });
   });
@@ -114,6 +154,12 @@ describe("ComputeStack", () => {
 
   test("outputs API URL", () => {
     template.hasOutput("ApiUrl", {
+      Value: Match.anyValue(),
+    });
+  });
+
+  test("outputs BodyStore bucket name", () => {
+    template.hasOutput("BodyStoreBucketName", {
       Value: Match.anyValue(),
     });
   });
