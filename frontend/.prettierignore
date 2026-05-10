@@ -3,3 +3,7 @@ out/
 build/
 coverage/
 node_modules/
+
+# Vendored from the active Go SDK by scripts/internal/build-wasm.sh.
+# Reformatting it would force-rewrite every time wasm rebuilds.
+public/wasm_exec.js
