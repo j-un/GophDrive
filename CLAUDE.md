@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, single Go Lambda behind API Gateway, notes stored in the user's own Google Drive, OAuth refresh tokens encrypted with KMS in DynamoDB.
+GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, single Go Lambda behind API Gateway, notes stored in DynamoDB (`FileStore` table). Google is used purely as an OIDC identity provider — no Drive scope, no stored OAuth refresh tokens.
 
 ## Mandatory Post-Change Checklist
 
@@ -12,7 +12,7 @@ GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, sing
 
 ## Common Commands
 
-Local dev runs natively on the host. Toolchain versions come from `.tool-versions` via [mise](https://mise.jdx.dev/). The only Docker piece is **DynamoDB Local** (everything else AWS — KMS / SSM / Lambda / API Gateway — is bypassed in `DEV_MODE=true` via `MockEncryptor` + `EnvResolver` + `cmd/server`). Process orchestration is [overmind](https://github.com/DarthSim/overmind) reading the root `Procfile`.
+Local dev runs natively on the host. Toolchain versions come from `.tool-versions` via [mise](https://mise.jdx.dev/). The only Docker piece is **DynamoDB Local** (SSM / Lambda / API Gateway are bypassed in `DEV_MODE=true` via `EnvResolver` + `cmd/server`). Process orchestration is [overmind](https://github.com/DarthSim/overmind) reading the root `Procfile`.
 
 Required CLIs on the host: `mise`, `overmind`, `docker`, `aws`.
 
@@ -59,27 +59,44 @@ The router strips a leading `/api` prefix because CloudFront proxies `/api/*` to
 
 ### Storage adapter pattern (load-bearing abstraction)
 
-`backend/internal/adapter/storage.go` defines `StorageAdapter` (file CRUD, folders, starred, recent, search). All handlers depend on the interface only. Two implementations:
+`backend/internal/adapter/storage.go` defines `StorageAdapter` (file CRUD, folders, starred, recent, search, export). All handlers depend on the interface only. The single implementation today is `adapter/dynamo/` — every user (demo and Google-authenticated) reads/writes the same `FileStore` table. Demo users are gated by a `demo-user-` prefix on `userID`: that prefix toggles a 60-minute DDB TTL and a 50-item cap; real users are uncapped and never expire.
 
-- `adapter/googledrive/` — real Google Drive API using OAuth tokens decrypted via KMS.
-- `adapter/memory/` — DynamoDB-backed (`FileStore` table) for demo users and for `DEV_MODE=true`.
+`StorageProvider.GetAdapter(ctx, userID, baseFolderID)` returns the per-user adapter. To add a backing store, implement `StorageAdapter` in a new package under `adapter/` and route through a provider.
 
-`StorageProvider.GetAdapter(ctx, userID)` returns the right adapter per request. In production `app.HybridProvider` routes user IDs prefixed with `demo-user-` to memory and everyone else to Google Drive. To add a backing store, implement `StorageAdapter` in a new package under `adapter/` and wire it through a provider.
+Body storage is split into two mutually-exclusive fields on each row (`content` inline vs `body_s3_key`) so a future spillover path for image/binary uploads can flip without re-versioning the schema. Today only the inline path is exercised; `routeBody` is the single decision point.
 
 ### Conflict / locking model — two layers
 
 1. **Pessimistic session lock** — `backend/internal/session` writes to DynamoDB `EditingSessions` (TTL via `expires_at`). Frontend calls `/sessions/{fileId}/lock` and `/sessions/{fileId}/heartbeat`.
 2. **Optimistic ETag** — `StorageAdapter.SaveFile` requires the prior ETag; mismatch surfaces as conflict and the frontend uses Wasm `checkConflict` to resolve.
 
-### Secrets, KMS, DynamoDB
+### Auth flow
+
+Google OIDC only (scopes: `openid email profile`). `Callback` exchanges the code, calls `auth.GoogleVerifier.Verify` against Google's JWKS, then auto-mints a per-user "GophDrive" root folder via `EnsureRootFolder`. The session is a self-issued JWT (HS256) carrying `sub`, `email`, `name`, `base_folder_id`, `exp` — no DB lookup needed on subsequent requests.
+
+`Refresh` re-signs at `SessionTTL` (24h) preserving claims, **except** for demo users (`sub` starts with `demo-user-`) — those return 401 to keep the demo flow's short-lived semantics. The frontend `apiFetch` 401-handler then clears the token cleanly.
+
+`DemoLogin` mints a `demo-user-<uuid>` JWT at `DemoSessionTTL` (1h), seeds a fresh root folder + welcome notes, and redirects with the token in the query string.
+
+For exercising the live OAuth path on localhost, see [`docs/local-google-oauth.md`](docs/local-google-oauth.md).
+
+### Secrets, DynamoDB, S3
 
 `internal/secret.Resolver` chooses between:
 
 - **Production** `SSMResolver` → SSM Parameter Store keys `/gophdrive/jwt-secret`, `/gophdrive/google-client-secret`, `/gophdrive/api-gateway-secret`. `deploy-aws.sh` auto-generates JWT and gateway secrets on first deploy.
-- **`DEV_MODE=true`** `EnvResolver` reads env vars directly (loaded by overmind from the root `.env`); KMS is replaced by `crypto.MockEncryptor`. No SSM, no LocalStack — DynamoDB Local is the only AWS surface.
+- **`DEV_MODE=true`** `EnvResolver` reads env vars directly (loaded by overmind from the root `.env`). DynamoDB Local is the only AWS surface; SSM and the other AWS services are bypassed.
 
-DynamoDB tables: `UserTokens` (encrypted refresh tokens, key=`user_id`), `EditingSessions` (key=`file_id`, TTL=`expires_at`), `FileStore` (memory-adapter persistence, key=`pk`).
+DynamoDB tables (2):
+- `EditingSessions` — key=`file_id`, TTL=`expires_at`. Pessimistic edit-session locks. Ephemeral; PITR off.
+- `FileStore` — key=`pk`. Notes and folders. **PITR enabled**, `RemovalPolicy.RETAIN`. Demo users have TTL=`ttl` populated (60 min); real users have `ttl` omitted entirely (`omitempty`).
+
+S3 bucket: `BodyStoreBucket` (provisioned in compute-stack, `RemovalPolicy.RETAIN`, SSE-S3, public access blocked). Reserved for the future S3 spillover read/write path; the current code only references its name via the `BODY_STORE_BUCKET` env var and never reads/writes objects.
 
 ### CDK stacks (`infra/lib/`)
 
-`security-stack` (KMS + IAM) → `database-stack` (3 DynamoDB tables) → `compute-stack` (Lambda + API Gateway) → `frontend-stack` (S3 + CloudFront with `X-Origin-Verify` origin policy and a CloudFront Function that appends `index.html` to directory paths for SPA fallback). `bin/infra.ts` wires them.
+`database-stack` (2 DynamoDB tables) → `compute-stack` (Lambda + API Gateway + BodyStore S3 bucket) → `frontend-stack` (S3 + CloudFront with `X-Origin-Verify` origin policy and a CloudFront Function that appends `index.html` to directory paths for SPA fallback). `bin/infra.ts` wires them.
+
+### Disaster recovery
+
+Phase 6 enabled DynamoDB PITR on `FileStore` (35-day any-second restore) and added `Export(ctx)` on `StorageAdapter` plus `/api/export` returning a ZIP of every note. Recovery procedures (PITR restore, cold-start from a ZIP) live in [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
