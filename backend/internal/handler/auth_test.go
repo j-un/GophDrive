@@ -259,6 +259,42 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 	}
 }
 
+// Demo sessions are deliberately ephemeral (1h JWT, 60min data TTL on DDB).
+// Refresh must refuse them so users can't accidentally extend a demo
+// session into an authenticated-but-empty state.
+func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	demoToken := signClaims(t, "test-secret", jwt.MapClaims{
+		"sub":            "demo-user-abc123",
+		"email":          "demo@gophdrive.local",
+		"base_folder_id": "demo-folder",
+		"exp":            time.Now().Add(-1 * time.Minute).Unix(),
+	})
+
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{"Authorization": "Bearer " + demoToken},
+	}
+	resp, err := h.Refresh(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Refresh error: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 for demo refresh", resp.StatusCode)
+	}
+	if !strings.Contains(strings.ToLower(resp.Body), "demo") {
+		t.Errorf("body = %q, want a message that mentions demo so frontend logs/UX is unambiguous", resp.Body)
+	}
+	// No Set-Cookie header on refusal — otherwise the browser's stored cookie
+	// (Max-Age=30d) would persist and make the failure look like a flake.
+	if cookies := resp.MultiValueHeaders["Set-Cookie"]; len(cookies) != 0 {
+		t.Errorf("rejection should not Set-Cookie, got %v", cookies)
+	}
+}
+
 func TestAuthHandler_Refresh_Unauthorized(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{},

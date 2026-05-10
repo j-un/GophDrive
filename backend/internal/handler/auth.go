@@ -66,6 +66,16 @@ func NewAuthHandler(deps AuthHandlerDeps) *AuthHandler {
 	return &AuthHandler{deps: deps}
 }
 
+// demoUserIDPrefix marks a session as belonging to the ephemeral demo flow
+// (DemoLogin mints user IDs as "demo-user-<uuid>"). Kept in sync with
+// adapter/dynamo's identical-but-private prefix; both halves change together
+// or the demo flow breaks visibly.
+const demoUserIDPrefix = "demo-user-"
+
+func isDemoUserID(id string) bool {
+	return strings.HasPrefix(id, demoUserIDPrefix)
+}
+
 // isEmailAllowed checks if the given email is allowed to login.
 // If allowedEmails is empty, all emails are allowed.
 func isEmailAllowed(email string, allowedEmails []string) bool {
@@ -205,6 +215,14 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 	sub, _ := mc["sub"].(string)
 	if sub == "" {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Missing subject in token"}, nil
+	}
+
+	// Demo sessions are intentionally short-lived (DemoSessionTTL, 1h) and
+	// their data has a 60-minute TTL on DynamoDB. Re-issuing here at
+	// SessionTTL (24h) would let the JWT outlive the data, leaving the user
+	// authenticated against an empty store. Force a fresh demo-login instead.
+	if isDemoUserID(sub) {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Demo sessions cannot be refreshed; please log in again"}, nil
 	}
 
 	sc := SessionClaims{UserID: sub}
