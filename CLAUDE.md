@@ -27,6 +27,8 @@ Required CLIs on the host: `mise`, `overmind`, `docker`, `aws`.
 
 `overmind connect <backend|frontend|wasm>` attaches to a single process for log inspection or restart (`Ctrl-c` inside, then `overmind restart <name>` from another shell).
 
+The default `.env` ships dummy Google OAuth credentials, so the live login flow is bypassed locally — Demo login (`/auth/demo-login`) covers most code paths. To exercise the real OAuth path (ID token verification, email allow-list, cookie round-trip), see [`docs/local-google-oauth.md`](docs/local-google-oauth.md).
+
 ### Single-test invocation
 
 ```bash
