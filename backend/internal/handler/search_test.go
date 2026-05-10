@@ -8,12 +8,12 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/jun/gophdrive/backend/internal/adapter"
-	"github.com/jun/gophdrive/backend/internal/adapter/memory"
+	"github.com/jun/gophdrive/backend/internal/adapter/dynamo"
 	"github.com/jun/gophdrive/backend/internal/handler"
 )
 
 func TestSearch_Success(t *testing.T) {
-	provider := memory.NewProvider(nil)
+	provider := dynamo.NewProvider(nil)
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -43,7 +43,7 @@ func TestSearch_Success(t *testing.T) {
 }
 
 func TestSearch_EmptyQuery(t *testing.T) {
-	searchH := handler.NewSearchHandler(memory.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
 	ctx := context.Background()
 
 	searchReq := makeRequest("GET", "/search", "")
@@ -58,7 +58,7 @@ func TestSearch_EmptyQuery(t *testing.T) {
 }
 
 func TestSearch_NoResults(t *testing.T) {
-	provider := memory.NewProvider(nil)
+	provider := dynamo.NewProvider(nil)
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -74,7 +74,7 @@ func TestSearch_NoResults(t *testing.T) {
 }
 
 func TestSearch_Unauthorized(t *testing.T) {
-	searchH := handler.NewSearchHandler(memory.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
 	ctx := context.Background()
 
 	req := events.APIGatewayProxyRequest{

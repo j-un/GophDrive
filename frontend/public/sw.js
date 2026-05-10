@@ -1,4 +1,4 @@
-const CACHE_NAME = "gophdrive-20260510-01";
+const CACHE_NAME = "gophdrive-20260510-02";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
