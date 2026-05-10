@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -46,6 +47,17 @@ func main() {
 			w.Header().Set(k, v)
 		}
 		w.WriteHeader(resp.StatusCode)
+		// Lambda + API Gateway encode binary bodies as base64. Decode here so
+		// dev mode delivers proper bytes to the browser (e.g. ZIP downloads).
+		if resp.IsBase64Encoded {
+			decoded, err := base64.StdEncoding.DecodeString(resp.Body)
+			if err != nil {
+				log.Printf("base64 decode failed: %v", err)
+				return
+			}
+			w.Write(decoded)
+			return
+		}
 		w.Write([]byte(resp.Body))
 	})
 

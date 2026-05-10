@@ -1338,6 +1338,112 @@ func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.File
 	return files, nil
 }
 
+// Export walks every note (and every folder above it) under the user's base
+// folder and returns one ExportEntry per note, with a POSIX path that mirrors
+// the in-app folder hierarchy. Notes whose body lives in S3 (BodyS3Key set)
+// are skipped — the spillover read path isn't wired yet, so quietly returning
+// empty content would be worse than omitting the note.
+func (m *Adapter) Export(ctx context.Context) ([]adapter.ExportEntry, error) {
+	if m.client == nil {
+		return m.exportMap(ctx)
+	}
+
+	items, err := m.scanUserItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return m.buildExport(items)
+}
+
+func (m *Adapter) exportMap(_ context.Context) ([]adapter.ExportEntry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	items := make([]FileItem, 0, len(m.files))
+	for _, f := range m.files {
+		items = append(items, FileItem{
+			ID:           f.ID,
+			Name:         f.Name,
+			MIMEType:     f.MIMEType,
+			ModifiedTime: f.ModifiedTime,
+			Parents:      f.Parents,
+			Content:      f.Content,
+		})
+	}
+	return m.buildExport(items)
+}
+
+// buildExport is the storage-agnostic core: given a flat list of items, build
+// folder-name and parent-id maps, then compose each note's relative path by
+// walking parents up to the base folder (or filesystem "root" pseudo-id).
+func (m *Adapter) buildExport(items []FileItem) ([]adapter.ExportEntry, error) {
+	folderName := make(map[string]string, len(items))
+	parentOf := make(map[string]string, len(items))
+	for _, it := range items {
+		if it.MIMEType == "application/vnd.google-apps.folder" {
+			folderName[it.ID] = it.Name
+		}
+		if len(it.Parents) > 0 {
+			parentOf[it.ID] = it.Parents[0]
+		}
+	}
+
+	stop := m.BaseFolderID
+	if stop == "" {
+		stop = "root"
+	}
+
+	var entries []adapter.ExportEntry
+	for _, it := range items {
+		if it.MIMEType == "application/vnd.google-apps.folder" {
+			continue
+		}
+		if !strings.HasSuffix(it.Name, mdExt) {
+			continue
+		}
+		if it.BodyS3Key != "" {
+			continue
+		}
+
+		segments := folderPathSegments(it.Parents, parentOf, folderName, stop)
+		segments = append(segments, fromStoredName(it.Name)+mdExt)
+		entries = append(entries, adapter.ExportEntry{
+			Path:         strings.Join(segments, "/"),
+			Content:      append([]byte(nil), it.Content...),
+			ModifiedTime: it.ModifiedTime,
+		})
+	}
+	return entries, nil
+}
+
+// folderPathSegments walks parent ids from the note's immediate parent up to
+// the stop sentinel, returning folder names in root→leaf order. Cycles are
+// defended against with a visited set so a corrupt parent chain can't hang
+// the export.
+func folderPathSegments(parents []string, parentOf map[string]string, folderName map[string]string, stop string) []string {
+	if len(parents) == 0 {
+		return nil
+	}
+	current := parents[0]
+	visited := map[string]bool{}
+	var rev []string
+	for current != "" && current != "root" && current != stop {
+		if visited[current] {
+			break
+		}
+		visited[current] = true
+		name, ok := folderName[current]
+		if !ok {
+			break
+		}
+		rev = append(rev, name)
+		current = parentOf[current]
+	}
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	return rev
+}
+
 func (m *Adapter) searchFilesMap(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {

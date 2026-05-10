@@ -24,6 +24,18 @@ type File struct {
 	Content []byte `json:"content"`
 }
 
+// ExportEntry is a single note flattened for archive packaging.
+//
+// Path is a POSIX-style path relative to the user's base folder
+// (e.g., "Folder/Sub/note.md"). Folders are not emitted as separate entries —
+// the archive writer infers them from path components. ModifiedTime feeds
+// the archive's per-entry mtime so round-trips through tar/zip preserve it.
+type ExportEntry struct {
+	Path         string
+	Content      []byte
+	ModifiedTime time.Time
+}
+
 // StorageAdapter defines the interface for interacting with cloud storage services.
 // This abstraction allows switching between different providers (e.g., Google Drive, OneDrive)
 // without changing the core business logic.
@@ -68,4 +80,10 @@ type StorageAdapter interface {
 
 	// SearchFiles searches for files matching the query.
 	SearchFiles(ctx context.Context, query string) ([]FileMetadata, error)
+
+	// Export returns every note owned by the caller, each annotated with
+	// the full folder path leading to it (rooted at the user's base folder).
+	// Folders are not returned as separate entries; they are implied by the
+	// path components on each note.
+	Export(ctx context.Context) ([]ExportEntry, error)
 }
