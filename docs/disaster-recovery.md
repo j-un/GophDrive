@@ -24,7 +24,7 @@ you've exported it as `$T`. Get it from the deployed stack:
 
 ```bash
 T=$(aws cloudformation describe-stacks \
-  --stack-name DatabaseStack \
+  --stack-name GophDriveDatabaseStack \
   --query "Stacks[0].Outputs[?OutputKey=='FileStoreTableName'].OutputValue" \
   --output text)
 echo "$T"
@@ -40,7 +40,7 @@ aws dynamodb describe-continuous-backups \
   --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus'
 ```
 
-Expected: `"ENABLED"`. If it returns `"DISABLED"`, redeploy DatabaseStack
+Expected: `"ENABLED"`. If it returns `"DISABLED"`, redeploy GophDriveDatabaseStack
 or run:
 
 ```bash

@@ -1,6 +1,6 @@
 # Local development now runs natively on the host (see Procfile + scripts/setup.sh).
-# The only piece left in Docker is DynamoDB Local — KMS / SSM / Lambda / API Gateway
-# are bypassed in DEV_MODE (MockEncryptor + EnvResolver, backend served via cmd/server).
+# The only piece left in Docker is DynamoDB Local — SSM / Lambda / API Gateway
+# are bypassed in DEV_MODE (EnvResolver + cmd/server HTTP wrapper).
 services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
