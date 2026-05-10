@@ -62,6 +62,22 @@ describe("DatabaseStack", () => {
     });
   });
 
+  test("FileStore has point-in-time recovery enabled", () => {
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      KeySchema: [{ AttributeName: "pk", KeyType: "HASH" }],
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true,
+      },
+    });
+  });
+
+  test("EditingSessions does not enable PITR (ephemeral lock state)", () => {
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      KeySchema: [{ AttributeName: "file_id", KeyType: "HASH" }],
+      PointInTimeRecoverySpecification: Match.absent(),
+    });
+  });
+
   test("creates exactly 2 DynamoDB tables", () => {
     template.resourceCountIs("AWS::DynamoDB::Table", 2);
   });
