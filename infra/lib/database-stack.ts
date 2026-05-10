@@ -46,6 +46,11 @@ export class DatabaseStack extends cdk.Stack {
     // PK: pk (string) — corresponds to the file/folder ID.
     // Attributes: user_id, ttl (only set for demo users)
     // ==========================================================================
+    // Point-in-time recovery gives 35 days of any-second restores. At our
+    // data volume (a single user, text-only notes) the cost is negligible
+    // and it's the cheapest insurance against an accidental delete or a
+    // bad migration. EditingSessions is intentionally excluded — it's
+    // ephemeral lock state, repopulated by clients within seconds.
     this.fileStoreTable = new dynamodb.Table(this, "FileStoreTable", {
       partitionKey: {
         name: "pk",
@@ -54,6 +59,9 @@ export class DatabaseStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl",
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
     });
 
     // ==========================================================================
