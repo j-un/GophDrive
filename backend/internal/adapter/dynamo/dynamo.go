@@ -115,6 +115,54 @@ func (m *Adapter) userScanInput() *dynamodb.ScanInput {
 	}
 }
 
+// inlineSizeLimit caps how large a body can be before storage must spill to
+// S3. Set well below DynamoDB's 400KB single-item limit to leave room for
+// metadata and JSON encoding overhead.
+//
+// Today every body comes through under this limit (text-only, capped further
+// by maxContentSize at the API layer). The constant exists so the spillover
+// branch in routeBody is reachable as soon as a future feature lifts the
+// API-level cap to allow non-text content.
+const inlineSizeLimit = 300 * 1024
+
+// routeBody decides whether a body lives inline (DDB) or in S3.
+//
+// Phase 3 implements only the inline path. The S3 spillover path is
+// reserved: when a future feature enables image/file uploads, this is the
+// single place that learns to upload to S3 and return a non-empty key.
+// Until then, oversized bodies surface ErrPayloadTooLarge so a regression
+// that lifts the API cap fails loudly instead of silently corrupting items.
+func (m *Adapter) routeBody(_ context.Context, content []byte) (inline []byte, s3Key string, err error) {
+	if len(content) > inlineSizeLimit {
+		return nil, "", adapter.ErrPayloadTooLarge
+	}
+	return content, "", nil
+}
+
+// getFileItem reads the raw persisted FileItem (vs the adapter.File facade
+// returned by GetFile). Used by metadata-only writers (rename, star) so they
+// can preserve every attribute — including BodyS3Key once spillover lands —
+// without re-implementing knowledge of the schema.
+func (m *Adapter) getFileItem(ctx context.Context, fileID string) (*FileItem, error) {
+	out, err := m.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: getTableName(),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: fileID},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if out.Item == nil {
+		return nil, adapter.ErrNotFound
+	}
+	var item FileItem
+	if err := attributevalue.UnmarshalMap(out.Item, &item); err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 // scanUserItems returns every FileItem owned by the adapter's user, walking
 // every page of a DynamoDB scan. Without this, a single Scan caps at 1MB and
 // missing data goes silently undetected — see scan.go for details.
@@ -130,6 +178,17 @@ func (m *Adapter) scanUserItems(ctx context.Context) ([]FileItem, error) {
 	return items, nil
 }
 
+// FileItem is the persisted shape of a note or folder in DynamoDB.
+//
+// Body storage is split between two mutually-exclusive fields so the storage
+// strategy can flip without re-versioning the schema:
+//
+//   - Content holds small bodies inline, capped by inlineSizeLimit. This is
+//     the only path used today (text-only notes well under the limit).
+//   - BodyS3Key points to an S3 object holding the body. Reserved for the
+//     future spillover path; never written by the current code.
+//
+// Exactly one of the two should be set on a given row.
 type FileItem struct {
 	PK           string    `dynamodbav:"pk"`
 	UserID       string    `dynamodbav:"user_id"`
@@ -141,7 +200,8 @@ type FileItem struct {
 	ETag         string    `dynamodbav:"etag"`
 	Parents      []string  `dynamodbav:"parents"`
 	Starred      bool      `dynamodbav:"starred"`
-	Content      []byte    `dynamodbav:"content"`
+	Content      []byte    `dynamodbav:"content,omitempty"`
+	BodyS3Key    string    `dynamodbav:"body_s3_key,omitempty"`
 	TTL          int64     `dynamodbav:"ttl,omitempty"`
 }
 
@@ -236,6 +296,13 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 		return nil, err
 	}
 
+	// Defensive: a non-empty BodyS3Key means this row was written by a
+	// future-Phase spillover path that the read side hasn't learned to fetch.
+	// Surfacing this loudly avoids returning silently-empty Content.
+	if item.BodyS3Key != "" {
+		return nil, adapter.ErrPayloadTooLarge
+	}
+
 	return &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           item.ID,
@@ -270,7 +337,12 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return nil, adapter.ErrPreconditionFailed
 	}
 
-	f.Content = content
+	inline, s3Key, err := m.routeBody(ctx, content)
+	if err != nil {
+		return nil, err
+	}
+
+	f.Content = inline
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
@@ -285,7 +357,8 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
-		Content:      f.Content,
+		Content:      inline,
+		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
 	}
 
@@ -332,6 +405,11 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		return m.createFileMap(ctx, name, content, targetFolderID)
 	}
 
+	inline, s3Key, err := m.routeBody(ctx, content)
+	if err != nil {
+		return nil, err
+	}
+
 	id := uuid.New().String()
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
@@ -343,7 +421,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 			ETag:         uuid.New().String(),
 			Parents:      []string{targetFolderID},
 		},
-		Content: content,
+		Content: inline,
 	}
 
 	item := FileItem{
@@ -356,7 +434,8 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
-		Content:      f.Content,
+		Content:      inline,
+		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
 	}
 
@@ -561,46 +640,38 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		return m.duplicateFileMap(ctx, fileID)
 	}
 
-	// 1. Get original
-	orig, err := m.GetFile(ctx, fileID)
+	// Read the raw FileItem so spillover-mode rows (BodyS3Key set) wouldn't
+	// be silently truncated to an empty body on copy. Phase 3 doesn't write
+	// such rows, but the helper means a future "duplicate also copies the
+	// S3 object" implementation has only one place to extend.
+	orig, err := m.getFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
-
-	// 2. Create copy
-	newName := "Copy of " + orig.Name
-	newID := uuid.New().String()
-	now := time.Now()
-
-	f := &adapter.File{
-		FileMetadata: adapter.FileMetadata{
-			ID:           newID,
-			Name:         newName, // stripped name
-			MIMEType:     orig.MIMEType,
-			ModifiedTime: now,
-			Size:         orig.Size,
-			ETag:         uuid.New().String(),
-			Parents:      orig.Parents,
-		},
-		Content: orig.Content, // Shallow copy of content slice is fine for now as we don't modify it in place usually
+	if orig.BodyS3Key != "" {
+		// Spillover not wired yet; refuse to duplicate a row we couldn't
+		// faithfully copy. Phase 3 never produces such rows.
+		return nil, adapter.ErrPayloadTooLarge
 	}
 
-	// Deep copy content if needed, but []byte is standard
-	newContent := make([]byte, len(orig.Content))
-	copy(newContent, orig.Content)
-	f.Content = newContent
+	newID := uuid.New().String()
+	newName := toStoredName("Copy of " + fromStoredName(orig.Name))
+	now := time.Now()
+
+	// Deep-copy the inline body so the new row never shares backing memory.
+	dupContent := append([]byte(nil), orig.Content...)
 
 	item := FileItem{
-		PK:           f.ID,
+		PK:           newID,
 		UserID:       m.userID,
-		ID:           f.ID,
-		Name:         toStoredName(f.Name),
-		MIMEType:     f.MIMEType,
-		ModifiedTime: f.ModifiedTime,
-		Size:         f.Size,
-		ETag:         f.ETag,
-		Parents:      f.Parents,
-		Content:      f.Content,
+		ID:           newID,
+		Name:         newName,
+		MIMEType:     orig.MIMEType,
+		ModifiedTime: now,
+		Size:         orig.Size,
+		ETag:         uuid.New().String(),
+		Parents:      orig.Parents,
+		Content:      dupContent,
 		TTL:          m.itemTTL(),
 	}
 
@@ -617,9 +688,16 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		return nil, err
 	}
 
-	meta := f.FileMetadata
-	meta.Name = fromStoredName(meta.Name)
-	return &meta, nil
+	return &adapter.FileMetadata{
+		ID:           item.ID,
+		Name:         fromStoredName(item.Name),
+		MIMEType:     item.MIMEType,
+		ModifiedTime: item.ModifiedTime,
+		Size:         item.Size,
+		ETag:         item.ETag,
+		Parents:      item.Parents,
+		Starred:      item.Starred,
+	}, nil
 }
 
 // --- Map Implementations (Fallback) ---
@@ -838,36 +916,22 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return m.renameFileMap(ctx, fileID, newName)
 	}
 
-	// 1. Get original to check existence and current state
-	orig, err := m.GetFile(ctx, fileID)
+	// Read the raw row so we re-PUT every attribute, including any
+	// future-Phase BodyS3Key, instead of going through GetFile (which
+	// strips spillover state).
+	item, err := m.getFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Update Name
-	name := newName
-	if orig.MIMEType != "application/vnd.google-apps.folder" {
-		name = toStoredName(newName)
+	storedName := newName
+	if item.MIMEType != "application/vnd.google-apps.folder" {
+		storedName = toStoredName(newName)
 	}
-	orig.Name = name
-	orig.ModifiedTime = time.Now()
-	// ETag should probably change on rename? Yes.
-	orig.ETag = uuid.New().String()
-
-	item := FileItem{
-		PK:           orig.ID,
-		UserID:       m.userID,
-		ID:           orig.ID,
-		Name:         orig.Name,
-		MIMEType:     orig.MIMEType,
-		ModifiedTime: orig.ModifiedTime,
-		Size:         orig.Size,
-		ETag:         orig.ETag,
-		Parents:      orig.Parents,
-		Starred:      orig.Starred,
-		Content:      orig.Content,
-		TTL:          m.itemTTL(),
-	}
+	item.Name = storedName
+	item.ModifiedTime = time.Now()
+	item.ETag = uuid.New().String()
+	item.TTL = m.itemTTL()
 
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
@@ -882,7 +946,16 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return nil, err
 	}
 
-	return &orig.FileMetadata, nil
+	return &adapter.FileMetadata{
+		ID:           item.ID,
+		Name:         fromStoredName(item.Name),
+		MIMEType:     item.MIMEType,
+		ModifiedTime: item.ModifiedTime,
+		Size:         item.Size,
+		ETag:         item.ETag,
+		Parents:      item.Parents,
+		Starred:      item.Starred,
+	}, nil
 }
 
 func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
@@ -890,31 +963,16 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		return m.setStarredMap(ctx, fileID, starred)
 	}
 
-	// 1. Get original
-	orig, err := m.GetFile(ctx, fileID)
+	// See RenameFile for why this reads the raw FileItem rather than GetFile.
+	item, err := m.getFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Update Starred
-	orig.Starred = starred
-	orig.ModifiedTime = time.Now()
-	orig.ETag = uuid.New().String()
-
-	item := FileItem{
-		PK:           orig.ID,
-		UserID:       m.userID,
-		ID:           orig.ID,
-		Name:         orig.Name,
-		MIMEType:     orig.MIMEType,
-		ModifiedTime: orig.ModifiedTime,
-		Size:         orig.Size,
-		ETag:         orig.ETag,
-		Parents:      orig.Parents,
-		Starred:      orig.Starred,
-		Content:      orig.Content,
-		TTL:          m.itemTTL(),
-	}
+	item.Starred = starred
+	item.ModifiedTime = time.Now()
+	item.ETag = uuid.New().String()
+	item.TTL = m.itemTTL()
 
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
@@ -929,7 +987,16 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		return nil, err
 	}
 
-	return &orig.FileMetadata, nil
+	return &adapter.FileMetadata{
+		ID:           item.ID,
+		Name:         fromStoredName(item.Name),
+		MIMEType:     item.MIMEType,
+		ModifiedTime: item.ModifiedTime,
+		Size:         item.Size,
+		ETag:         item.ETag,
+		Parents:      item.Parents,
+		Starred:      item.Starred,
+	}, nil
 }
 
 func (m *Adapter) setStarredMap(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {

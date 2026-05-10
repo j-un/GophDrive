@@ -4,6 +4,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import * as path from "path";
 import { execSync } from "child_process";
 
@@ -14,9 +15,28 @@ interface ComputeStackProps extends cdk.StackProps {
 
 export class ComputeStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
+  public readonly bodyStoreBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: ComputeStackProps) {
     super(scope, id, props);
+
+    // ==========================================================================
+    // BodyStore S3 Bucket
+    // --------------------------------------------------------------------------
+    // Reserved for the future spillover path: bodies that exceed the
+    // DynamoDB inline budget will be uploaded here and FileStore items will
+    // hold an `body_s3_key` pointer instead of inline content. The bucket
+    // is provisioned now so the migration to that mode is just a code change.
+    //
+    // RETAIN policy because the data, once written, is the user's notes.
+    // ==========================================================================
+    this.bodyStoreBucket = new s3.Bucket(this, "BodyStoreBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
 
     // Lambda Function
     const backendFunction = new lambda.Function(this, "BackendFunction", {
@@ -52,6 +72,7 @@ export class ComputeStack extends cdk.Stack {
       environment: {
         EDITING_SESSIONS_TABLE: props.editingSessionsTable.tableName,
         FILE_STORE_TABLE: props.fileStoreTable.tableName,
+        BODY_STORE_BUCKET: this.bodyStoreBucket.bucketName,
         GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
         GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
         JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
@@ -67,6 +88,7 @@ export class ComputeStack extends cdk.Stack {
     // Grant Permissions
     props.editingSessionsTable.grantReadWriteData(backendFunction);
     props.fileStoreTable.grantReadWriteData(backendFunction);
+    this.bodyStoreBucket.grantReadWrite(backendFunction);
 
     // Grant SSM Parameter Store read access for secrets
     backendFunction.addToRolePolicy(
@@ -99,6 +121,11 @@ export class ComputeStack extends cdk.Stack {
     new cdk.CfnOutput(this, "ApiUrl", {
       value: this.api.url,
       description: "API Gateway URL",
+    });
+
+    new cdk.CfnOutput(this, "BodyStoreBucketName", {
+      value: this.bodyStoreBucket.bucketName,
+      description: "S3 bucket reserved for spillover note bodies",
     });
   }
 }
