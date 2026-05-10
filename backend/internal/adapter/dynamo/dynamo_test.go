@@ -1,4 +1,4 @@
-package memory
+package dynamo
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
 
-func TestMemoryAdapter_CreateAndListFiles(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_CreateAndListFiles(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	// Create a file in root
@@ -36,8 +36,8 @@ func TestMemoryAdapter_CreateAndListFiles(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_GetFile_NotFound(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_GetFile_NotFound(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	_, err := m.GetFile(ctx, "nonexistent-id")
@@ -46,8 +46,8 @@ func TestMemoryAdapter_GetFile_NotFound(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_SaveFile_ETagMatch(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_SaveFile_ETagMatch(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
@@ -69,8 +69,8 @@ func TestMemoryAdapter_SaveFile_ETagMatch(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_SaveFile_ETagMismatch(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_SaveFile_ETagMismatch(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
@@ -81,8 +81,8 @@ func TestMemoryAdapter_SaveFile_ETagMismatch(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_CreateFolder(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_CreateFolder(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	folder, err := m.CreateFolder(ctx, "MyFolder", []string{"root"})
@@ -97,8 +97,8 @@ func TestMemoryAdapter_CreateFolder(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_EnsureRootFolder_Idempotent(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_EnsureRootFolder_Idempotent(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	id1, err := m.EnsureRootFolder(ctx, "GophDrive")
@@ -116,8 +116,8 @@ func TestMemoryAdapter_EnsureRootFolder_Idempotent(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_DuplicateFile(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_DuplicateFile(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	orig, _ := m.CreateFile(ctx, "orig.md", []byte("content"), "root")
@@ -140,8 +140,8 @@ func TestMemoryAdapter_DuplicateFile(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_RenameFile(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_RenameFile(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	// Test renaming a file
@@ -170,8 +170,8 @@ func TestMemoryAdapter_RenameFile(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_SetStarred(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_SetStarred(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
@@ -195,8 +195,8 @@ func TestMemoryAdapter_SetStarred(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_ListStarred(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_ListStarred(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	f1, _ := m.CreateFile(ctx, "starred.md", []byte("a"), "root")
@@ -215,8 +215,8 @@ func TestMemoryAdapter_ListStarred(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_SearchFiles(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_SearchFiles(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "hello-world.md", []byte("greeting"), "root")
@@ -239,28 +239,9 @@ func TestMemoryAdapter_SearchFiles(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_ListRootFolders(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
-	ctx := context.Background()
-
-	m.CreateFolder(ctx, "RootFolder", []string{"root"})
-	m.CreateFile(ctx, "rootfile.md", []byte("data"), "root")
-
-	folders, err := m.ListRootFolders(ctx)
-	if err != nil {
-		t.Fatalf("ListRootFolders failed: %v", err)
-	}
-	if len(folders) != 1 {
-		t.Fatalf("Expected 1 root folder, got %d", len(folders))
-	}
-	if folders[0].Name != "RootFolder" {
-		t.Errorf("Expected folder name 'RootFolder', got '%s'", folders[0].Name)
-	}
-}
-
-func TestMemoryAdapter_DeleteFile_Recursive(t *testing.T) {
+func TestAdapter_DeleteFile_Recursive(t *testing.T) {
 	// Setup in-memory adapter
-	m := NewMemoryAdapter(nil, "user1", "")
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	// 1. Create Parent Folder
@@ -306,8 +287,8 @@ func TestMemoryAdapter_DeleteFile_Recursive(t *testing.T) {
 	}
 }
 
-func TestMemoryAdapter_ListRecent(t *testing.T) {
-	m := NewMemoryAdapter(nil, "user1", "")
+func TestAdapter_ListRecent(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
 	ctx := context.Background()
 
 	// Create files with different modified times (simulated by sequence)

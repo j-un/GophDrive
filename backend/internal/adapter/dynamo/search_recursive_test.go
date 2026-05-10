@@ -1,22 +1,22 @@
-package memory
+package dynamo
 
 import (
 	"context"
 	"testing"
 )
 
-func TestMemoryAdapter_SearchFiles_Recursive(t *testing.T) {
+func TestAdapter_SearchFiles_Recursive(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Create Base Folder
-	m_root := NewMemoryAdapter(nil, "user1", "")
+	m_root := NewAdapter(nil, "user1", "")
 	baseFolder, err := m_root.CreateFolder(ctx, "BaseFolder", []string{"root"})
 	if err != nil {
 		t.Fatalf("CreateFolder failed: %v", err)
 	}
 
 	// 2. Setup Adapter with BaseFolderID
-	m := NewMemoryAdapter(nil, "user1", baseFolder.ID)
+	m := NewAdapter(nil, "user1", baseFolder.ID)
 
 	// 3. Create Subfolder inside BaseFolder
 	subFolder, err := m.CreateFolder(ctx, "SubFolder", []string{baseFolder.ID})

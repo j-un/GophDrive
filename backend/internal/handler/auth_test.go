@@ -13,7 +13,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jun/gophdrive/backend/internal/adapter/memory"
+	"github.com/jun/gophdrive/backend/internal/adapter/dynamo"
 	"github.com/jun/gophdrive/backend/internal/auth"
 	"github.com/jun/gophdrive/backend/internal/handler"
 	"golang.org/x/oauth2"
@@ -56,7 +56,7 @@ func newAuthHandler(t *testing.T, deps handler.AuthHandlerDeps) *handler.AuthHan
 		deps.JWTSecret = "test-secret"
 	}
 	if deps.StorageProvider == nil {
-		deps.StorageProvider = memory.NewProvider(nil)
+		deps.StorageProvider = dynamo.NewProvider(nil)
 	}
 	if deps.FrontendURL == "" {
 		deps.FrontendURL = "http://test"
@@ -326,7 +326,7 @@ func TestAuthHandler_GetUser_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
-	provider := memory.NewProvider(nil)
+	provider := dynamo.NewProvider(nil)
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger:       &fakeExchanger{},
 		Verifier:        &fakeVerifier{},

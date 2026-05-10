@@ -15,7 +15,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/jun/gophdrive/backend/internal/adapter/memory"
+	"github.com/jun/gophdrive/backend/internal/adapter/dynamo"
 	"github.com/jun/gophdrive/backend/internal/auth"
 	"github.com/jun/gophdrive/backend/internal/handler"
 	"github.com/jun/gophdrive/backend/internal/secret"
@@ -110,7 +110,7 @@ func NewApp(ctx context.Context) *App {
 
 	verifier := auth.NewGoogleVerifier(googleClientID)
 
-	storageProvider := memory.NewProvider(dynamoClient)
+	storageProvider := dynamo.NewProvider(dynamoClient)
 
 	var allowedEmails []string
 	if raw := os.Getenv("ALLOWED_EMAILS"); raw != "" {

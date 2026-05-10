@@ -45,9 +45,6 @@ type StorageAdapter interface {
 	// CreateFolder creates a new folder.
 	CreateFolder(ctx context.Context, name string, parents []string) (*FileMetadata, error)
 
-	// ListRootFolders lists folders that are direct children of 'root', used for setup.
-	ListRootFolders(ctx context.Context) ([]FileMetadata, error)
-
 	// EnsureRootFolder ensures a root folder exists and returns its ID.
 	EnsureRootFolder(ctx context.Context, name string) (string, error)
 

@@ -1,4 +1,4 @@
-package memory
+package dynamo
 
 import (
 	"context"
@@ -18,16 +18,16 @@ import (
 
 const mdExt = ".md"
 
-// toMemoryName appends .md extension for storage.
-func toMemoryName(name string) string {
+// toStoredName appends .md extension for storage.
+func toStoredName(name string) string {
 	if strings.HasSuffix(name, mdExt) {
 		return name
 	}
 	return name + mdExt
 }
 
-// fromMemoryName strips .md extension when returning names to the API.
-func fromMemoryName(name string) string {
+// fromStoredName strips .md extension when returning names to the API.
+func fromStoredName(name string) string {
 	return strings.TrimSuffix(name, mdExt)
 }
 
@@ -39,10 +39,10 @@ func getTableName() *string {
 	return aws.String(name)
 }
 
-// MemoryAdapter implements adapter.StorageAdapter.
+// Adapter implements adapter.StorageAdapter.
 // If client is nil, it uses in-memory map (for tests).
 // If client is set, it uses DynamoDB (for dev mode persistence).
-type MemoryAdapter struct {
+type Adapter struct {
 	client *dynamodb.Client
 	userID string
 
@@ -66,14 +66,14 @@ const (
 )
 
 // isDemoUser reports whether ephemeral demo-user limits/TTL apply.
-func (m *MemoryAdapter) isDemoUser() bool {
+func (m *Adapter) isDemoUser() bool {
 	return strings.HasPrefix(m.userID, demoUserPrefix)
 }
 
 // itemTTL returns the DynamoDB TTL for a newly-written item. Demo users get
 // a 60-minute expiry so their data auto-cleans; real users get 0 (omitted by
 // omitempty), meaning the item never expires.
-func (m *MemoryAdapter) itemTTL() int64 {
+func (m *Adapter) itemTTL() int64 {
 	if !m.isDemoUser() {
 		return 0
 	}
@@ -82,7 +82,7 @@ func (m *MemoryAdapter) itemTTL() int64 {
 
 // checkItemLimit enforces the demo-user item count cap. Real users are
 // uncapped at this layer.
-func (m *MemoryAdapter) checkItemLimit(ctx context.Context) error {
+func (m *Adapter) checkItemLimit(ctx context.Context) error {
 	if !m.isDemoUser() {
 		return nil
 	}
@@ -93,26 +93,41 @@ func (m *MemoryAdapter) checkItemLimit(ctx context.Context) error {
 	return nil
 }
 
-func (m *MemoryAdapter) countUserItems(ctx context.Context) (int, error) {
+func (m *Adapter) countUserItems(ctx context.Context) (int, error) {
 	if m.client == nil {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
 		return len(m.files), nil
 	}
+	return countAllPages(ctx, m.client, m.userScanInput())
+}
 
-	// Scan to count (inefficient for prod, but acceptable for demo/dev mode limit enforcement)
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
+// userScanInput returns the canonical ScanInput used by every per-user scan.
+// Concentrating it here means new callers can't accidentally drop the
+// user_id filter, and pagination is handled uniformly via scanAllPages.
+func (m *Adapter) userScanInput() *dynamodb.ScanInput {
+	return &dynamodb.ScanInput{
 		TableName:        getTableName(),
 		FilterExpression: aws.String("user_id = :uid"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":uid": &types.AttributeValueMemberS{Value: m.userID},
 		},
-		Select: types.SelectCount,
-	})
-	if err != nil {
-		return 0, err
 	}
-	return int(out.Count), nil
+}
+
+// scanUserItems returns every FileItem owned by the adapter's user, walking
+// every page of a DynamoDB scan. Without this, a single Scan caps at 1MB and
+// missing data goes silently undetected — see scan.go for details.
+func (m *Adapter) scanUserItems(ctx context.Context) ([]FileItem, error) {
+	raw, _, err := scanAllPages(ctx, m.client, m.userScanInput())
+	if err != nil {
+		return nil, err
+	}
+	var items []FileItem
+	if err := attributevalue.UnmarshalListOfMaps(raw, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 type FileItem struct {
@@ -130,8 +145,8 @@ type FileItem struct {
 	TTL          int64     `dynamodbav:"ttl,omitempty"`
 }
 
-func NewMemoryAdapter(client *dynamodb.Client, userID string, baseFolderID string) *MemoryAdapter {
-	return &MemoryAdapter{
+func NewAdapter(client *dynamodb.Client, userID string, baseFolderID string) *Adapter {
+	return &Adapter{
 		client:       client,
 		userID:       userID,
 		files:        make(map[string]*adapter.File),
@@ -139,7 +154,7 @@ func NewMemoryAdapter(client *dynamodb.Client, userID string, baseFolderID strin
 	}
 }
 
-func (m *MemoryAdapter) ListFiles(ctx context.Context, folderID string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.FileMetadata, error) {
 	targetFolderID := folderID
 	if targetFolderID == "" {
 		if m.BaseFolderID != "" {
@@ -153,24 +168,12 @@ func (m *MemoryAdapter) ListFiles(ctx context.Context, folderID string) ([]adapt
 		return m.listFilesMap(ctx, targetFolderID)
 	}
 
-	// Scan and filter (inefficient but fine for dev)
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
+	items, err := m.scanUserItems(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	var files []adapter.FileMetadata
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
-		return nil, err
-	}
-
 	for _, item := range items {
 		if item.MIMEType != "application/vnd.google-apps.folder" && !strings.HasSuffix(item.Name, ".md") {
 			continue
@@ -193,7 +196,7 @@ func (m *MemoryAdapter) ListFiles(ctx context.Context, folderID string) ([]adapt
 		if isChild {
 			name := item.Name
 			if item.MIMEType != "application/vnd.google-apps.folder" {
-				name = fromMemoryName(name)
+				name = fromStoredName(name)
 			}
 			files = append(files, adapter.FileMetadata{
 				ID:           item.ID,
@@ -210,7 +213,7 @@ func (m *MemoryAdapter) ListFiles(ctx context.Context, folderID string) ([]adapt
 	return files, nil
 }
 
-func (m *MemoryAdapter) GetFile(ctx context.Context, fileID string) (*adapter.File, error) {
+func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, error) {
 	if m.client == nil {
 		return m.getFileMap(ctx, fileID)
 	}
@@ -236,7 +239,7 @@ func (m *MemoryAdapter) GetFile(ctx context.Context, fileID string) (*adapter.Fi
 	return &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           item.ID,
-			Name:         fromMemoryName(item.Name),
+			Name:         fromStoredName(item.Name),
 			MIMEType:     item.MIMEType,
 			ModifiedTime: item.ModifiedTime,
 			Size:         item.Size,
@@ -248,7 +251,7 @@ func (m *MemoryAdapter) GetFile(ctx context.Context, fileID string) (*adapter.Fi
 	}, nil
 }
 
-func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
+func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
 	if len(content) > maxContentSize {
 		return nil, fmt.Errorf("content too large (max %d bytes)", maxContentSize)
 	}
@@ -276,7 +279,7 @@ func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []b
 		PK:           f.ID,
 		UserID:       m.userID,
 		ID:           f.ID,
-		Name:         toMemoryName(f.Name),
+		Name:         toStoredName(f.Name),
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
 		Size:         f.Size,
@@ -300,11 +303,11 @@ func (m *MemoryAdapter) SaveFile(ctx context.Context, fileID string, content []b
 	}
 
 	meta := f.FileMetadata
-	meta.Name = fromMemoryName(meta.Name)
+	meta.Name = fromStoredName(meta.Name)
 	return &meta, nil
 }
 
-func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
+func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
 	if len(name) > maxTitleLength {
 		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
@@ -333,7 +336,7 @@ func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []b
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
-			Name:         toMemoryName(name),
+			Name:         toStoredName(name),
 			MIMEType:     "text/markdown",
 			ModifiedTime: time.Now(),
 			Size:         int64(len(content)),
@@ -347,7 +350,7 @@ func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []b
 		PK:           f.ID,
 		UserID:       m.userID,
 		ID:           f.ID,
-		Name:         toMemoryName(f.Name),
+		Name:         toStoredName(f.Name),
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
 		Size:         f.Size,
@@ -371,11 +374,11 @@ func (m *MemoryAdapter) CreateFile(ctx context.Context, name string, content []b
 	}
 
 	meta := f.FileMetadata
-	meta.Name = fromMemoryName(meta.Name)
+	meta.Name = fromStoredName(meta.Name)
 	return &meta, nil
 }
 
-func (m *MemoryAdapter) CreateFolder(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
+func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
 	if len(name) > maxTitleLength {
 		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
@@ -444,7 +447,7 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-func (m *MemoryAdapter) EnsureRootFolder(ctx context.Context, name string) (string, error) {
+func (m *Adapter) EnsureRootFolder(ctx context.Context, name string) (string, error) {
 	if m.client == nil {
 		return m.ensureRootFolderMap(ctx, name)
 	}
@@ -466,7 +469,7 @@ func (m *MemoryAdapter) EnsureRootFolder(ctx context.Context, name string) (stri
 	return m.createRootFolder(ctx, name)
 }
 
-func (m *MemoryAdapter) createRootFolder(ctx context.Context, name string) (string, error) {
+func (m *Adapter) createRootFolder(ctx context.Context, name string) (string, error) {
 	id := uuid.New().String()
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
@@ -509,26 +512,14 @@ func (m *MemoryAdapter) createRootFolder(ctx context.Context, name string) (stri
 	return id, nil
 }
 
-func (m *MemoryAdapter) DeleteFile(ctx context.Context, fileID string) error {
+func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
 	if m.client == nil {
 		return m.deleteFileMap(ctx, fileID)
 	}
 
-	// 1. Find children (Recursive delete)
-	// Scan and filter (inefficient but fine for dev)
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
+	// Find children for recursive delete.
+	items, err := m.scanUserItems(ctx)
 	if err != nil {
-		return err
-	}
-
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
 		return err
 	}
 
@@ -561,7 +552,7 @@ func (m *MemoryAdapter) DeleteFile(ctx context.Context, fileID string) error {
 	return nil
 }
 
-func (m *MemoryAdapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
+func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
 	if err := m.checkItemLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -603,7 +594,7 @@ func (m *MemoryAdapter) DuplicateFile(ctx context.Context, fileID string) (*adap
 		PK:           f.ID,
 		UserID:       m.userID,
 		ID:           f.ID,
-		Name:         toMemoryName(f.Name),
+		Name:         toStoredName(f.Name),
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
 		Size:         f.Size,
@@ -627,13 +618,13 @@ func (m *MemoryAdapter) DuplicateFile(ctx context.Context, fileID string) (*adap
 	}
 
 	meta := f.FileMetadata
-	meta.Name = fromMemoryName(meta.Name)
+	meta.Name = fromStoredName(meta.Name)
 	return &meta, nil
 }
 
 // --- Map Implementations (Fallback) ---
 
-func (m *MemoryAdapter) listFilesMap(ctx context.Context, folderID string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) listFilesMap(ctx context.Context, folderID string) ([]adapter.FileMetadata, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -652,7 +643,7 @@ func (m *MemoryAdapter) listFilesMap(ctx context.Context, folderID string) ([]ad
 		if isChild {
 			meta := f.FileMetadata
 			if meta.MIMEType != "application/vnd.google-apps.folder" {
-				meta.Name = fromMemoryName(meta.Name)
+				meta.Name = fromStoredName(meta.Name)
 			}
 			files = append(files, meta)
 		}
@@ -660,7 +651,7 @@ func (m *MemoryAdapter) listFilesMap(ctx context.Context, folderID string) ([]ad
 	return files, nil
 }
 
-func (m *MemoryAdapter) getFileMap(ctx context.Context, fileID string) (*adapter.File, error) {
+func (m *Adapter) getFileMap(ctx context.Context, fileID string) (*adapter.File, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	f, ok := m.files[fileID]
@@ -669,7 +660,7 @@ func (m *MemoryAdapter) getFileMap(ctx context.Context, fileID string) (*adapter
 	}
 	meta := f.FileMetadata
 	if meta.MIMEType != "application/vnd.google-apps.folder" {
-		meta.Name = fromMemoryName(meta.Name)
+		meta.Name = fromStoredName(meta.Name)
 	}
 	return &adapter.File{
 		FileMetadata: meta,
@@ -677,7 +668,7 @@ func (m *MemoryAdapter) getFileMap(ctx context.Context, fileID string) (*adapter
 	}, nil
 }
 
-func (m *MemoryAdapter) saveFileMap(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
+func (m *Adapter) saveFileMap(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	f, ok := m.files[fileID]
@@ -691,18 +682,18 @@ func (m *MemoryAdapter) saveFileMap(ctx context.Context, fileID string, content 
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
-	f.Name = toMemoryName(f.Name)
+	f.Name = toStoredName(f.Name)
 	return &f.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) createFileMap(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
+func (m *Adapter) createFileMap(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
-			Name:         toMemoryName(name),
+			Name:         toStoredName(name),
 			MIMEType:     "text/markdown",
 			ModifiedTime: time.Now(),
 			Size:         int64(len(content)),
@@ -715,7 +706,7 @@ func (m *MemoryAdapter) createFileMap(ctx context.Context, name string, content 
 	return &f.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) createFolderMap(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
+func (m *Adapter) createFolderMap(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
@@ -734,7 +725,7 @@ func (m *MemoryAdapter) createFolderMap(ctx context.Context, name string, parent
 	return &f.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) ensureRootFolderMap(ctx context.Context, name string) (string, error) {
+func (m *Adapter) ensureRootFolderMap(ctx context.Context, name string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, f := range m.files {
@@ -768,7 +759,7 @@ func (m *MemoryAdapter) ensureRootFolderMap(ctx context.Context, name string) (s
 	return id, nil
 }
 
-func (m *MemoryAdapter) deleteFileMap(ctx context.Context, fileID string) error {
+func (m *Adapter) deleteFileMap(ctx context.Context, fileID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -804,7 +795,7 @@ func (m *MemoryAdapter) deleteFileMap(ctx context.Context, fileID string) error 
 	return nil
 }
 
-func (m *MemoryAdapter) duplicateFileMap(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
+func (m *Adapter) duplicateFileMap(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -823,7 +814,7 @@ func (m *MemoryAdapter) duplicateFileMap(ctx context.Context, fileID string) (*a
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           newID,
-			Name:         toMemoryName(newName),
+			Name:         toStoredName(newName),
 			MIMEType:     orig.MIMEType,
 			ModifiedTime: now,
 			Size:         int64(len(newContent)),
@@ -834,68 +825,11 @@ func (m *MemoryAdapter) duplicateFileMap(ctx context.Context, fileID string) (*a
 	}
 	m.files[newID] = f
 	meta := f.FileMetadata
-	meta.Name = fromMemoryName(meta.Name)
+	meta.Name = fromStoredName(meta.Name)
 	return &meta, nil
 }
 
-func (m *MemoryAdapter) duplicateFileDynamo(ctx context.Context, fileID string) (*adapter.FileMetadata, error) {
-	// 1. Get original
-	orig, err := m.GetFile(ctx, fileID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Create copy
-	newName := "Copy of " + orig.Name
-	newID := uuid.New().String()
-	now := time.Now()
-
-	f := &adapter.File{
-		FileMetadata: adapter.FileMetadata{
-			ID:           newID,
-			Name:         newName,
-			MIMEType:     orig.MIMEType,
-			ModifiedTime: now,
-			Size:         orig.Size,
-			ETag:         uuid.New().String(),
-			Parents:      orig.Parents,
-		},
-		Content: orig.Content,
-	}
-
-	item := FileItem{
-		PK:           f.ID,
-		UserID:       m.userID,
-		ID:           f.ID,
-		Name:         toMemoryName(f.Name),
-		MIMEType:     f.MIMEType,
-		ModifiedTime: f.ModifiedTime,
-		Size:         f.Size,
-		ETag:         f.ETag,
-		Parents:      f.Parents,
-		Content:      f.Content,
-		TTL:          m.itemTTL(),
-	}
-
-	av, err := attributevalue.MarshalMap(item)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: getTableName(),
-		Item:      av,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	meta := f.FileMetadata
-	meta.Name = fromMemoryName(meta.Name)
-	return &meta, nil
-}
-
-func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
+func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
 	if len(newName) > maxTitleLength {
 		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
@@ -913,7 +847,7 @@ func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName s
 	// 2. Update Name
 	name := newName
 	if orig.MIMEType != "application/vnd.google-apps.folder" {
-		name = toMemoryName(newName)
+		name = toStoredName(newName)
 	}
 	orig.Name = name
 	orig.ModifiedTime = time.Now()
@@ -951,7 +885,7 @@ func (m *MemoryAdapter) RenameFile(ctx context.Context, fileID string, newName s
 	return &orig.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) SetStarred(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
+func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
 	if m.client == nil {
 		return m.setStarredMap(ctx, fileID, starred)
 	}
@@ -998,7 +932,7 @@ func (m *MemoryAdapter) SetStarred(ctx context.Context, fileID string, starred b
 	return &orig.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) setStarredMap(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
+func (m *Adapter) setStarredMap(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1014,7 +948,7 @@ func (m *MemoryAdapter) setStarredMap(ctx context.Context, fileID string, starre
 	return &f.FileMetadata, nil
 }
 
-func (m *MemoryAdapter) renameFileMap(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
+func (m *Adapter) renameFileMap(ctx context.Context, fileID string, newName string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1025,7 +959,7 @@ func (m *MemoryAdapter) renameFileMap(ctx context.Context, fileID string, newNam
 
 	name := newName
 	if f.MIMEType != "application/vnd.google-apps.folder" {
-		name = toMemoryName(newName)
+		name = toStoredName(newName)
 	}
 	f.Name = name
 	f.ModifiedTime = time.Now()
@@ -1041,14 +975,14 @@ func (m *MemoryAdapter) renameFileMap(ctx context.Context, fileID string, newNam
 // calls within a single test or Lambda invocation.
 type Provider struct {
 	client *dynamodb.Client
-	stores map[string]*MemoryAdapter
+	stores map[string]*Adapter
 	mu     sync.Mutex
 }
 
 func NewProvider(client *dynamodb.Client) *Provider {
 	return &Provider{
 		client: client,
-		stores: make(map[string]*MemoryAdapter),
+		stores: make(map[string]*Adapter),
 	}
 }
 
@@ -1058,90 +992,15 @@ func (p *Provider) GetAdapter(ctx context.Context, userID, baseFolderID string) 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.stores[userID]; !ok {
-		p.stores[userID] = NewMemoryAdapter(p.client, userID, baseFolderID)
+		p.stores[userID] = NewAdapter(p.client, userID, baseFolderID)
 	} else {
 		p.stores[userID].BaseFolderID = baseFolderID
 	}
 	return p.stores[userID], nil
 }
 
-// ListRootFolders lists "actual" root folders (parents=[] or parents=["root"])
-func (m *MemoryAdapter) ListRootFolders(ctx context.Context) ([]adapter.FileMetadata, error) {
-	if m.client == nil {
-		return m.listRootFoldersMap(ctx)
-	}
-	// Scan and filter
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
-		return nil, err
-	}
-
-	var files []adapter.FileMetadata
-	for _, item := range items {
-		if item.MIMEType == "application/vnd.google-apps.folder" {
-			targetRootID := "root"
-			if m.BaseFolderID != "" {
-				targetRootID = m.BaseFolderID
-			}
-
-			isRoot := len(item.Parents) == 0
-			for _, p := range item.Parents {
-				if p == targetRootID || p == "root" {
-					isRoot = true
-					break
-				}
-			}
-			if isRoot {
-				files = append(files, adapter.FileMetadata{
-					ID:           item.ID,
-					Name:         item.Name,
-					MIMEType:     item.MIMEType,
-					ModifiedTime: item.ModifiedTime,
-					Size:         item.Size,
-					ETag:         item.ETag,
-					Parents:      item.Parents,
-					Starred:      item.Starred,
-				})
-			}
-		}
-	}
-	return files, nil
-}
-
-func (m *MemoryAdapter) listRootFoldersMap(ctx context.Context) ([]adapter.FileMetadata, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	var files []adapter.FileMetadata
-	for _, f := range m.files {
-		if f.MIMEType == "application/vnd.google-apps.folder" {
-			isRoot := len(f.Parents) == 0
-			for _, p := range f.Parents {
-				if p == "root" {
-					isRoot = true
-					break
-				}
-			}
-			if isRoot {
-				files = append(files, f.FileMetadata)
-			}
-		}
-	}
-	return files, nil
-}
-
 // isDescendant checks recursively if targetFolderID is an ancestor of the file.
-func (m *MemoryAdapter) isDescendant(fileParents []string, targetFolderID string, allItems map[string][]string) bool {
+func (m *Adapter) isDescendant(fileParents []string, targetFolderID string, allItems map[string][]string) bool {
 	if targetFolderID == "root" {
 		return true
 	}
@@ -1162,7 +1021,7 @@ func (m *MemoryAdapter) isDescendant(fileParents []string, targetFolderID string
 	return false
 }
 
-func (m *MemoryAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, error) {
+func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1172,20 +1031,8 @@ func (m *MemoryAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata
 		return m.listStarredMap(ctx)
 	}
 
-	// Scan and filter
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
+	items, err := m.scanUserItems(ctx)
 	if err != nil {
-		return nil, err
-	}
-
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
 		return nil, err
 	}
 
@@ -1204,7 +1051,7 @@ func (m *MemoryAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata
 			if m.isDescendant(item.Parents, targetFolderID, parentMap) {
 				name := item.Name
 				if item.MIMEType != "application/vnd.google-apps.folder" {
-					name = fromMemoryName(name)
+					name = fromStoredName(name)
 				}
 				files = append(files, adapter.FileMetadata{
 					ID:           item.ID,
@@ -1223,7 +1070,7 @@ func (m *MemoryAdapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata
 }
 
 // ListRecent lists recently modified files (proxy for viewed files in demo mode).
-func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
+func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1233,20 +1080,8 @@ func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fi
 		return m.listRecentMap(ctx, limit)
 	}
 
-	// Scan all and sort by ModifiedTime
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
+	items, err := m.scanUserItems(ctx)
 	if err != nil {
-		return nil, err
-	}
-
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
 		return nil, err
 	}
 
@@ -1267,7 +1102,7 @@ func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fi
 		}
 		files = append(files, adapter.FileMetadata{
 			ID:           item.ID,
-			Name:         fromMemoryName(item.Name),
+			Name:         fromStoredName(item.Name),
 			MIMEType:     item.MIMEType,
 			ModifiedTime: item.ModifiedTime,
 			ViewedTime:   item.ModifiedTime, // Use modifiedTime as proxy
@@ -1294,7 +1129,7 @@ func (m *MemoryAdapter) ListRecent(ctx context.Context, limit int) ([]adapter.Fi
 	return files, nil
 }
 
-func (m *MemoryAdapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
+func (m *Adapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1317,7 +1152,7 @@ func (m *MemoryAdapter) listRecentMap(ctx context.Context, limit int) ([]adapter
 			continue
 		}
 		meta := f.FileMetadata
-		meta.Name = fromMemoryName(meta.Name)
+		meta.Name = fromStoredName(meta.Name)
 		meta.ViewedTime = f.ModifiedTime // Proxy
 		files = append(files, meta)
 	}
@@ -1338,7 +1173,7 @@ func (m *MemoryAdapter) listRecentMap(ctx context.Context, limit int) ([]adapter
 	return files, nil
 }
 
-func (m *MemoryAdapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, error) {
+func (m *Adapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1362,7 +1197,7 @@ func (m *MemoryAdapter) listStarredMap(ctx context.Context) ([]adapter.FileMetad
 			if m.isDescendant(f.Parents, targetFolderID, parentMap) {
 				meta := f.FileMetadata
 				if meta.MIMEType != "application/vnd.google-apps.folder" {
-					meta.Name = fromMemoryName(meta.Name)
+					meta.Name = fromStoredName(meta.Name)
 				}
 				files = append(files, meta)
 			}
@@ -1372,7 +1207,7 @@ func (m *MemoryAdapter) listStarredMap(ctx context.Context) ([]adapter.FileMetad
 }
 
 // SearchFiles searches for files matching the query (simple robust scan for dev).
-func (m *MemoryAdapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1382,20 +1217,8 @@ func (m *MemoryAdapter) SearchFiles(ctx context.Context, query string) ([]adapte
 		return m.searchFilesMap(ctx, query)
 	}
 
-	// DynamoDB implementation: Scan and filter in Go (inefficient but OK for dev)
-	out, err := m.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        getTableName(),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":uid": &types.AttributeValueMemberS{Value: m.userID},
-		},
-	})
+	items, err := m.scanUserItems(ctx)
 	if err != nil {
-		return nil, err
-	}
-
-	var items []FileItem
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
 		return nil, err
 	}
 
@@ -1431,7 +1254,7 @@ func (m *MemoryAdapter) SearchFiles(ctx context.Context, query string) ([]adapte
 		if match {
 			name := item.Name
 			if item.MIMEType != "application/vnd.google-apps.folder" {
-				name = fromMemoryName(name)
+				name = fromStoredName(name)
 			}
 			files = append(files, adapter.FileMetadata{
 				ID:           item.ID,
@@ -1448,7 +1271,7 @@ func (m *MemoryAdapter) SearchFiles(ctx context.Context, query string) ([]adapte
 	return files, nil
 }
 
-func (m *MemoryAdapter) searchFilesMap(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) searchFilesMap(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1487,7 +1310,7 @@ func (m *MemoryAdapter) searchFilesMap(ctx context.Context, query string) ([]ada
 		if match {
 			meta := f.FileMetadata
 			if meta.MIMEType != "application/vnd.google-apps.folder" {
-				meta.Name = fromMemoryName(meta.Name)
+				meta.Name = fromStoredName(meta.Name)
 			}
 			files = append(files, meta)
 		}
