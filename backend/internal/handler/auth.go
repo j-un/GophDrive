@@ -2,6 +2,9 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -116,8 +119,11 @@ func (h *AuthHandler) signSession(c SessionClaims, ttl time.Duration) (string, e
 
 // Login redirects the browser into Google's OAuth consent screen.
 func (h *AuthHandler) Login(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// TODO: Generate a secure random state and store it in a cookie to prevent CSRF
-	state := "random-state"
+	state, err := generateOAuthState()
+	if err != nil {
+		fmt.Printf("generateOAuthState error: %v\n", err)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to generate state"}, nil
+	}
 	url := h.deps.Exchanger.AuthCodeURL(state)
 
 	return events.APIGatewayProxyResponse{
@@ -125,12 +131,22 @@ func (h *AuthHandler) Login(ctx context.Context, req events.APIGatewayProxyReque
 		Headers: map[string]string{
 			"Location": url,
 		},
+		MultiValueHeaders: map[string][]string{
+			"Set-Cookie": {h.oauthStateCookie(state, oauthStateMaxAge)},
+		},
 	}, nil
 }
 
 // Callback handles the OAuth2 redirect from Google. It validates the returned
 // ID token, ensures the user has a root folder, and issues a session JWT.
 func (h *AuthHandler) Callback(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	queryState := req.QueryStringParameters["state"]
+	cookieState := getOAuthStateCookie(req)
+	if queryState == "" || cookieState == "" ||
+		subtle.ConstantTimeCompare([]byte(queryState), []byte(cookieState)) != 1 {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Invalid state"}, nil
+	}
+
 	code := req.QueryStringParameters["code"]
 	if code == "" {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Missing code"}, nil
@@ -186,7 +202,10 @@ func (h *AuthHandler) Callback(ctx context.Context, req events.APIGatewayProxyRe
 			"Location": fmt.Sprintf("%s/?success=true", h.deps.FrontendURL),
 		},
 		MultiValueHeaders: map[string][]string{
-			"Set-Cookie": {h.sessionCookie(signed, 30*24*60*60)},
+			"Set-Cookie": {
+				h.sessionCookie(signed, 30*24*60*60),
+				h.oauthStateCookie("", 0),
+			},
 		},
 	}, nil
 }
@@ -326,6 +345,49 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 			"Set-Cookie": {cookie},
 		},
 	}, nil
+}
+
+// oauthStateMaxAge is the lifetime of the oauth_state cookie issued by Login.
+// 5 minutes mirrors typical OAuth consent-screen completion windows.
+const oauthStateMaxAge = 300
+
+// generateOAuthState returns a 256-bit cryptographically random, URL-safe state value.
+func generateOAuthState() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// oauthStateCookie formats the Set-Cookie value for the oauth_state cookie.
+// SameSite=Lax is sufficient because Google's redirect is a top-level navigation.
+func (h *AuthHandler) oauthStateCookie(value string, maxAge int) string {
+	return fmt.Sprintf("oauth_state=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=Lax; Secure", value, maxAge)
+}
+
+// getOAuthStateCookie extracts the oauth_state value from request cookies.
+func getOAuthStateCookie(req events.APIGatewayProxyRequest) string {
+	cookieHeaders := []string{}
+	for k, v := range req.Headers {
+		if strings.EqualFold(k, "Cookie") && v != "" {
+			cookieHeaders = append(cookieHeaders, v)
+		}
+	}
+	for k, v := range req.MultiValueHeaders {
+		if strings.EqualFold(k, "Cookie") {
+			cookieHeaders = append(cookieHeaders, v...)
+		}
+	}
+	for _, cookies := range cookieHeaders {
+		for _, part := range strings.Split(cookies, ";") {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, "oauth_state=") {
+				return strings.TrimPrefix(part, "oauth_state=")
+			}
+		}
+	}
+	return ""
 }
 
 // Logout clears the session cookie.
