@@ -336,6 +336,7 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 		"sub":            "user-7",
 		"email":          "user@example.com",
 		"base_folder_id": "folder-xyz",
+		"iat":            time.Now().Add(-2 * time.Hour).Unix(),
 		"exp":            time.Now().Add(-1 * time.Hour).Unix(),
 	})
 
@@ -385,6 +386,7 @@ func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
 		"sub":            "demo-user-abc123",
 		"email":          "demo@gophdrive.local",
 		"base_folder_id": "demo-folder",
+		"iat":            time.Now().Add(-2 * time.Minute).Unix(),
 		"exp":            time.Now().Add(-1 * time.Minute).Unix(),
 	})
 
@@ -405,6 +407,58 @@ func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
 	// (Max-Age=30d) would persist and make the failure look like a flake.
 	if cookies := resp.MultiValueHeaders["Set-Cookie"]; len(cookies) != 0 {
 		t.Errorf("rejection should not Set-Cookie, got %v", cookies)
+	}
+}
+
+// Refresh must cap how old a JWT can be: without an iat ceiling, a leaked
+// token could be refreshed indefinitely as long as the signing key is
+// unrotated. 30 days mirrors the cookie Max-Age and is the production default.
+func TestAuthHandler_Refresh_RejectsTokensOlderThanMaxRefreshAge(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger:     &fakeExchanger{},
+		Verifier:      &fakeVerifier{},
+		MaxRefreshAge: 30 * 24 * time.Hour,
+	})
+
+	stale := signClaims(t, "test-secret", jwt.MapClaims{
+		"sub":            "user-7",
+		"base_folder_id": "folder-xyz",
+		"iat":            time.Now().Add(-31 * 24 * time.Hour).Unix(),
+		"exp":            time.Now().Add(-30 * 24 * time.Hour).Unix(),
+	})
+
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{"Authorization": "Bearer " + stale},
+	}
+	resp, _ := h.Refresh(context.Background(), req)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 for token past MaxRefreshAge", resp.StatusCode)
+	}
+	if cookies := resp.MultiValueHeaders["Set-Cookie"]; len(cookies) != 0 {
+		t.Errorf("rejection should not Set-Cookie, got %v", cookies)
+	}
+}
+
+// iat-less tokens (pre-iat-ceiling rollout) must be rejected so attackers
+// can't strip the claim to bypass the age check.
+func TestAuthHandler_Refresh_RejectsTokensWithoutIat(t *testing.T) {
+	h := newAuthHandler(t, handler.AuthHandlerDeps{
+		Exchanger: &fakeExchanger{},
+		Verifier:  &fakeVerifier{},
+	})
+
+	noIat := signClaims(t, "test-secret", jwt.MapClaims{
+		"sub":            "user-7",
+		"base_folder_id": "folder-xyz",
+		"exp":            time.Now().Add(-1 * time.Hour).Unix(),
+	})
+
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{"Authorization": "Bearer " + noIat},
+	}
+	resp, _ := h.Refresh(context.Background(), req)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 for token without iat", resp.StatusCode)
 	}
 }
 
