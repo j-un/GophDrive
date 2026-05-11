@@ -81,7 +81,6 @@ func newAuthHandler(t *testing.T, deps handler.AuthHandlerDeps) *handler.AuthHan
 	if deps.FrontendURL == "" {
 		deps.FrontendURL = "http://test"
 	}
-	deps.DevMode = true
 	return handler.NewAuthHandler(deps)
 }
 
@@ -211,6 +210,11 @@ func TestAuthHandler_Callback_Success(t *testing.T) {
 	}
 	if !strings.Contains(cookies[0], "session_token=") {
 		t.Fatalf("first Set-Cookie should be session_token, got %q", cookies[0])
+	}
+	for _, want := range []string{"HttpOnly", "SameSite=Lax", "Secure"} {
+		if !strings.Contains(cookies[0], want) {
+			t.Errorf("session_token cookie missing %q: %s", want, cookies[0])
+		}
 	}
 	// Second cookie must clear oauth_state (Max-Age=0) so the state can't be
 	// replayed on a stale browser tab.

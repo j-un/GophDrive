@@ -130,7 +130,6 @@ func NewApp(ctx context.Context) *App {
 		JWTSecret:       jwtSecret,
 		AllowedEmails:   allowedEmails,
 		FrontendURL:     frontendURL,
-		DevMode:         devMode,
 	})
 
 	noteHandler := handler.NewNoteHandler(storageProvider, jwtSecret)
