@@ -37,7 +37,6 @@ type AuthHandlerDeps struct {
 	JWTSecret       string
 	AllowedEmails   []string
 	FrontendURL     string
-	DevMode         bool
 	// SessionTTL is the lifetime of an issued session token. Zero defaults to 24h.
 	SessionTTL time.Duration
 	// DemoSessionTTL is the lifetime of demo-login JWTs. Zero defaults to 1h.
@@ -94,15 +93,8 @@ func isEmailAllowed(email string, allowedEmails []string) bool {
 	return false
 }
 
-func (h *AuthHandler) sameSite() string {
-	if h.deps.DevMode {
-		return "Lax"
-	}
-	return "None"
-}
-
 func (h *AuthHandler) sessionCookie(token string, maxAge int) string {
-	return fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=%s; Secure", token, maxAge, h.sameSite())
+	return fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=Lax; Secure", token, maxAge)
 }
 
 // signSession produces a signed JWT for the given session claims.
@@ -392,7 +384,7 @@ func getOAuthStateCookie(req events.APIGatewayProxyRequest) string {
 
 // Logout clears the session cookie.
 func (h *AuthHandler) Logout(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	cookie := fmt.Sprintf("session_token=; HttpOnly; Path=/; Max-Age=0; SameSite=%s; Secure", h.sameSite())
+	cookie := "session_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax; Secure"
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
