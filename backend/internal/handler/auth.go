@@ -39,6 +39,11 @@ type AuthHandlerDeps struct {
 	FrontendURL     string
 	// SessionTTL is the lifetime of an issued session token. Zero defaults to 24h.
 	SessionTTL time.Duration
+	// MaxRefreshAge caps how long after issuance a token may still be refreshed.
+	// Without this, a leaked JWT could be refreshed forever as long as the
+	// signing key is unchanged. Zero defaults to 30 days, mirroring the cookie
+	// Max-Age set by Callback/Refresh.
+	MaxRefreshAge time.Duration
 	// DemoSessionTTL is the lifetime of demo-login JWTs. Zero defaults to 1h.
 	DemoSessionTTL time.Duration
 	// RootFolderName is the display name used when auto-creating each user's
@@ -55,6 +60,9 @@ type AuthHandler struct {
 func NewAuthHandler(deps AuthHandlerDeps) *AuthHandler {
 	if deps.SessionTTL == 0 {
 		deps.SessionTTL = 24 * time.Hour
+	}
+	if deps.MaxRefreshAge == 0 {
+		deps.MaxRefreshAge = 30 * 24 * time.Hour
 	}
 	if deps.DemoSessionTTL == 0 {
 		deps.DemoSessionTTL = 1 * time.Hour
@@ -99,12 +107,14 @@ func (h *AuthHandler) sessionCookie(token string, maxAge int) string {
 
 // signSession produces a signed JWT for the given session claims.
 func (h *AuthHandler) signSession(c SessionClaims, ttl time.Duration) (string, error) {
+	now := time.Now()
 	mc := jwt.MapClaims{
 		"sub":            c.UserID,
 		"email":          c.Email,
 		"name":           c.Name,
 		"base_folder_id": c.BaseFolderID,
-		"exp":            time.Now().Add(ttl).Unix(),
+		"iat":            now.Unix(),
+		"exp":            now.Add(ttl).Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, mc).SignedString([]byte(h.deps.JWTSecret))
 }
@@ -226,6 +236,17 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 	sub, _ := mc["sub"].(string)
 	if sub == "" {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Missing subject in token"}, nil
+	}
+
+	// Cap how old a token can be and still be refreshable. Without this, a
+	// leaked JWT remains a permanent foothold as long as the signing key is
+	// unrotated.
+	iatFloat, ok := mc["iat"].(float64)
+	if !ok {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Token missing iat"}, nil
+	}
+	if time.Since(time.Unix(int64(iatFloat), 0)) > h.deps.MaxRefreshAge {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Token too old to refresh; please log in again"}, nil
 	}
 
 	// Demo sessions are intentionally short-lived (DemoSessionTTL, 1h) and
