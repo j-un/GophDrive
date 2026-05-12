@@ -68,12 +68,14 @@ function NoteContent() {
   const [viewMode, setViewMode] = useState<"editor" | "split" | "preview">(
     "split",
   );
+  const [shareCopied, setShareCopied] = useState(false);
 
   const isOffline = useOffline();
 
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
+  const copyTimerRef = useRef<number | null>(null);
 
   const handleEditorScroll = () => {
     if (
@@ -223,6 +225,12 @@ function NoteContent() {
       setBreadcrumbs([{ id: "", name: "Home" }]);
     }
   }, [parentId]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const saveNote = useCallback(
     async (newContent: string) => {
@@ -720,9 +728,22 @@ function NoteContent() {
           <button
             className="btn"
             style={{ background: "var(--card)", color: "var(--foreground)" }}
-            title="Share (Copy ID)"
+            title={shareCopied ? "Copied!" : "Share (Copy Markdown link)"}
             onClick={() => {
-              if (id) navigator.clipboard.writeText(id);
+              if (!id) return;
+              const url = `${window.location.origin}/note?id=${id}`;
+              const trimmed = title.trim();
+              const text = trimmed
+                ? `[${trimmed.replace(/[\\\[\]]/g, "\\$&")}](${url})`
+                : url;
+              navigator.clipboard.writeText(text);
+              setShareCopied(true);
+              if (copyTimerRef.current)
+                window.clearTimeout(copyTimerRef.current);
+              copyTimerRef.current = window.setTimeout(
+                () => setShareCopied(false),
+                1500,
+              );
             }}
           >
             <Share2 size={16} />
