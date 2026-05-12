@@ -312,7 +312,7 @@ function NoteContent() {
     isSaving,
     hasUnsavedChanges,
     error: autoSaveError,
-  } = useAutoSave(content, saveNote, 2000);
+  } = useAutoSave(content, saveNote, 2000, !loading && !error && !!id);
 
   // Heartbeat
   useHeartbeat(id ?? "", !lockedBy && !loading && !error && !!id);

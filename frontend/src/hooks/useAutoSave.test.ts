@@ -106,4 +106,27 @@ describe("useAutoSave", () => {
 
     expect(result.current.isSaving).toBe(false);
   });
+
+  it("does not save when enabled transitions false → value change → true (initial baseline snapped)", async () => {
+    const saveFn = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      ({ value, enabled }: { value: string; enabled: boolean }) =>
+        useAutoSave(value, saveFn, 2000, enabled),
+      { initialProps: { value: "", enabled: false } },
+    );
+
+    // Load completes: value changes while still disabled
+    rerender({ value: "loaded from server", enabled: false });
+
+    // Enable autosave (baseline should snap to "loaded from server")
+    rerender({ value: "loaded from server", enabled: true });
+
+    // Advance well past debounce delay
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(saveFn).not.toHaveBeenCalled();
+    expect(result.current.hasUnsavedChanges).toBe(false);
+  });
 });
