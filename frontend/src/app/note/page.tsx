@@ -38,6 +38,7 @@ import { LockBanner } from "@/components/LockBanner";
 import { ConflictDialog } from "@/components/ConflictDialog";
 import { NoteMenu } from "@/components/NoteMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { buildShareLink } from "@/lib/share";
 
 interface RemoteData {
   content: string;
@@ -732,11 +733,7 @@ function NoteContent() {
             onClick={() => {
               if (!id) return;
               const url = `${window.location.origin}/note?id=${id}`;
-              const trimmed = title.trim();
-              const text = trimmed
-                ? `[${trimmed.replace(/[\\\[\]]/g, "\\$&")}](${url})`
-                : url;
-              navigator.clipboard.writeText(text);
+              navigator.clipboard.writeText(buildShareLink(title, url));
               setShareCopied(true);
               if (copyTimerRef.current)
                 window.clearTimeout(copyTimerRef.current);
