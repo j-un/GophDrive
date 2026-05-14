@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -134,5 +135,90 @@ func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
 	json.Unmarshal([]byte(resp.Body), &tags)
 	if len(tags) != 0 {
 		t.Errorf("Expected user B to see 0 tags, got %v", tags)
+	}
+}
+
+func TestTagHandler_ListTags_DefaultLimit50(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	tagH := handler.NewTagHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	for i := 0; i < 60; i++ {
+		body := fmt.Sprintf(`{"name":"n%d.md","content":"Tag #tag%02d"}`, i, i)
+		noteH.CreateNote(ctx, makeRequest("POST", "/notes", body))
+	}
+
+	resp, _ := tagH.ListTags(ctx, makeRequest("GET", "/tags", ""))
+	var tags []adapter.TagCount
+	json.Unmarshal([]byte(resp.Body), &tags)
+
+	if len(tags) != 50 {
+		t.Errorf("Expected 50 tags (default limit), got %d", len(tags))
+	}
+}
+
+func TestTagHandler_ListTags_ExplicitLimit(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	tagH := handler.NewTagHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	for i := 0; i < 20; i++ {
+		body := fmt.Sprintf(`{"name":"n%d.md","content":"Tag #tag%02d"}`, i, i)
+		noteH.CreateNote(ctx, makeRequest("POST", "/notes", body))
+	}
+
+	req := makeRequest("GET", "/tags", "")
+	req.QueryStringParameters = map[string]string{"limit": "10"}
+	resp, _ := tagH.ListTags(ctx, req)
+	var tags []adapter.TagCount
+	json.Unmarshal([]byte(resp.Body), &tags)
+
+	if len(tags) != 10 {
+		t.Errorf("Expected 10 tags, got %d", len(tags))
+	}
+}
+
+func TestTagHandler_ListTags_LimitExceedsTotal(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	tagH := handler.NewTagHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n1.md","content":"Tag #alpha"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n2.md","content":"Tag #beta"}`))
+
+	req := makeRequest("GET", "/tags", "")
+	req.QueryStringParameters = map[string]string{"limit": "1000"}
+	resp, _ := tagH.ListTags(ctx, req)
+	var tags []adapter.TagCount
+	json.Unmarshal([]byte(resp.Body), &tags)
+
+	if len(tags) != 2 {
+		t.Errorf("Expected all 2 tags when limit exceeds total, got %d", len(tags))
+	}
+}
+
+func TestTagHandler_ListTags_InvalidLimit(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	tagH := handler.NewTagHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	for i := 0; i < 60; i++ {
+		body := fmt.Sprintf(`{"name":"n%d.md","content":"Tag #tag%02d"}`, i, i)
+		noteH.CreateNote(ctx, makeRequest("POST", "/notes", body))
+	}
+
+	for _, bad := range []string{"abc", "-5", "0"} {
+		req := makeRequest("GET", "/tags", "")
+		req.QueryStringParameters = map[string]string{"limit": bad}
+		resp, _ := tagH.ListTags(ctx, req)
+		var tags []adapter.TagCount
+		json.Unmarshal([]byte(resp.Body), &tags)
+		if len(tags) != 50 {
+			t.Errorf("limit=%q: expected default 50, got %d", bad, len(tags))
+		}
 	}
 }

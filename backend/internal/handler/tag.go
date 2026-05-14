@@ -35,10 +35,19 @@ func (h *TagHandler) getStorageAdapter(ctx context.Context, req events.APIGatewa
 }
 
 // ListTags handles GET /tags — returns [{name, count}] sorted by count desc.
+// Accepts ?limit=N (default 50); values ≤ 0 fall back to 50.
 func (h *TagHandler) ListTags(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	storage, err := h.getStorageAdapter(ctx, req)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: err.Error()}, nil
+	}
+
+	limit := 50
+	if lStr := req.QueryStringParameters["limit"]; lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+	if limit <= 0 {
+		limit = 50
 	}
 
 	tags, err := storage.ListAllTags(ctx)
@@ -52,6 +61,9 @@ func (h *TagHandler) ListTags(ctx context.Context, req events.APIGatewayProxyReq
 
 	if tags == nil {
 		tags = []adapter.TagCount{}
+	}
+	if len(tags) > limit {
+		tags = tags[:limit]
 	}
 
 	body, _ := json.Marshal(tags)

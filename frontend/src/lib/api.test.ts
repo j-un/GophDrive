@@ -240,6 +240,16 @@ describe("API functions", () => {
     expect(url).toContain("/api/tags");
   });
 
+  it("listTags passes limit query param", async () => {
+    const mockFetch = fakeFetch(200, [{ name: "develop", count: 5 }]);
+    setFetchFn(mockFetch);
+
+    await listTags(50);
+
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/tags?limit=50");
+  });
+
   it("searchFiles returns empty array without fetching when both query and tags are empty", async () => {
     const mockFetch = fakeFetch(200, []);
     setFetchFn(mockFetch);
