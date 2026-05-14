@@ -421,6 +421,157 @@ func TestNoteHandler_ListStarredNotes(t *testing.T) {
 	}
 }
 
+func TestNoteHandler_CreateNote_ExtractsInlineTags(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("POST", "/notes", `{"name":"tags.md","content":"Hello #develop and #backend today"}`)
+	resp, _ := h.CreateNote(ctx, req)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &created)
+
+	getReq := makeRequest("GET", "/notes/"+created.ID, "")
+	getReq.PathParameters["id"] = created.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+
+	var note struct {
+		Tags []string `json:"tags"`
+	}
+	json.Unmarshal([]byte(getResp.Body), &note)
+	if len(note.Tags) != 2 || note.Tags[0] != "backend" || note.Tags[1] != "develop" {
+		t.Errorf("expected tags [backend develop], got %v", note.Tags)
+	}
+}
+
+func TestNoteHandler_CreateNote_ExtractsFrontmatterTags(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	content := "---\\ntags: [alpha, beta]\\n---\\nNo inline tags"
+	req := makeRequest("POST", "/notes", `{"name":"fm.md","content":"`+content+`"}`)
+	resp, _ := h.CreateNote(ctx, req)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &created)
+
+	getReq := makeRequest("GET", "/notes/"+created.ID, "")
+	getReq.PathParameters["id"] = created.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+
+	var note struct {
+		Tags []string `json:"tags"`
+	}
+	json.Unmarshal([]byte(getResp.Body), &note)
+	if len(note.Tags) != 2 || note.Tags[0] != "alpha" || note.Tags[1] != "beta" {
+		t.Errorf("expected tags [alpha beta], got %v", note.Tags)
+	}
+}
+
+func TestNoteHandler_UpdateNote_ReplacesTags(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	createReq := makeRequest("POST", "/notes", `{"name":"replace.md","content":"Hello #old-tag"}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &created)
+
+	updateReq := makeRequest("PUT", "/notes/"+created.ID, `{"content":"Now #new-tag and #another"}`)
+	updateReq.PathParameters["id"] = created.ID
+	updateReq.Headers["If-Match"] = created.ETag
+	h.UpdateNote(ctx, updateReq)
+
+	getReq := makeRequest("GET", "/notes/"+created.ID, "")
+	getReq.PathParameters["id"] = created.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+	var note struct {
+		Tags []string `json:"tags"`
+	}
+	json.Unmarshal([]byte(getResp.Body), &note)
+	if len(note.Tags) != 2 || note.Tags[0] != "another" || note.Tags[1] != "new-tag" {
+		t.Errorf("expected tags [another new-tag] after update, got %v", note.Tags)
+	}
+}
+
+func TestNoteHandler_GetNote_IncludesTagsField(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	createReq := makeRequest("POST", "/notes", `{"name":"tagsfield.md","content":"See #feature today"}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &created)
+
+	getReq := makeRequest("GET", "/notes/"+created.ID, "")
+	getReq.PathParameters["id"] = created.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+
+	var raw map[string]interface{}
+	json.Unmarshal([]byte(getResp.Body), &raw)
+	if _, ok := raw["tags"]; !ok {
+		t.Error("expected 'tags' key in GetNote JSON response")
+	}
+}
+
+func TestNoteHandler_DuplicateNote_PreservesTags(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	createReq := makeRequest("POST", "/notes", `{"name":"orig-tags.md","content":"Hello #develop #backend"}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &created)
+
+	dupReq := makeRequest("POST", "/notes/"+created.ID+"/copy", "")
+	dupReq.PathParameters["id"] = created.ID
+	dupResp, _ := h.DuplicateNote(ctx, dupReq)
+	var duplicated adapter.FileMetadata
+	json.Unmarshal([]byte(dupResp.Body), &duplicated)
+
+	getReq := makeRequest("GET", "/notes/"+duplicated.ID, "")
+	getReq.PathParameters["id"] = duplicated.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+	var note struct {
+		Tags []string `json:"tags"`
+	}
+	json.Unmarshal([]byte(getResp.Body), &note)
+	if len(note.Tags) != 2 || note.Tags[0] != "backend" || note.Tags[1] != "develop" {
+		t.Errorf("expected duplicated note to preserve tags [backend develop], got %v", note.Tags)
+	}
+}
+
+func TestNoteHandler_UpdateNote_PreservesStarred(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	createReq := makeRequest("POST", "/notes", `{"name":"star-update.md","content":"v1"}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &created)
+
+	patchReq := makeRequest("PATCH", "/notes/"+created.ID, `{"starred":true}`)
+	patchReq.PathParameters["id"] = created.ID
+	h.PatchNote(ctx, patchReq)
+
+	updateReq := makeRequest("PUT", "/notes/"+created.ID, `{"content":"v2"}`)
+	updateReq.PathParameters["id"] = created.ID
+	updateReq.Headers["If-Match"] = created.ETag
+	h.UpdateNote(ctx, updateReq)
+
+	listReq := makeRequest("GET", "/starred", "")
+	listResp, _ := h.ListStarredNotes(ctx, listReq)
+	var starred []adapter.FileMetadata
+	json.Unmarshal([]byte(listResp.Body), &starred)
+	if len(starred) != 1 || starred[0].ID != created.ID {
+		t.Errorf("expected note to remain starred after content update, starred=%v", starred)
+	}
+}
+
 func TestNoteHandler_GetNote_NotFound(t *testing.T) {
 	provider := dynamo.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")

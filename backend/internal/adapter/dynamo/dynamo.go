@@ -363,6 +363,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
+		Starred:      f.Starred,
 		Tags:         f.Tags,
 		Content:      inline,
 		BodyS3Key:    s3Key,
@@ -909,6 +910,7 @@ func (m *Adapter) duplicateFileMap(ctx context.Context, fileID string) (*adapter
 			Size:         int64(len(newContent)),
 			ETag:         uuid.New().String(),
 			Parents:      orig.Parents,
+			Tags:         orig.Tags,
 		},
 		Content: newContent,
 	}
@@ -1548,8 +1550,14 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 				continue
 			}
 		}
-		if len(tags) > 0 && !hasAllTags(f.Tags, tags) {
-			continue
+		if len(tags) > 0 {
+			itemTags := f.Tags
+			if len(itemTags) == 0 && len(f.Content) > 0 {
+				itemTags = markdown.ExtractTags(f.Content)
+			}
+			if !hasAllTags(itemTags, tags) {
+				continue
+			}
 		}
 		meta := f.FileMetadata
 		meta.Name = fromStoredName(meta.Name)
