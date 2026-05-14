@@ -34,6 +34,7 @@ interface SidebarProps {
   breadcrumbs: { id?: string; name: string }[];
   isOpen?: boolean;
   onClose?: () => void;
+  refreshTrigger?: number;
 }
 
 const RECENT_COLLAPSED_KEY = "sidebar:recent:collapsed";
@@ -44,6 +45,7 @@ export function Sidebar({
   breadcrumbs,
   isOpen = true,
   onClose,
+  refreshTrigger,
 }: SidebarProps) {
   const handleNavigate = (folderId?: string, folderName?: string) => {
     onNavigate(folderId, folderName);
@@ -107,7 +109,7 @@ export function Sidebar({
   useEffect(() => {
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFolderId]);
+  }, [currentFolderId, refreshTrigger]);
 
   // Close menu when clicking outside
   useEffect(() => {

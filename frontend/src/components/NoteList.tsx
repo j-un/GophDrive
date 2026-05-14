@@ -25,12 +25,14 @@ interface NoteListProps {
   folderId?: string;
   searchQuery?: string;
   tagFilter?: string[];
+  onAfterDelete?: () => void;
 }
 
 export default function NoteList({
   folderId,
   searchQuery,
   tagFilter,
+  onAfterDelete,
 }: NoteListProps) {
   const router = useRouter();
   const [notes, setNotes] = useState<FileItem[]>([]);
@@ -235,6 +237,7 @@ export default function NoteList({
       }
       setDeleteNoteId(null);
       loadNotes();
+      onAfterDelete?.();
     } catch (error) {
       const err = error as Error;
       console.error(err);

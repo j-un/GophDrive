@@ -21,6 +21,7 @@ function NotesContent() {
   ]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   // Stable reference — only changes when actual tag values change
   const tagFilter = useMemo(
@@ -93,6 +94,7 @@ function NotesContent() {
         breadcrumbs={breadcrumbs}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        refreshTrigger={sidebarRefreshKey}
       />
 
       <div
@@ -159,6 +161,7 @@ function NotesContent() {
           folderId={currentFolderId}
           searchQuery={searchParams.get("q") || undefined}
           tagFilter={tagFilter}
+          onAfterDelete={() => setSidebarRefreshKey((k) => k + 1)}
         />
       </div>
     </div>
