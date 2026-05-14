@@ -136,6 +136,19 @@ export interface FileItem {
 export async function parseJson<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("Content-Type") || "";
   if (!contentType.includes("application/json")) {
+    let bodyPreview = "";
+    try {
+      const text = await res.text();
+      bodyPreview = text.slice(0, 200);
+    } catch {
+      // Body already consumed or unreadable.
+    }
+    console.error("parseJson: unexpected non-JSON response", {
+      url: res.url,
+      status: res.status,
+      contentType,
+      bodyPreview,
+    });
     throw new Error(
       "Server returned an unexpected response. Please try again later.",
     );
