@@ -43,10 +43,12 @@ func NewRenderer() *Renderer {
 	}
 }
 
-// Render converts Markdown to HTML.
+// Render converts Markdown to HTML. YAML frontmatter (--- ... ---) is stripped
+// before rendering so it does not appear as an <hr> in the output.
 func (r *Renderer) Render(source []byte) ([]byte, error) {
+	_, body, _ := ParseFrontmatter(source)
 	var buf bytes.Buffer
-	if err := r.md.Convert(source, &buf); err != nil {
+	if err := r.md.Convert(body, &buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

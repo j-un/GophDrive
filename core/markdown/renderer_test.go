@@ -56,6 +56,16 @@ func TestRenderer_Render(t *testing.T) {
 			input:    "<div class=\"custom\">raw html</div>",
 			expected: "<div class=\"custom\">raw html</div>",
 		},
+		{
+			name:     "Frontmatter stripped",
+			input:    "---\ntags: [develop]\ntitle: Test\n---\n# Body Heading",
+			expected: "<h1",
+		},
+		{
+			name:     "Frontmatter not rendered as hr",
+			input:    "---\ntags: [x]\n---\nHello",
+			expected: "Hello",
+		},
 	}
 
 	renderer := NewRenderer()
