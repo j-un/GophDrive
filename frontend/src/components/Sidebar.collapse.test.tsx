@@ -27,10 +27,17 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+import { listRecent } from "@/lib/api";
 import { Sidebar } from "./Sidebar";
 
-const renderSidebar = () =>
-  render(<Sidebar onNavigate={() => {}} breadcrumbs={[{ name: "Home" }]} />);
+const renderSidebar = (props: { refreshTrigger?: number } = {}) =>
+  render(
+    <Sidebar
+      onNavigate={() => {}}
+      breadcrumbs={[{ name: "Home" }]}
+      {...props}
+    />,
+  );
 
 const getRecentButton = () => screen.getByRole("button", { name: /recent/i });
 
@@ -86,5 +93,43 @@ describe("Sidebar Recent section collapsible", () => {
     });
 
     expect(document.getElementById("sidebar-recent-list")).not.toBeNull();
+  });
+});
+
+describe("Sidebar refreshTrigger", () => {
+  beforeEach(() => {
+    vi.mocked(listRecent).mockClear();
+  });
+
+  it("re-fetches listRecent when refreshTrigger increments", async () => {
+    const { rerender } = renderSidebar({ refreshTrigger: 0 });
+    await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <Sidebar
+        onNavigate={() => {}}
+        breadcrumbs={[{ name: "Home" }]}
+        refreshTrigger={1}
+      />,
+    );
+
+    await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not re-fetch when refreshTrigger is unchanged", async () => {
+    const { rerender } = renderSidebar({ refreshTrigger: 0 });
+    await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <Sidebar
+        onNavigate={() => {}}
+        breadcrumbs={[{ name: "Home" }]}
+        refreshTrigger={0}
+      />,
+    );
+
+    // Allow a render cycle; count must not increase
+    await new Promise((r) => setTimeout(r, 50));
+    expect(listRecent).toHaveBeenCalledTimes(1);
   });
 });

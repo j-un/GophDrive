@@ -45,7 +45,7 @@ export function Sidebar({
   breadcrumbs,
   isOpen = true,
   onClose,
-  refreshTrigger,
+  refreshTrigger = 0,
 }: SidebarProps) {
   const handleNavigate = (folderId?: string, folderName?: string) => {
     onNavigate(folderId, folderName);
@@ -75,17 +75,24 @@ export function Sidebar({
   const [renameFolderName, setRenameFolderName] = useState<string>("");
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const loadRequestRef = useRef(0);
 
   const loadFolders = async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     try {
       const items = await listFiles(currentFolderId);
+      const starred = await listStarred();
+      const recent = await listRecent(5);
+      const tagList = await listTags(50);
+
+      if (requestId !== loadRequestRef.current) return;
+
       const folderItems = (items || []).filter(
         (item) => item.mimeType === "application/vnd.google-apps.folder",
       );
       setFolders(folderItems.sort((a, b) => a.name.localeCompare(b.name)));
 
-      const starred = await listStarred();
       const starredItems = (starred || []).filter(
         (item) => item.mimeType === "application/vnd.google-apps.folder",
       );
@@ -93,16 +100,13 @@ export function Sidebar({
         starredItems.sort((a, b) => a.name.localeCompare(b.name)),
       );
 
-      // Fetch Recent Files (top 5)
-      const recent = await listRecent(5);
       setRecentFiles(recent || []);
-
-      const tagList = await listTags(50);
       setTags(tagList || []);
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       console.error("Failed to load folders:", err);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   };
 

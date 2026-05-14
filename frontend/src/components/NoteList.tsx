@@ -25,14 +25,14 @@ interface NoteListProps {
   folderId?: string;
   searchQuery?: string;
   tagFilter?: string[];
-  onAfterDelete?: () => void;
+  onAfterMutation?: () => void;
 }
 
 export default function NoteList({
   folderId,
   searchQuery,
   tagFilter,
-  onAfterDelete,
+  onAfterMutation,
 }: NoteListProps) {
   const router = useRouter();
   const [notes, setNotes] = useState<FileItem[]>([]);
@@ -183,6 +183,7 @@ export default function NoteList({
     try {
       await duplicateNote(note.id);
       loadNotes();
+      onAfterMutation?.();
     } catch (error) {
       const err = error as Error;
       console.error(err);
@@ -204,6 +205,7 @@ export default function NoteList({
       await renameNote(renameNoteId, newName);
       setRenameNoteId(null);
       loadNotes();
+      onAfterMutation?.();
     } catch (error) {
       const err = error as Error;
       console.error(err);
@@ -218,6 +220,7 @@ export default function NoteList({
     try {
       await starFile(note.id, !note.starred);
       loadNotes();
+      onAfterMutation?.();
     } catch (error) {
       const err = error as Error;
       console.error(err);
@@ -234,10 +237,10 @@ export default function NoteList({
         await deleteFile(deleteNoteId);
         // Also remove from local
         await deleteNoteLocal(deleteNoteId);
+        onAfterMutation?.();
       }
       setDeleteNoteId(null);
       loadNotes();
-      onAfterDelete?.();
     } catch (error) {
       const err = error as Error;
       console.error(err);

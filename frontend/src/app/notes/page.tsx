@@ -161,7 +161,7 @@ function NotesContent() {
           folderId={currentFolderId}
           searchQuery={searchParams.get("q") || undefined}
           tagFilter={tagFilter}
-          onAfterDelete={() => setSidebarRefreshKey((k) => k + 1)}
+          onAfterMutation={() => setSidebarRefreshKey((k) => k + 1)}
         />
       </div>
     </div>
