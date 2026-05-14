@@ -26,6 +26,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { RenameDialog } from "./RenameDialog";
 import SearchInput from "./SearchInput";
 import { NoteMenu } from "./NoteMenu";
+import { useLocalStorageBoolean } from "@/hooks/useLocalStorageBoolean";
 
 interface SidebarProps {
   currentFolderId?: string;
@@ -34,6 +35,8 @@ interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
 }
+
+const RECENT_COLLAPSED_KEY = "sidebar:recent:collapsed";
 
 export function Sidebar({
   currentFolderId,
@@ -56,6 +59,10 @@ export function Sidebar({
   const [newFolderName, setNewFolderName] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [tags, setTags] = useState<TagCount[]>([]);
+  const [recentCollapsed, setRecentCollapsed] = useLocalStorageBoolean(
+    RECENT_COLLAPSED_KEY,
+    false,
+  );
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
     folder: FileItem | null;
@@ -397,8 +404,15 @@ export function Sidebar({
 
           {/* Recent Section */}
           <div style={{ marginBottom: "1rem" }}>
-            <div
+            <button
+              type="button"
+              onClick={() => setRecentCollapsed((v) => !v)}
+              aria-expanded={!recentCollapsed}
+              aria-controls="sidebar-recent-list"
               style={{
+                width: "100%",
+                background: "none",
+                border: "none",
                 padding: "0.5rem",
                 fontSize: "0.75rem",
                 fontWeight: "bold",
@@ -407,94 +421,105 @@ export function Sidebar({
                 display: "flex",
                 alignItems: "center",
                 gap: "0.5rem",
+                cursor: "pointer",
+                textAlign: "left",
               }}
             >
-              <Clock size={14} /> Recent
-            </div>
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={`skeleton-recent-${i}`}
-                  className="animate-pulse"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    margin: "0.25rem 0",
-                    borderRadius: "0.25rem",
-                    background: "var(--muted)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      borderRadius: "4px",
-                      background: "var(--border)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: "80%",
-                      height: "12px",
-                      borderRadius: "4px",
-                      background: "var(--border)",
-                    }}
-                  />
-                </div>
-              ))
-            ) : recentFiles.length === 0 ? (
-              <div
+              <ChevronRight
+                size={14}
                 style={{
-                  padding: "0.5rem",
-                  fontSize: "0.8rem",
-                  opacity: 0.5,
-                  fontStyle: "italic",
+                  transform: recentCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                  transition: "transform 0.15s ease",
                 }}
-              >
-                No recent files
-              </div>
-            ) : (
-              <div className="animate-fade-in">
-                {recentFiles.map((file) => (
+              />
+              <Clock size={14} /> Recent
+            </button>
+            <div id="sidebar-recent-list" hidden={recentCollapsed}>
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
                   <div
-                    key={`recent-${file.id}`}
-                    onClick={() => {
-                      router.push(`/note?id=${file.id}`);
-                      onClose?.();
-                    }}
+                    key={`skeleton-recent-${i}`}
+                    className="animate-pulse"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: "0.5rem",
                       padding: "0.5rem",
+                      margin: "0.25rem 0",
                       borderRadius: "0.25rem",
-                      cursor: "pointer",
-                      color: "var(--foreground)",
+                      background: "var(--muted)",
                     }}
-                    className="hover:bg-[var(--muted)]"
                   >
-                    <FileText
-                      size={16}
-                      color="var(--primary)"
-                      style={{ flexShrink: 0 }}
-                    />
-                    <span
+                    <div
                       style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: "0.9rem",
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                        flexShrink: 0,
                       }}
-                    >
-                      {file.name}
-                    </span>
+                    />
+                    <div
+                      style={{
+                        width: "80%",
+                        height: "12px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                      }}
+                    />
                   </div>
-                ))}
-              </div>
-            )}
+                ))
+              ) : recentFiles.length === 0 ? (
+                <div
+                  style={{
+                    padding: "0.5rem",
+                    fontSize: "0.8rem",
+                    opacity: 0.5,
+                    fontStyle: "italic",
+                  }}
+                >
+                  No recent files
+                </div>
+              ) : (
+                <div className="animate-fade-in">
+                  {recentFiles.map((file) => (
+                    <div
+                      key={`recent-${file.id}`}
+                      onClick={() => {
+                        router.push(`/note?id=${file.id}`);
+                        onClose?.();
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.5rem",
+                        borderRadius: "0.25rem",
+                        cursor: "pointer",
+                        color: "var(--foreground)",
+                      }}
+                      className="hover:bg-[var(--muted)]"
+                    >
+                      <FileText
+                        size={16}
+                        color="var(--primary)"
+                        style={{ flexShrink: 0 }}
+                      />
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {file.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div
               style={{
                 borderBottom: "1px solid var(--border)",
