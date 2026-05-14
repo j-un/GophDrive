@@ -137,8 +137,6 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to get note: %v", err)}, nil
 	}
 
-	// For MVP, just return content as string in body, or JSON if model.Note
-	// Let's return JSON wrapping content.
 	type NoteResponse struct {
 		ID       string   `json:"id"`
 		Name     string   `json:"name"`
@@ -146,6 +144,7 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		Modified string   `json:"modified"`
 		ETag     string   `json:"etag"`
 		Parents  []string `json:"parents"`
+		Tags     []string `json:"tags,omitempty"`
 	}
 
 	resp := NoteResponse{
@@ -155,6 +154,7 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		Modified: file.ModifiedTime.Format(time.RFC3339),
 		ETag:     file.ETag,
 		Parents:  file.Parents,
+		Tags:     file.Tags,
 	}
 
 	body, _ := json.Marshal(resp)

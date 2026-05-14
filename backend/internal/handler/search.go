@@ -41,7 +41,8 @@ func (h *SearchHandler) getStorageAdapter(ctx context.Context, req events.APIGat
 	return storage, nil
 }
 
-// Search handles GET /search
+// Search handles GET /search?q=...&tag=...&tag=...
+// Both q and tag are optional; at least one must be provided.
 func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	storage, err := h.getStorageAdapter(ctx, req)
 	if err != nil {
@@ -49,11 +50,13 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 	}
 
 	query := req.QueryStringParameters["q"]
-	if query == "" {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Query parameter 'q' is required"}, nil
+	tags := req.MultiValueQueryStringParameters["tag"]
+
+	if query == "" && len(tags) == 0 {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "At least one of 'q' or 'tag' is required"}, nil
 	}
 
-	files, err := storage.SearchFiles(ctx, query)
+	files, err := storage.SearchFilesWithTags(ctx, query, tags)
 	if err != nil {
 		if errors.Is(err, adapter.ErrUnauthorized) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
