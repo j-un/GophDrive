@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 	"github.com/jun/gophdrive/backend/internal/adapter"
+	"github.com/jun/gophdrive/core/markdown"
 )
 
 const mdExt = ".md"
@@ -200,6 +202,7 @@ type FileItem struct {
 	ETag         string    `dynamodbav:"etag"`
 	Parents      []string  `dynamodbav:"parents"`
 	Starred      bool      `dynamodbav:"starred"`
+	Tags         []string  `dynamodbav:"tags,omitempty"`
 	Content      []byte    `dynamodbav:"content,omitempty"`
 	BodyS3Key    string    `dynamodbav:"body_s3_key,omitempty"`
 	TTL          int64     `dynamodbav:"ttl,omitempty"`
@@ -267,6 +270,7 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 				ETag:         item.ETag,
 				Parents:      item.Parents,
 				Starred:      item.Starred,
+				Tags:         item.Tags,
 			})
 		}
 	}
@@ -313,6 +317,7 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 			ETag:         item.ETag,
 			Parents:      item.Parents,
 			Starred:      item.Starred,
+			Tags:         item.Tags,
 		},
 		Content: item.Content,
 	}, nil
@@ -346,6 +351,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
+	f.Tags = markdown.ExtractTags(content)
 
 	item := FileItem{
 		PK:           f.ID,
@@ -357,6 +363,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
+		Tags:         f.Tags,
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
@@ -375,9 +382,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return nil, err
 	}
 
-	meta := f.FileMetadata
-	meta.Name = fromStoredName(meta.Name)
-	return &meta, nil
+	return &f.FileMetadata, nil
 }
 
 func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
@@ -411,15 +416,17 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 	}
 
 	id := uuid.New().String()
+	tags := markdown.ExtractTags(content)
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
-			Name:         toStoredName(name),
+			Name:         name,
 			MIMEType:     "text/markdown",
 			ModifiedTime: time.Now(),
 			Size:         int64(len(content)),
 			ETag:         uuid.New().String(),
 			Parents:      []string{targetFolderID},
+			Tags:         tags,
 		},
 		Content: inline,
 	}
@@ -434,6 +441,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
+		Tags:         tags,
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
@@ -671,6 +679,7 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		Size:         orig.Size,
 		ETag:         uuid.New().String(),
 		Parents:      orig.Parents,
+		Tags:         orig.Tags,
 		Content:      dupContent,
 		TTL:          m.itemTTL(),
 	}
@@ -697,6 +706,7 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		ETag:         item.ETag,
 		Parents:      item.Parents,
 		Starred:      item.Starred,
+		Tags:         item.Tags,
 	}, nil
 }
 
@@ -746,7 +756,7 @@ func (m *Adapter) getFileMap(ctx context.Context, fileID string) (*adapter.File,
 	}, nil
 }
 
-func (m *Adapter) saveFileMap(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
+func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	f, ok := m.files[fileID]
@@ -760,11 +770,11 @@ func (m *Adapter) saveFileMap(ctx context.Context, fileID string, content []byte
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
-	f.Name = toStoredName(f.Name)
+	f.Tags = markdown.ExtractTags(content)
 	return &f.FileMetadata, nil
 }
 
-func (m *Adapter) createFileMap(ctx context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
+func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
@@ -777,6 +787,7 @@ func (m *Adapter) createFileMap(ctx context.Context, name string, content []byte
 			Size:         int64(len(content)),
 			ETag:         uuid.New().String(),
 			Parents:      []string{folderID},
+			Tags:         markdown.ExtractTags(content),
 		},
 		Content: content,
 	}
@@ -955,6 +966,7 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		ETag:         item.ETag,
 		Parents:      item.Parents,
 		Starred:      item.Starred,
+		Tags:         item.Tags,
 	}, nil
 }
 
@@ -996,6 +1008,7 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		ETag:         item.ETag,
 		Parents:      item.Parents,
 		Starred:      item.Starred,
+		Tags:         item.Tags,
 	}, nil
 }
 
@@ -1129,6 +1142,7 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 					ETag:         item.ETag,
 					Parents:      item.Parents,
 					Starred:      item.Starred,
+					Tags:         item.Tags,
 				})
 			}
 		}
@@ -1177,6 +1191,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 			ETag:         item.ETag,
 			Parents:      item.Parents,
 			Starred:      item.Starred,
+			Tags:         item.Tags,
 		})
 	}
 
@@ -1273,15 +1288,21 @@ func (m *Adapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, e
 	return files, nil
 }
 
-// SearchFiles searches for files matching the query (simple robust scan for dev).
+// SearchFiles searches for files matching the query (delegates to SearchFilesWithTags).
 func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
+	return m.SearchFilesWithTags(ctx, query, nil)
+}
+
+// SearchFilesWithTags searches by text query AND all provided tags (AND semantics).
+// Items with no stored tags are checked via on-the-fly extraction (lazy fallback).
+func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
 	}
 
 	if m.client == nil {
-		return m.searchFilesMap(ctx, query)
+		return m.searchFilesWithTagsMap(ctx, query, tags)
 	}
 
 	items, err := m.scanUserItems(ctx)
@@ -1289,7 +1310,6 @@ func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.File
 		return nil, err
 	}
 
-	// Build parent map for recursive check
 	parentMap := make(map[string][]string)
 	for _, item := range items {
 		parentMap[item.ID] = item.Parents
@@ -1297,45 +1317,99 @@ func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.File
 
 	var files []adapter.FileMetadata
 	for _, item := range items {
-		// Simple Case-insensitive substring match on Name or Content
-		// Note: Content might be large, but for dev it is fine.
 		if item.MIMEType == "application/vnd.google-apps.folder" {
-			continue // Don't search folders for now to match cloud logic
+			continue
 		}
-
 		if !strings.HasSuffix(item.Name, ".md") {
 			continue
 		}
-
 		if !m.isDescendant(item.Parents, targetFolderID, parentMap) {
 			continue
 		}
 
-		match := false
-		if containsIgnoreCase(item.Name, query) {
-			match = true
-		} else if containsIgnoreCase(string(item.Content), query) {
-			match = true
+		// Text match (skip if query is empty)
+		if query != "" {
+			if !containsIgnoreCase(item.Name, query) && !containsIgnoreCase(string(item.Content), query) {
+				continue
+			}
 		}
 
-		if match {
-			name := item.Name
-			if item.MIMEType != "application/vnd.google-apps.folder" {
-				name = fromStoredName(name)
+		// Tag filter (AND semantics); lazy fallback for items with no stored tags
+		if len(tags) > 0 {
+			itemTags := item.Tags
+			if len(itemTags) == 0 && len(item.Content) > 0 {
+				// Lazy: item predates tag feature — extract on the fly for this query
+				itemTags = markdown.ExtractTags(item.Content)
 			}
-			files = append(files, adapter.FileMetadata{
-				ID:           item.ID,
-				Name:         name,
-				MIMEType:     item.MIMEType,
-				ModifiedTime: item.ModifiedTime,
-				Size:         item.Size,
-				ETag:         item.ETag,
-				Parents:      item.Parents,
-				Starred:      item.Starred,
-			})
+			if !hasAllTags(itemTags, tags) {
+				continue
+			}
 		}
+
+		files = append(files, adapter.FileMetadata{
+			ID:           item.ID,
+			Name:         fromStoredName(item.Name),
+			MIMEType:     item.MIMEType,
+			ModifiedTime: item.ModifiedTime,
+			Size:         item.Size,
+			ETag:         item.ETag,
+			Parents:      item.Parents,
+			Starred:      item.Starred,
+			Tags:         item.Tags,
+		})
 	}
 	return files, nil
+}
+
+// hasAllTags reports whether itemTags contains every tag in required.
+func hasAllTags(itemTags, required []string) bool {
+	for _, r := range required {
+		found := false
+		for _, t := range itemTags {
+			if strings.EqualFold(t, r) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// ListAllTags returns distinct tags across the user's notes with occurrence counts.
+func (m *Adapter) ListAllTags(ctx context.Context) ([]adapter.TagCount, error) {
+	if m.client == nil {
+		return m.listAllTagsMap(ctx)
+	}
+
+	items, err := m.scanUserItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int)
+	for _, item := range items {
+		if item.MIMEType == "application/vnd.google-apps.folder" {
+			continue
+		}
+		for _, t := range item.Tags {
+			counts[t]++
+		}
+	}
+
+	result := make([]adapter.TagCount, 0, len(counts))
+	for name, count := range counts {
+		result = append(result, adapter.TagCount{Name: name, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count != result[j].Count {
+			return result[i].Count > result[j].Count
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
 }
 
 // Export walks every note (and every folder above it) under the user's base
@@ -1444,7 +1518,7 @@ func folderPathSegments(parents []string, parentOf map[string]string, folderName
 	return rev
 }
 
-func (m *Adapter) searchFilesMap(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags []string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1453,7 +1527,6 @@ func (m *Adapter) searchFilesMap(ctx context.Context, query string) ([]adapter.F
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Build parent map
 	parentMap := make(map[string][]string)
 	for _, f := range m.files {
 		parentMap[f.ID] = f.Parents
@@ -1461,32 +1534,53 @@ func (m *Adapter) searchFilesMap(ctx context.Context, query string) ([]adapter.F
 
 	var files []adapter.FileMetadata
 	for _, f := range m.files {
-		if f.FileMetadata.MIMEType == "application/vnd.google-apps.folder" {
+		if f.MIMEType == "application/vnd.google-apps.folder" {
 			continue
 		}
-
 		if !strings.HasSuffix(f.Name, ".md") {
 			continue
 		}
-
 		if !m.isDescendant(f.Parents, targetFolderID, parentMap) {
 			continue
 		}
-
-		match := false
-		if containsIgnoreCase(f.Name, query) {
-			match = true
-		} else if containsIgnoreCase(string(f.Content), query) {
-			match = true
-		}
-
-		if match {
-			meta := f.FileMetadata
-			if meta.MIMEType != "application/vnd.google-apps.folder" {
-				meta.Name = fromStoredName(meta.Name)
+		if query != "" {
+			if !containsIgnoreCase(f.Name, query) && !containsIgnoreCase(string(f.Content), query) {
+				continue
 			}
-			files = append(files, meta)
 		}
+		if len(tags) > 0 && !hasAllTags(f.Tags, tags) {
+			continue
+		}
+		meta := f.FileMetadata
+		meta.Name = fromStoredName(meta.Name)
+		files = append(files, meta)
 	}
 	return files, nil
+}
+
+func (m *Adapter) listAllTagsMap(_ context.Context) ([]adapter.TagCount, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	counts := make(map[string]int)
+	for _, f := range m.files {
+		if f.MIMEType == "application/vnd.google-apps.folder" {
+			continue
+		}
+		for _, t := range f.Tags {
+			counts[t]++
+		}
+	}
+
+	result := make([]adapter.TagCount, 0, len(counts))
+	for name, count := range counts {
+		result = append(result, adapter.TagCount{Name: name, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count != result[j].Count {
+			return result[i].Count > result[j].Count
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
 }

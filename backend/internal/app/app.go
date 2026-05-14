@@ -30,6 +30,7 @@ type App struct {
 	syncHandler      *handler.SyncHandler
 	searchHandler    *handler.SearchHandler
 	exportHandler    *handler.ExportHandler
+	tagHandler       *handler.TagHandler
 	apiGatewaySecret string
 }
 
@@ -135,6 +136,7 @@ func NewApp(ctx context.Context) *App {
 	noteHandler := handler.NewNoteHandler(storageProvider, jwtSecret)
 	searchHandler := handler.NewSearchHandler(storageProvider, jwtSecret)
 	exportHandler := handler.NewExportHandler(storageProvider, jwtSecret)
+	tagHandler := handler.NewTagHandler(storageProvider, jwtSecret)
 
 	sessionsTable := os.Getenv("EDITING_SESSIONS_TABLE")
 	if sessionsTable == "" {
@@ -152,6 +154,7 @@ func NewApp(ctx context.Context) *App {
 		syncHandler:      syncHandler,
 		searchHandler:    searchHandler,
 		exportHandler:    exportHandler,
+		tagHandler:       tagHandler,
 		apiGatewaySecret: apiGatewaySecret,
 	}
 }
@@ -286,6 +289,10 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 
 	if path == "/search" && method == "GET" {
 		return corsResponse(must(app.searchHandler.Search(ctx, req))), nil
+	}
+
+	if path == "/tags" && method == "GET" {
+		return corsResponse(must(app.tagHandler.ListTags(ctx, req))), nil
 	}
 
 	if path == "/export" && method == "GET" {

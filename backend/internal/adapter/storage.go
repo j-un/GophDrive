@@ -15,7 +15,14 @@ type FileMetadata struct {
 	ETag         string    `json:"etag"`
 	Parents      []string  `json:"parents,omitempty"`
 	Starred      bool      `json:"starred"`
+	Tags         []string  `json:"tags,omitempty"`
 	ViewedTime   time.Time `json:"viewedTime,omitempty"`
+}
+
+// TagCount is a tag name paired with how many notes carry it.
+type TagCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // File represents a file with its content.
@@ -80,6 +87,13 @@ type StorageAdapter interface {
 
 	// SearchFiles searches for files matching the query.
 	SearchFiles(ctx context.Context, query string) ([]FileMetadata, error)
+
+	// SearchFilesWithTags searches for files matching the query AND all of the
+	// provided tags (AND semantics). An empty tags slice applies no tag filter.
+	SearchFilesWithTags(ctx context.Context, query string, tags []string) ([]FileMetadata, error)
+
+	// ListAllTags returns every distinct tag across the user's notes with counts.
+	ListAllTags(ctx context.Context) ([]TagCount, error)
 
 	// Export returns every note owned by the caller, each annotated with
 	// the full folder path leading to it (rooted at the user's base folder).
