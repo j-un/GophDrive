@@ -743,8 +743,17 @@ function NoteContent() {
               );
             }}
           >
-            <Share2 size={16} />
+            {shareCopied ? (
+              <>
+                <Check size={16} aria-hidden="true" /> Copied!
+              </>
+            ) : (
+              <Share2 size={16} />
+            )}
           </button>
+          <span role="status" aria-live="polite" className="sr-only">
+            {shareCopied ? "Link copied" : ""}
+          </span>
           <NoteMenu
             isOpen={isMenuOpen}
             onToggle={(e) => {
