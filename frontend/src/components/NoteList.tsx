@@ -22,9 +22,14 @@ import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
 interface NoteListProps {
   folderId?: string;
   searchQuery?: string;
+  tagFilter?: string[];
 }
 
-export default function NoteList({ folderId, searchQuery }: NoteListProps) {
+export default function NoteList({
+  folderId,
+  searchQuery,
+  tagFilter,
+}: NoteListProps) {
   const router = useRouter();
   const [notes, setNotes] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,18 +50,17 @@ export default function NoteList({ folderId, searchQuery }: NoteListProps) {
 
   const isOffline = useOffline();
 
-  // Determine view mode: Force list view for search, otherwise grid
-  const viewMode = searchQuery ? "list" : "grid";
+  // Determine view mode: Force list view for search/tag filter, otherwise grid
+  const viewMode = searchQuery || tagFilter?.length ? "list" : "grid";
 
   const loadNotes = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Search Mode
-      if (searchQuery) {
-        // Important: Use the imported searchFiles function
+      // Search / Tag filter mode
+      if (searchQuery || tagFilter?.length) {
         const { searchFiles } = await import("@/lib/api");
-        const results = await searchFiles(searchQuery);
+        const results = await searchFiles(searchQuery || "", tagFilter);
         setNotes(results || []);
         setLoading(false);
         return;

@@ -49,7 +49,7 @@ mise x node -- bash -c 'cd infra    && npx vitest run test/compute-stack.test.ts
 | `frontend/` | `gophdrive-frontend` (Next.js)      | Static export to `frontend/out/`                     |
 | `infra/`    | `gophdrive-infra` (AWS CDK v2 / TS) | CloudFormation stacks                                |
 
-`core/` is consumed by the frontend as Wasm only — the backend does not import it. `core/bridge/main_wasm.go` registers `renderMarkdown`, `checkConflict`, `createOfflineChange` on `window`. `wasm_exec.js` is copied from the active Go SDK's `GOROOT` by `build-wasm.sh`, so re-run it after a Go version change.
+`core/` is consumed by the frontend as Wasm and from the backend as a regular Go package for markdown utilities (e.g. `core/markdown.ExtractTags`). Only `core/bridge/main_wasm.go` carries `//go:build js && wasm`; all other packages are pure Go with no build constraints. `core/bridge/main_wasm.go` registers `renderMarkdown`, `checkConflict`, `createOfflineChange` on `window`. `wasm_exec.js` is copied from the active Go SDK's `GOROOT` by `build-wasm.sh`, so re-run it after a Go version change.
 
 ### Single-Lambda router
 

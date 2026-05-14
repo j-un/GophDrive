@@ -11,6 +11,7 @@ import {
   updateNote,
   deleteFile,
   searchFiles,
+  listTags,
   exportNotes,
   setFetchFn,
   resetFetchFn,
@@ -208,7 +209,35 @@ describe("API functions", () => {
     await searchFiles("hello world");
 
     const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toContain("q=hello%20world");
+    expect(url).toContain("q=hello+world");
+  });
+
+  it("searchFiles appends tag params", async () => {
+    const mockFetch = fakeFetch(200, []);
+    setFetchFn(mockFetch);
+
+    await searchFiles("", ["develop", "work/q3"]);
+
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("tag=develop");
+    expect(url).toContain("tag=work%2Fq3");
+  });
+
+  it("listTags returns tag list", async () => {
+    const mockFetch = fakeFetch(200, [
+      { name: "develop", count: 5 },
+      { name: "work/q3", count: 2 },
+    ]);
+    setFetchFn(mockFetch);
+
+    const result = await listTags();
+
+    expect(result).toEqual([
+      { name: "develop", count: 5 },
+      { name: "work/q3", count: 2 },
+    ]);
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/tags");
   });
 
   it("exportNotes returns blob and parses Content-Disposition filename", async () => {

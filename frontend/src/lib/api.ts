@@ -130,6 +130,7 @@ export interface FileItem {
   size: number;
   parents?: string[];
   starred?: boolean;
+  tags?: string[];
 }
 
 export async function parseJson<T>(res: Response): Promise<T> {
@@ -336,9 +337,26 @@ export async function getUser(): Promise<User> {
   return parseJson(res);
 }
 
-export async function searchFiles(query: string): Promise<FileItem[]> {
-  const res = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
+export async function searchFiles(
+  query: string,
+  tags?: string[],
+): Promise<FileItem[]> {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  tags?.forEach((t) => params.append("tag", t));
+  const res = await apiFetch(`/search?${params.toString()}`);
   if (!res.ok) return handleError(res, "Failed to search files");
+  return parseJson(res);
+}
+
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+export async function listTags(): Promise<TagCount[]> {
+  const res = await apiFetch("/tags");
+  if (!res.ok) return handleError(res, "Failed to list tags");
   return parseJson(res);
 }
 

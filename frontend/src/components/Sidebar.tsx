@@ -8,6 +8,7 @@ import {
   Settings,
   FileText,
   Clock,
+  Hash,
 } from "lucide-react";
 import {
   createFolder,
@@ -18,6 +19,8 @@ import {
   FileItem,
   listFiles,
   listRecent,
+  listTags,
+  TagCount,
 } from "@/lib/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { RenameDialog } from "./RenameDialog";
@@ -52,6 +55,7 @@ export function Sidebar({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [tags, setTags] = useState<TagCount[]>([]);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
     folder: FileItem | null;
@@ -83,6 +87,10 @@ export function Sidebar({
       // Fetch Recent Files (top 5)
       const recent = await listRecent(5);
       setRecentFiles(recent || []);
+
+      // Fetch Tags (top 50 by count)
+      const tagList = await listTags();
+      setTags((tagList || []).slice(0, 50));
     } catch (err) {
       console.error("Failed to load folders:", err);
     } finally {
@@ -495,6 +503,65 @@ export function Sidebar({
               }}
             />
           </div>
+
+          {/* Tags Section */}
+          {tags.length > 0 && (
+            <div style={{ marginBottom: "1rem" }}>
+              <div
+                style={{
+                  padding: "0.5rem",
+                  fontSize: "0.75rem",
+                  fontWeight: "bold",
+                  color: "var(--muted-foreground)",
+                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <Hash size={14} /> Tags
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.375rem",
+                  padding: "0 0.5rem 0.5rem",
+                }}
+              >
+                {tags.map((tag) => (
+                  <a
+                    key={tag.name}
+                    href={`/notes?tag=${encodeURIComponent(tag.name)}`}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      padding: "0.125rem 0.5rem",
+                      borderRadius: "9999px",
+                      fontSize: "0.75rem",
+                      background: "var(--muted)",
+                      color: "var(--foreground)",
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                    onClick={() => onClose?.()}
+                  >
+                    #{tag.name}
+                    <span style={{ opacity: 0.6, fontSize: "0.65rem" }}>
+                      {tag.count}
+                    </span>
+                  </a>
+                ))}
+              </div>
+              <div
+                style={{
+                  borderBottom: "1px solid var(--border)",
+                  margin: "0.5rem 0",
+                }}
+              />
+            </div>
+          )}
 
           {/* Create Input */}
           {isCreating && (
