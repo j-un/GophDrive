@@ -12,12 +12,14 @@ import {
   starFile,
   createNote as apiCreateNote,
   listFiles,
+  searchFiles,
 } from "@/lib/api";
 import { NoteMenu } from "@/components/NoteMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RenameDialog } from "@/components/RenameDialog";
 import { useOffline } from "@/hooks/useOffline";
 import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
+import { buildSearchRequest } from "@/lib/searchQuery";
 
 interface NoteListProps {
   folderId?: string;
@@ -59,8 +61,8 @@ export default function NoteList({
     try {
       // Search / Tag filter mode
       if (searchQuery || tagFilter?.length) {
-        const { searchFiles } = await import("@/lib/api");
-        const results = await searchFiles(searchQuery || "", tagFilter);
+        const { text, tags } = buildSearchRequest(searchQuery, tagFilter);
+        const results = await searchFiles(text, tags);
         setNotes(results || []);
         setLoading(false);
         return;
@@ -126,7 +128,7 @@ export default function NoteList({
   useEffect(() => {
     loadNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folderId, searchQuery, isOffline]);
+  }, [folderId, searchQuery, tagFilter, isOffline]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -298,7 +300,11 @@ export default function NoteList({
         }}
       >
         <h2 style={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-          {searchQuery ? `Search results for "${searchQuery}"` : "Notes"}
+          {searchQuery
+            ? `Search results for "${searchQuery}"`
+            : tagFilter?.length
+              ? `Tag: ${tagFilter.join(", ")}`
+              : "Notes"}
         </h2>
         <div className="flex gap-2">
           <button
@@ -518,8 +524,9 @@ export default function NoteList({
             alignItems: "start",
           }}
         >
-          {/* New Note Button (Only in Grid/Normal Mode) */}
+          {/* New Note Button (Only in Grid/Normal Mode, not during search/tag filter) */}
           {!searchQuery &&
+            !tagFilter?.length &&
             (isCreating ? (
               <div
                 className="glass"

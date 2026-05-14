@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import NoteList from "@/components/NoteList";
 import { Sidebar } from "@/components/Sidebar";
 import { ChevronRight, Home, Menu } from "lucide-react";
@@ -21,6 +21,13 @@ function NotesContent() {
   ]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Stable reference — only changes when actual tag values change
+  const tagFilter = useMemo(
+    () => searchParams.getAll("tag").filter(Boolean),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchParams.toString()],
+  );
 
   // Sync state with URL param
   useEffect(() => {
@@ -151,7 +158,7 @@ function NotesContent() {
         <NoteList
           folderId={currentFolderId}
           searchQuery={searchParams.get("q") || undefined}
-          tagFilter={searchParams.getAll("tag").filter(Boolean)}
+          tagFilter={tagFilter}
         />
       </div>
     </div>
