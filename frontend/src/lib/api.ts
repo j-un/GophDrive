@@ -341,6 +341,7 @@ export async function searchFiles(
   query: string,
   tags?: string[],
 ): Promise<FileItem[]> {
+  if (!query && (!tags || tags.length === 0)) return [];
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   tags?.forEach((t) => params.append("tag", t));

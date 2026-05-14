@@ -26,18 +26,21 @@ func main() {
 		}
 
 		queryParams := make(map[string]string)
+		multiQueryParams := make(map[string][]string)
 		for k, v := range r.URL.Query() {
 			queryParams[k] = v[0]
+			multiQueryParams[k] = v
 		}
 
 		req := events.APIGatewayProxyRequest{
-			Path:                  r.URL.Path,
-			HTTPMethod:            r.Method,
-			Headers:               headers,
-			MultiValueHeaders:     multiHeaders,
-			QueryStringParameters: queryParams,
-			Body:                  string(body),
-			IsBase64Encoded:       false,
+			Path:                            r.URL.Path,
+			HTTPMethod:                      r.Method,
+			Headers:                         headers,
+			MultiValueHeaders:               multiHeaders,
+			QueryStringParameters:           queryParams,
+			MultiValueQueryStringParameters: multiQueryParams,
+			Body:                            string(body),
+			IsBase64Encoded:                 false,
 		}
 
 		resp, err := application.HandleRequest(context.Background(), req)

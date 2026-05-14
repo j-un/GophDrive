@@ -11,12 +11,14 @@ func TestParseFrontmatter(t *testing.T) {
 		source   string
 		wantTags []string
 		wantOk   bool
+		wantBody string
 	}{
 		{
 			name:     "YAML array",
 			source:   "---\ntags: [develop, work/q3]\n---\nbody",
 			wantTags: []string{"develop", "work/q3"},
 			wantOk:   true,
+			wantBody: "body",
 		},
 		{
 			name:     "YAML array with spaces",
@@ -59,6 +61,35 @@ func TestParseFrontmatter(t *testing.T) {
 			source:   "---\ntags: [x]\n---\nHello world",
 			wantTags: []string{"x"},
 			wantOk:   true,
+			wantBody: "Hello world",
+		},
+		{
+			name:     "CRLF frontmatter",
+			source:   "---\r\ntags: [crlf]\r\n---\r\nbody",
+			wantTags: []string{"crlf"},
+			wantOk:   true,
+			wantBody: "body",
+		},
+		{
+			name:     "frontmatter without trailing newline",
+			source:   "---\ntags: [x]\n---",
+			wantTags: []string{"x"},
+			wantOk:   true,
+			wantBody: "",
+		},
+		{
+			name:     "malformed YAML returns ok=true with nil tags",
+			source:   "---\ntags: [unclosed\n---\nbody",
+			wantTags: nil,
+			wantOk:   true,
+			wantBody: "body",
+		},
+		{
+			name:     "explicit null tags",
+			source:   "---\ntags: null\n---\nbody",
+			wantTags: nil,
+			wantOk:   true,
+			wantBody: "body",
 		},
 	}
 	for _, tt := range tests {
@@ -73,12 +104,8 @@ func TestParseFrontmatter(t *testing.T) {
 			if tt.wantTags == nil && len(tags) != 0 {
 				t.Errorf("tags = %v, want nil/empty", tags)
 			}
-			// body should not contain frontmatter
-			if ok {
-				for _, b := range body {
-					_ = b // just ensure body is non-nil
-					break
-				}
+			if ok && tt.wantBody != "" && string(body) != tt.wantBody {
+				t.Errorf("body = %q, want %q", string(body), tt.wantBody)
 			}
 		})
 	}
@@ -180,6 +207,21 @@ func TestExtractInlineTags(t *testing.T) {
 			body: "タグ。#開発する",
 			want: []string{"開発する"},
 		},
+		{
+			name: "dot not included in tag",
+			body: "Version #v1.0 released",
+			want: []string{"v1"},
+		},
+		{
+			name: "link title with hash",
+			body: "See [#issue](url) here",
+			want: []string{"issue"},
+		},
+		{
+			name: "duplicate inline tags returns duplicates",
+			body: "Tag #x again #x",
+			want: []string{"x", "x"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -234,6 +276,11 @@ func TestExtractTags(t *testing.T) {
 			name:   "CJK frontmatter and inline",
 			source: "---\ntags: [開発, テスト]\n---\n今日は #バグ修正 をした",
 			want:   []string{"テスト", "バグ修正", "開発"},
+		},
+		{
+			name:   "dedup inline duplicates",
+			source: "Meeting #standup then #standup again",
+			want:   []string{"standup"},
 		},
 	}
 	for _, tt := range tests {

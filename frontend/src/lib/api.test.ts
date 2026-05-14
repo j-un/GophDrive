@@ -240,6 +240,49 @@ describe("API functions", () => {
     expect(url).toContain("/api/tags");
   });
 
+  it("searchFiles returns empty array without fetching when both query and tags are empty", async () => {
+    const mockFetch = fakeFetch(200, []);
+    setFetchFn(mockFetch);
+
+    const result = await searchFiles("", undefined);
+
+    expect(result).toEqual([]);
+    expect((mockFetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+
+  it("searchFiles sends both q and tag params", async () => {
+    const mockFetch = fakeFetch(200, []);
+    setFetchFn(mockFetch);
+
+    await searchFiles("sprint", ["develop"]);
+
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("q=sprint");
+    expect(url).toContain("tag=develop");
+  });
+
+  it("listTags throws on server error", async () => {
+    setFetchFn(
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: { get: () => "application/json" },
+        json: () => Promise.resolve({ error: "internal" }),
+        text: () => Promise.resolve("internal server error"),
+      } as unknown as Response),
+    );
+
+    await expect(listTags()).rejects.toThrow("Failed to list tags");
+  });
+
+  it("listTags throws on HTML response", async () => {
+    setFetchFn(fakeFetch(200, [], "text/html"));
+
+    await expect(listTags()).rejects.toThrow(
+      "Server returned an unexpected response",
+    );
+  });
+
   it("exportNotes returns blob and parses Content-Disposition filename", async () => {
     const fakeBlob = { size: 42 } as Blob;
     const headers: Record<string, string> = {

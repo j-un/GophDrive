@@ -73,6 +73,121 @@ func TestSearch_NoResults(t *testing.T) {
 	}
 }
 
+func TestSearch_TagFilter_Single(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"a.md","content":"Hello #develop world"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"b.md","content":"No tags here"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"develop"}}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for tag=develop, got %d", len(results))
+	}
+}
+
+func TestSearch_TagFilter_AndSemantics(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"ab.md","content":"Tags #alpha and #beta"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"a.md","content":"Only #alpha tag"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"b.md","content":"Only #beta tag"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"alpha", "beta"}}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for tag=alpha AND tag=beta, got %d", len(results))
+	}
+}
+
+func TestSearch_TagFilter_CaseInsensitive(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"ci.md","content":"Tag #Develop here"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"develop"}}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for case-insensitive tag match, got %d", len(results))
+	}
+}
+
+func TestSearch_TagFilter_QueryAndTagCombined(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"match.md","content":"sprint planning #develop"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"tagonly.md","content":"no query match #develop"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"qonly.md","content":"sprint planning no tag"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "sprint"}
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"develop"}}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result matching both q and tag, got %d", len(results))
+	}
+}
+
+func TestSearch_TagOnly_NoQuery(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"t.md","content":"#develop task"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"develop"}}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 for tag-only query, got %d: %s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestSearch_TagFilter_ReturnsEmptyArrayNotNull(t *testing.T) {
+	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("GET", "/search", "")
+	req.MultiValueQueryStringParameters = map[string][]string{"tag": {"nonexistent"}}
+	resp, _ := searchH.Search(ctx, req)
+	if resp.Body != "[]" {
+		t.Errorf("Expected '[]' for no tag matches, got %s", resp.Body)
+	}
+}
+
 func TestSearch_Unauthorized(t *testing.T) {
 	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
 	ctx := context.Background()
