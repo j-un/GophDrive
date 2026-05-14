@@ -53,7 +53,7 @@ export function Sidebar({
   };
   const router = useRouter();
   const [folders, setFolders] = useState<FileItem[]>([]);
-  const [starredFolders, setStarredFolders] = useState<FileItem[]>([]);
+  const [starredItems, setStarredItems] = useState<FileItem[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -93,11 +93,8 @@ export function Sidebar({
       );
       setFolders(folderItems.sort((a, b) => a.name.localeCompare(b.name)));
 
-      const starredItems = (starred || []).filter(
-        (item) => item.mimeType === "application/vnd.google-apps.folder",
-      );
-      setStarredFolders(
-        starredItems.sort((a, b) => a.name.localeCompare(b.name)),
+      setStarredItems(
+        (starred || []).sort((a, b) => a.name.localeCompare(b.name)),
       );
 
       setRecentFiles(recent || []);
@@ -349,7 +346,7 @@ export function Sidebar({
                   />
                 </div>
               ))
-            ) : starredFolders.length === 0 ? (
+            ) : starredItems.length === 0 ? (
               <div
                 style={{
                   padding: "0.5rem",
@@ -358,46 +355,65 @@ export function Sidebar({
                   fontStyle: "italic",
                 }}
               >
-                No starred folders
+                Nothing starred
               </div>
             ) : (
               <div className="animate-fade-in">
-                {starredFolders.map((folder) => (
-                  <div
-                    key={`starred-${folder.id}`}
-                    onClick={() => handleNavigate(folder.id, folder.name)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem",
-                      borderRadius: "0.25rem",
-                      cursor: "pointer",
-                      background:
-                        currentFolderId === folder.id
-                          ? "var(--muted)"
-                          : "transparent",
-                      color: "var(--foreground)",
-                    }}
-                    className="hover:bg-[var(--muted)]"
-                  >
-                    <Star
-                      size={16}
-                      fill="var(--yellow)"
-                      color="var(--yellow)"
-                    />
-                    <span
+                {starredItems.map((item) => {
+                  const isFolder =
+                    item.mimeType === "application/vnd.google-apps.folder";
+                  return (
+                    <div
+                      key={`starred-${item.id}`}
+                      onClick={() =>
+                        isFolder
+                          ? handleNavigate(item.id, item.name)
+                          : router.push(`/note?id=${item.id}`)
+                      }
                       style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: "0.9rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.5rem",
+                        borderRadius: "0.25rem",
+                        cursor: "pointer",
+                        background:
+                          isFolder && currentFolderId === item.id
+                            ? "var(--muted)"
+                            : "transparent",
+                        color: "var(--foreground)",
                       }}
+                      className="hover:bg-[var(--muted)]"
                     >
-                      {folder.name}
-                    </span>
-                  </div>
-                ))}
+                      <Star
+                        size={16}
+                        fill="var(--yellow)"
+                        color="var(--yellow)"
+                      />
+                      {isFolder ? (
+                        <Folder
+                          size={14}
+                          style={{ flexShrink: 0, opacity: 0.7 }}
+                        />
+                      ) : (
+                        <FileText
+                          size={14}
+                          style={{ flexShrink: 0, opacity: 0.7 }}
+                        />
+                      )}
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {item.name}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div
