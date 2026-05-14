@@ -88,9 +88,8 @@ export function Sidebar({
       const recent = await listRecent(5);
       setRecentFiles(recent || []);
 
-      // Fetch Tags (top 50 by count)
-      const tagList = await listTags();
-      setTags((tagList || []).slice(0, 50));
+      const tagList = await listTags(50);
+      setTags(tagList || []);
     } catch (err) {
       console.error("Failed to load folders:", err);
     } finally {

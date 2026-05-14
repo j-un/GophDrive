@@ -355,8 +355,9 @@ export interface TagCount {
   count: number;
 }
 
-export async function listTags(): Promise<TagCount[]> {
-  const res = await apiFetch("/tags");
+export async function listTags(limit?: number): Promise<TagCount[]> {
+  const path = limit !== undefined ? `/tags?limit=${limit}` : "/tags";
+  const res = await apiFetch(path);
   if (!res.ok) return handleError(res, "Failed to list tags");
   return parseJson(res);
 }
