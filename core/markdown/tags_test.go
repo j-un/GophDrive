@@ -201,39 +201,39 @@ func TestExtractTags(t *testing.T) {
 		want   []string
 	}{
 		{
-			name: "frontmatter + inline combined and deduped",
+			name:   "frontmatter + inline combined and deduped",
 			source: "---\ntags: [develop, backend]\n---\n# Title\nWork on #develop and #frontend",
-			want: []string{"backend", "develop", "frontend"},
+			want:   []string{"backend", "develop", "frontend"},
 		},
 		{
-			name: "frontmatter only",
+			name:   "frontmatter only",
 			source: "---\ntags: [alpha, beta]\n---\nNo inline tags here",
-			want: []string{"alpha", "beta"},
+			want:   []string{"alpha", "beta"},
 		},
 		{
-			name: "inline only",
+			name:   "inline only",
 			source: "# Note\nWorking on #feature today",
-			want: []string{"feature"},
+			want:   []string{"feature"},
 		},
 		{
-			name: "no tags at all",
+			name:   "no tags at all",
 			source: "Just a plain note",
-			want: nil,
+			want:   nil,
 		},
 		{
-			name: "deduplication",
+			name:   "deduplication",
 			source: "---\ntags: [go]\n---\nUsing #go language",
-			want: []string{"go"},
+			want:   []string{"go"},
 		},
 		{
-			name: "sorted output",
+			name:   "sorted output",
 			source: "---\ntags: [zebra, apple]\n---\n#mango fruit",
-			want: []string{"apple", "mango", "zebra"},
+			want:   []string{"apple", "mango", "zebra"},
 		},
 		{
-			name: "CJK frontmatter and inline",
+			name:   "CJK frontmatter and inline",
 			source: "---\ntags: [開発, テスト]\n---\n今日は #バグ修正 をした",
-			want: []string{"テスト", "バグ修正", "開発"},
+			want:   []string{"テスト", "バグ修正", "開発"},
 		},
 	}
 	for _, tt := range tests {

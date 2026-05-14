@@ -151,6 +151,7 @@ function NotesContent() {
         <NoteList
           folderId={currentFolderId}
           searchQuery={searchParams.get("q") || undefined}
+          tagFilter={searchParams.getAll("tag").filter(Boolean)}
         />
       </div>
     </div>
