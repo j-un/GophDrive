@@ -185,11 +185,11 @@ export function Sidebar({
     }
   };
 
-  const handleToggleStar = async (e: React.MouseEvent, folder: FileItem) => {
+  const handleToggleStar = async (e: React.MouseEvent, item: FileItem) => {
     e.stopPropagation();
     setActiveMenuId(null);
     try {
-      await starFile(folder.id, !folder.starred);
+      await starFile(item.id, !item.starred);
       loadFolders();
     } catch (error) {
       const err = error as Error;
@@ -362,14 +362,28 @@ export function Sidebar({
                 {starredItems.map((item) => {
                   const isFolder =
                     item.mimeType === "application/vnd.google-apps.folder";
+                  const navigate = () => {
+                    if (isFolder) {
+                      handleNavigate(item.id, item.name);
+                    } else {
+                      // Notes navigate to /note page which unmounts this Sidebar,
+                      // so no active-highlight state is needed for notes.
+                      router.push(`/note?id=${item.id}`);
+                      onClose?.();
+                    }
+                  };
                   return (
                     <div
                       key={`starred-${item.id}`}
-                      onClick={() =>
-                        isFolder
-                          ? handleNavigate(item.id, item.name)
-                          : router.push(`/note?id=${item.id}`)
-                      }
+                      role="button"
+                      tabIndex={0}
+                      onClick={navigate}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate();
+                        }
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -377,6 +391,7 @@ export function Sidebar({
                         padding: "0.5rem",
                         borderRadius: "0.25rem",
                         cursor: "pointer",
+                        // Active highlight only applies to folders; notes unmount the Sidebar on click
                         background:
                           isFolder && currentFolderId === item.id
                             ? "var(--muted)"
@@ -385,11 +400,25 @@ export function Sidebar({
                       }}
                       className="hover:bg-[var(--muted)]"
                     >
-                      <Star
-                        size={16}
-                        fill="var(--yellow)"
-                        color="var(--yellow)"
-                      />
+                      <button
+                        onClick={(e) => handleToggleStar(e, item)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 0,
+                          display: "flex",
+                          flexShrink: 0,
+                        }}
+                        aria-label={`Unstar ${item.name}`}
+                        title="Unstar"
+                      >
+                        <Star
+                          size={16}
+                          fill="var(--yellow)"
+                          color="var(--yellow)"
+                        />
+                      </button>
                       {isFolder ? (
                         <Folder
                           size={14}
@@ -407,6 +436,7 @@ export function Sidebar({
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           fontSize: "0.9rem",
+                          flex: 1,
                         }}
                       >
                         {item.name}
