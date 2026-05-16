@@ -3,7 +3,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, RefreshCw, Folder } from "lucide-react";
+import {
+  FileText,
+  Plus,
+  RefreshCw,
+  Folder,
+  FolderPlus,
+  ChevronRight,
+} from "lucide-react";
 import {
   FileItem,
   duplicateNote,
@@ -11,6 +18,7 @@ import {
   deleteFile,
   starFile,
   createNote as apiCreateNote,
+  createFolder,
   listFiles,
   searchFiles,
 } from "@/lib/api";
@@ -36,11 +44,20 @@ export default function NoteList({
 }: NoteListProps) {
   const router = useRouter();
   const [notes, setNotes] = useState<FileItem[]>([]);
+  const [folders, setFolders] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // New Note state
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newNoteName, setNewNoteName] = useState("");
+
+  // New Folder state
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [isSubmittingFolder, setIsSubmittingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -54,40 +71,40 @@ export default function NoteList({
 
   const isOffline = useOffline();
 
-  // Determine view mode: Force list view for search/tag filter, otherwise grid
+  // List view for search/tag filter, grid for normal browse
   const viewMode = searchQuery || tagFilter?.length ? "list" : "grid";
 
   const loadNotes = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Search / Tag filter mode
+      // Search / Tag filter mode — backend returns notes only
       if (searchQuery || tagFilter?.length) {
         const { text, tags } = buildSearchRequest(searchQuery, tagFilter);
         const results = await searchFiles(text, tags);
+        setFolders([]);
         setNotes(results || []);
         setLoading(false);
         return;
       }
 
-      // Offline Mode
+      // Offline Mode — notes only from IndexedDB
       if (isOffline) {
         const localNotes = await getAllNotesLocal();
-        // Map LocalNote to FileItem
         const fileItems: FileItem[] = localNotes.map((n) => ({
           id: n.id,
           name: n.name,
-          mimeType: "application/vnd.google-apps.document", // Assuming local notes are docs
+          mimeType: "application/vnd.google-apps.document",
           parents: [],
           modifiedTime: n.modifiedTime,
-          size: 0, // Placeholder
-          version: 1, // Placeholder
+          size: 0,
+          version: 1,
           etag: "",
-          createdTime: n.modifiedTime, // Placeholder
+          createdTime: n.modifiedTime,
           kind: "drive#file",
           trashed: false,
         }));
-
+        setFolders([]);
         setNotes(
           fileItems.sort(
             (a, b) =>
@@ -99,26 +116,28 @@ export default function NoteList({
         return;
       }
 
-      // Online Mode
+      // Online browse mode — split into folders and notes
       const items = await listFiles(folderId);
-      // Filter out folders if needed, or handle them. The original code filtered them out?
-      // "const noteItems = (items || []).filter(item => item.mimeType !== 'application/vnd.google-apps.folder');"
-      // But we want to show folders too if we support them.
-      // Let's keep the filter if that's what was there, OR enable folders if we are ready.
-      // The previous code had: `const noteItems = (items || []).filter(item => item.mimeType !== 'application/vnd.google-apps.folder');`
-      // But I see `createFolder` code, so maybe folders are supported?
-      // I'll stick to the fetchFiles result which should handle what we want.
+      const allItems = items || [];
 
-      const noteItems = (items || []).filter(
-        (item) => item.mimeType !== "application/vnd.google-apps.folder",
-      );
-      setNotes(
-        noteItems.sort(
+      const folderItems = allItems
+        .filter(
+          (item) => item.mimeType === "application/vnd.google-apps.folder",
+        )
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const noteItems = allItems
+        .filter(
+          (item) => item.mimeType !== "application/vnd.google-apps.folder",
+        )
+        .sort(
           (a, b) =>
             new Date(b.modifiedTime).getTime() -
             new Date(a.modifiedTime).getTime(),
-        ),
-      );
+        );
+
+      setFolders(folderItems);
+      setNotes(noteItems);
     } catch (error) {
       const err = error as Error;
       setError(err.message || String(error));
@@ -147,16 +166,13 @@ export default function NoteList({
     if (id) {
       router.push(`?folderId=${id}`);
     } else {
-      router.push("/notes");
+      router.push("/drive");
     }
   };
 
   const handleCreateNote = async (name: string) => {
-    // Validate folderId if we think we are in a folder
-    // (Note: folderId can be undefined for Root, but if we are in a "loading" state or invalid state, we should be careful)
     if (isSubmitting) return;
     setIsSubmitting(true);
-
     try {
       const note = await apiCreateNote(name, "# " + name, folderId);
       router.push(`/note?id=${note.id}`);
@@ -164,7 +180,24 @@ export default function NoteList({
       const err = error as Error;
       console.error("Failed to create note:", err);
       alert(err.message || "Failed to create note. Please try again.");
-      setIsSubmitting(false); // Only reset on error, or if we weren't navigating away
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateFolder = async (name: string) => {
+    if (!name.trim() || isSubmittingFolder) return;
+    setIsSubmittingFolder(true);
+    try {
+      await createFolder(name, folderId);
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+      loadNotes();
+      onAfterMutation?.();
+    } catch (error) {
+      const err = error as Error;
+      alert(err.message || "Failed to create folder");
+    } finally {
+      setIsSubmittingFolder(false);
     }
   };
 
@@ -235,7 +268,6 @@ export default function NoteList({
         await deleteNoteLocal(deleteNoteId);
       } else {
         await deleteFile(deleteNoteId);
-        // Also remove from local
         await deleteNoteLocal(deleteNoteId);
         onAfterMutation?.();
       }
@@ -247,8 +279,6 @@ export default function NoteList({
       alert(err.message || "Failed to delete note");
     }
   };
-
-  // Removed blocking loading spinner
 
   if (error) {
     return (
@@ -284,18 +314,18 @@ export default function NoteList({
       }}
     >
       <ConfirmDialog
-        isOpen={!!deleteNoteId} // Use deleteNoteId for isOpen
-        title="Delete Note"
-        message={`Are you sure you want to delete note "${deleteNoteName}"? This cannot be undone.`} // Use deleteNoteName
+        isOpen={!!deleteNoteId}
+        title="Delete"
+        message={`Are you sure you want to delete "${deleteNoteName}"? This cannot be undone.`}
         onConfirm={confirmDeleteNote}
-        onCancel={() => setDeleteNoteId(null)} // Reset deleteNoteId on cancel
+        onCancel={() => setDeleteNoteId(null)}
       />
       <RenameDialog
         isOpen={!!renameNoteId}
         initialName={renameNoteName}
         onRename={executeRename}
         onCancel={() => setRenameNoteId(null)}
-        title="Rename Note"
+        title="Rename"
       />
       <div
         style={{
@@ -310,7 +340,7 @@ export default function NoteList({
             ? `Search results for "${searchQuery}"`
             : tagFilter?.length
               ? `Tag: ${tagFilter.join(", ")}`
-              : "Notes"}
+              : "Files"}
         </h2>
         <div className="flex gap-2">
           <button
@@ -332,10 +362,10 @@ export default function NoteList({
       </div>
 
       {viewMode === "list" ? (
+        /* Search / tag filter — list view, notes only */
         <div
           style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
         >
-          {/* List View Implementation */}
           {loading && notes.length === 0 ? (
             <div
               className="animate-fade-in"
@@ -430,11 +460,7 @@ export default function NoteList({
               {notes.map((note) => (
                 <div key={note.id} style={{ position: "relative" }}>
                   <Link
-                    href={
-                      note.mimeType === "application/vnd.google-apps.folder"
-                        ? `?folderId=${note.id}`
-                        : `/note?id=${note.id}`
-                    }
+                    href={`/note?id=${note.id}`}
                     className="glass group"
                     style={{
                       padding: "1rem",
@@ -456,26 +482,9 @@ export default function NoteList({
                         flex: 1,
                       }}
                     >
-                      {note.mimeType ===
-                      "application/vnd.google-apps.folder" ? (
-                        <Folder size={20} style={{ color: "var(--primary)" }} />
-                      ) : (
-                        <FileText
-                          size={20}
-                          style={{ color: "var(--primary)" }}
-                        />
-                      )}
+                      <FileText size={20} style={{ color: "var(--primary)" }} />
                       <div>
                         <div style={{ fontWeight: 500 }}>{note.name}</div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            opacity: 0.6,
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          ID: {note.id.substring(0, 8)}...
-                        </div>
                       </div>
                     </div>
                     <div style={{ fontSize: "0.875rem", opacity: 0.6 }}>
@@ -521,162 +530,325 @@ export default function NoteList({
           )}
         </div>
       ) : (
+        /* Browse mode — grid with Folders section then Notes section */
         <div
-          className={!loading && notes.length > 0 ? "animate-fade-in" : ""}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: "1.5rem",
-            alignItems: "start",
-          }}
+          className={
+            !loading && (folders.length > 0 || notes.length > 0)
+              ? "animate-fade-in"
+              : ""
+          }
         >
-          {/* New Note Button (Only in Grid/Normal Mode, not during search/tag filter) */}
-          {!searchQuery &&
-            !tagFilter?.length &&
-            (isCreating ? (
+          {/* Folders Section */}
+          {(loading || folders.length > 0 || isCreatingFolder) && (
+            <div style={{ marginBottom: "2rem" }}>
               <div
-                className="glass"
                 style={{
-                  ...cardStyle,
-                  background: "var(--card)",
-                  color: "var(--card-foreground)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "1rem",
                 }}
               >
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Note Name..."
-                  value={newNoteName}
-                  onChange={(e) => setNewNoteName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      if (e.nativeEvent.isComposing) return;
-                      if (newNoteName.trim())
-                        handleCreateNote(newNoteName.trim());
-                    }
-                    if (e.key === "Escape") setIsCreating(false);
-                  }}
-                  onBlur={() => {
-                    if (!newNoteName.trim()) setIsCreating(false);
-                  }}
+                <h3
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: "1px solid var(--border)",
-                    textAlign: "center",
-                    outline: "none",
-                    width: "80%",
-                    color: "inherit",
-                  }}
-                />
-                <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
-                  Press Enter
-                </span>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setIsCreating(true);
-                  setNewNoteName("");
-                }}
-                className="glass"
-                style={{
-                  ...cardStyle,
-                  cursor: "pointer",
-                  border: "1px dashed var(--border)",
-                  background: "transparent",
-                  color: "var(--muted-foreground)",
-                }}
-              >
-                <Plus size={32} style={{ color: "var(--primary)" }} />
-                <span>New Note</span>
-              </button>
-            ))}
-
-          {loading && notes.length === 0
-            ? Array.from({ length: 7 }).map((_, i) => (
-                <div
-                  key={`skeleton-grid-${i}`}
-                  className="glass animate-pulse"
-                  style={{
-                    ...cardStyle,
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
+                    fontSize: "0.75rem",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "var(--muted-foreground)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
                   }}
                 >
-                  <div>
-                    <div
+                  <Folder size={14} /> Folders
+                </h3>
+                {!isCreatingFolder && (
+                  <button
+                    onClick={() => {
+                      setIsCreatingFolder(true);
+                      setNewFolderName("");
+                    }}
+                    className="btn"
+                    style={{
+                      padding: "0.25rem 0.5rem",
+                      background: "transparent",
+                      color: "var(--muted-foreground)",
+                      fontSize: "0.75rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      border: "1px solid var(--border)",
+                    }}
+                    title="New Folder"
+                  >
+                    <FolderPlus size={14} /> New Folder
+                  </button>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                  gap: "1rem",
+                  alignItems: "start",
+                }}
+              >
+                {/* Inline New Folder input */}
+                {isCreatingFolder && (
+                  <div
+                    className="glass"
+                    style={{
+                      ...folderCardStyle,
+                      background: "var(--card)",
+                      color: "var(--card-foreground)",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Folder Name..."
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (e.nativeEvent.isComposing) return;
+                          if (newFolderName.trim())
+                            handleCreateFolder(newFolderName.trim());
+                        }
+                        if (e.key === "Escape") setIsCreatingFolder(false);
+                      }}
+                      onBlur={() => {
+                        if (!newFolderName.trim()) setIsCreatingFolder(false);
+                      }}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        marginBottom: "0.5rem",
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: "1px solid var(--border)",
+                        textAlign: "center",
+                        outline: "none",
+                        width: "80%",
+                        color: "inherit",
+                      }}
+                    />
+                    <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
+                      Press Enter
+                    </span>
+                  </div>
+                )}
+
+                {/* Folder skeletons */}
+                {loading &&
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div
+                      key={`skeleton-folder-${i}`}
+                      className="glass animate-pulse"
+                      style={{
+                        ...folderCardStyle,
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
                       }}
                     >
                       <div
                         style={{
-                          width: "20px",
-                          height: "20px",
-                          borderRadius: "4px",
-                          background: "var(--border)",
-                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
                         }}
-                      />
+                      >
+                        <div
+                          style={{
+                            width: "20px",
+                            height: "20px",
+                            borderRadius: "4px",
+                            background: "var(--border)",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div
+                          style={{
+                            width: "60%",
+                            height: "18px",
+                            borderRadius: "4px",
+                            background: "var(--border)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                {/* Folder cards */}
+                {!loading &&
+                  folders.map((folder) => (
+                    <div
+                      key={folder.id}
+                      onClick={() => navigateToFolder(folder.id)}
+                      className="glass"
+                      style={{
+                        ...folderCardStyle,
+                        cursor: "pointer",
+                        background: "var(--card)",
+                        color: "var(--card-foreground)",
+                        border: "1px solid var(--border)",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        height: "auto",
+                        padding: "1rem 1.25rem",
+                      }}
+                    >
                       <div
                         style={{
-                          width: "60%",
-                          height: "18px",
-                          borderRadius: "4px",
-                          background: "var(--border)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          overflow: "hidden",
+                          flex: 1,
                         }}
+                      >
+                        <Folder
+                          size={20}
+                          style={{ color: "var(--primary)", flexShrink: 0 }}
+                        />
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={folder.name}
+                        >
+                          {folder.name}
+                        </span>
+                      </div>
+                      <ChevronRight
+                        size={16}
+                        style={{ flexShrink: 0, opacity: 0.4 }}
                       />
                     </div>
-                    <div
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes Section */}
+          <div>
+            {!searchQuery && !tagFilter?.length && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "1rem",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "var(--muted-foreground)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                  }}
+                >
+                  <FileText size={14} /> Notes
+                </h3>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                gap: "1.5rem",
+                alignItems: "start",
+              }}
+            >
+              {/* New Note button */}
+              {!searchQuery &&
+                !tagFilter?.length &&
+                (isCreating ? (
+                  <div
+                    className="glass"
+                    style={{
+                      ...cardStyle,
+                      background: "var(--card)",
+                      color: "var(--card-foreground)",
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Note Name..."
+                      value={newNoteName}
+                      onChange={(e) => setNewNoteName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (e.nativeEvent.isComposing) return;
+                          if (newNoteName.trim())
+                            handleCreateNote(newNoteName.trim());
+                        }
+                        if (e.key === "Escape") setIsCreating(false);
+                      }}
+                      onBlur={() => {
+                        if (!newNoteName.trim()) setIsCreating(false);
+                      }}
                       style={{
-                        width: "40%",
-                        height: "12px",
-                        borderRadius: "4px",
-                        background: "var(--border)",
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: "1px solid var(--border)",
+                        textAlign: "center",
+                        outline: "none",
+                        width: "80%",
+                        color: "inherit",
                       }}
                     />
+                    <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
+                      Press Enter
+                    </span>
                   </div>
-                  <div
-                    style={{
-                      width: "30%",
-                      height: "12px",
-                      borderRadius: "4px",
-                      background: "var(--border)",
-                      alignSelf: "flex-end",
-                      marginTop: "1rem",
-                    }}
-                  />
-                </div>
-              ))
-            : notes.map((note) => (
-                <div key={note.id} style={{ position: "relative" }}>
-                  <Link
-                    href={
-                      note.mimeType === "application/vnd.google-apps.folder"
-                        ? `?folderId=${note.id}`
-                        : `/note?id=${note.id}`
-                    }
-                    onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
-                      if (
-                        note.mimeType === "application/vnd.google-apps.folder"
-                      ) {
-                        e.preventDefault();
-                        navigateToFolder(note.id);
-                      }
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsCreating(true);
+                      setNewNoteName("");
                     }}
                     className="glass"
                     style={{
                       ...cardStyle,
-                      textDecoration: "none",
-                      color: "var(--card-foreground)",
+                      cursor: "pointer",
+                      border: "1px dashed var(--border)",
+                      background: "transparent",
+                      color: "var(--muted-foreground)",
+                    }}
+                  >
+                    <Plus size={32} style={{ color: "var(--primary)" }} />
+                    <span>New Note</span>
+                  </button>
+                ))}
+
+              {/* Note skeletons */}
+              {loading &&
+                notes.length === 0 &&
+                Array.from({ length: 7 }).map((_, i) => (
+                  <div
+                    key={`skeleton-grid-${i}`}
+                    className="glass animate-pulse"
+                    style={{
+                      ...cardStyle,
                       background: "var(--card)",
-                      justifyContent: "space-between",
-                      alignItems: "stretch",
+                      border: "1px solid var(--border)",
                     }}
                   >
                     <div>
@@ -688,82 +860,153 @@ export default function NoteList({
                           marginBottom: "0.5rem",
                         }}
                       >
-                        {note.mimeType ===
-                        "application/vnd.google-apps.folder" ? (
-                          <Folder style={{ color: "var(--primary)" }} />
-                        ) : (
-                          <FileText style={{ color: "var(--primary)" }} />
-                        )}
-                        <h3
+                        <div
                           style={{
-                            fontWeight: "bold",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            width: "20px",
+                            height: "20px",
+                            borderRadius: "4px",
+                            background: "var(--border)",
+                            flexShrink: 0,
                           }}
-                          title={note.name}
+                        />
+                        <div
+                          style={{
+                            width: "60%",
+                            height: "18px",
+                            borderRadius: "4px",
+                            background: "var(--border)",
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          width: "40%",
+                          height: "12px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        width: "30%",
+                        height: "12px",
+                        borderRadius: "4px",
+                        background: "var(--border)",
+                        alignSelf: "flex-end",
+                        marginTop: "1rem",
+                      }}
+                    />
+                  </div>
+                ))}
+
+              {/* Note cards */}
+              {!loading &&
+                notes.map((note) => (
+                  <div key={note.id} style={{ position: "relative" }}>
+                    <Link
+                      href={`/note?id=${note.id}`}
+                      className="glass"
+                      style={{
+                        ...cardStyle,
+                        textDecoration: "none",
+                        color: "var(--card-foreground)",
+                        background: "var(--card)",
+                        justifyContent: "space-between",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            marginBottom: "0.5rem",
+                          }}
                         >
-                          {note.name}
-                        </h3>
+                          <FileText style={{ color: "var(--primary)" }} />
+                          <h3
+                            style={{
+                              fontWeight: "bold",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={note.name}
+                          >
+                            {note.name}
+                          </h3>
+                        </div>
                       </div>
                       <p
                         style={{
                           fontSize: "0.75rem",
                           opacity: 0.6,
-                          fontFamily: "monospace",
+                          textAlign: "right",
                         }}
                       >
-                        ID: {note.id.substring(0, 8)}...
+                        {new Date(note.modifiedTime).toLocaleString(undefined, {
+                          year: "numeric",
+                          month: "numeric",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
-                    </div>
-                    <p
+                    </Link>
+
+                    <div
                       style={{
-                        fontSize: "0.75rem",
-                        opacity: 0.6,
-                        textAlign: "right",
+                        position: "absolute",
+                        top: "0.5rem",
+                        right: "0.5rem",
                       }}
                     >
-                      {new Date(note.modifiedTime).toLocaleString(undefined, {
-                        year: "numeric",
-                        month: "numeric",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </Link>
-
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "0.5rem",
-                      right: "0.5rem",
-                    }}
-                  >
-                    <NoteMenu
-                      isOpen={activeMenuId === note.id}
-                      onToggle={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveMenuId(
-                          activeMenuId === note.id ? null : note.id,
-                        );
-                      }}
-                      onClose={() => setActiveMenuId(null)}
-                      onDelete={(e) => requestDeleteNote(e, note)}
-                      onDuplicate={(e) => handleDuplicateNote(e, note)}
-                      onRename={(e) => requestRenameNote(e, note)}
-                      onStar={(e) => handleToggleStar(e, note)}
-                      isStarred={note.starred}
-                    />
+                      <NoteMenu
+                        isOpen={activeMenuId === note.id}
+                        onToggle={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveMenuId(
+                            activeMenuId === note.id ? null : note.id,
+                          );
+                        }}
+                        onClose={() => setActiveMenuId(null)}
+                        onDelete={(e) => requestDeleteNote(e, note)}
+                        onDuplicate={(e) => handleDuplicateNote(e, note)}
+                        onRename={(e) => requestRenameNote(e, note)}
+                        onStar={(e) => handleToggleStar(e, note)}
+                        isStarred={note.starred}
+                      />
+                    </div>
                   </div>
+                ))}
+            </div>
+
+            {/* Empty state */}
+            {!loading &&
+              folders.length === 0 &&
+              notes.length === 0 &&
+              !isCreatingFolder && (
+                <div className="text-center py-10 text-gray-500">
+                  This folder is empty.
                 </div>
-              ))}
+              )}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+const folderCardStyle: React.CSSProperties = {
+  padding: "0.875rem 1.25rem",
+  borderRadius: "0.5rem",
+  display: "flex",
+  transition: "transform 0.1s, box-shadow 0.1s",
+  border: "1px solid var(--border)",
+};
 
 const cardStyle: React.CSSProperties = {
   padding: "1.25rem",

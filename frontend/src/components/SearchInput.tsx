@@ -22,7 +22,7 @@ export default function SearchInput() {
 
   const handleSearch = () => {
     if (query.trim()) {
-      router.push(`/notes?q=${encodeURIComponent(query)}`);
+      router.push(`/drive?q=${encodeURIComponent(query)}`);
     } else {
       // If empty, maybe go back to notes list/home?
       // router.push('/notes');

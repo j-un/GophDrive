@@ -55,9 +55,9 @@ function NotesContent() {
   const handleNavigate = (folderId?: string, folderName?: string) => {
     // Update URL
     if (folderId) {
-      router.push(`/notes?folderId=${folderId}`);
+      router.push(`/drive?folderId=${folderId}`);
     } else {
-      router.push("/notes");
+      router.push("/drive");
     }
 
     // Update local state immediately for responsiveness
@@ -89,9 +89,7 @@ function NotesContent() {
       }}
     >
       <Sidebar
-        currentFolderId={currentFolderId}
         onNavigate={handleNavigate}
-        breadcrumbs={breadcrumbs}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         refreshTrigger={sidebarRefreshKey}

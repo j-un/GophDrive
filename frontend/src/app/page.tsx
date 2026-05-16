@@ -26,7 +26,7 @@ function HomeContent() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace("/notes");
+      router.replace("/drive");
     }
   }, [user, authLoading, router]);
 

@@ -429,7 +429,7 @@ function NoteContent() {
         // Also remove from local
         await deleteNoteLocal(id);
       }
-      router.push("/notes");
+      router.push("/drive");
     } catch (error) {
       const e = error as Error;
       console.error("Delete failed", e);
@@ -526,7 +526,7 @@ function NoteContent() {
                   </span>
                 )}
                 <Link
-                  href={bc.id ? `/notes?folderId=${bc.id}` : "/notes"}
+                  href={bc.id ? `/drive?folderId=${bc.id}` : "/drive"}
                   className="hover:underline"
                   style={{
                     display: "flex",
