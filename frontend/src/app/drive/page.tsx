@@ -5,7 +5,7 @@ import NoteList from "@/components/NoteList";
 import { Sidebar } from "@/components/Sidebar";
 import { ChevronRight, Home, Menu } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getBreadcrumbs, BreadcrumbItem } from "@/lib/api";
+import { getBreadcrumbs, isValidNoteId, BreadcrumbItem } from "@/lib/api";
 
 function NotesContent() {
   const router = useRouter();
@@ -44,6 +44,12 @@ function NotesContent() {
   }, [folderIdParam]);
 
   const fetchFolderInfo = async (id: string) => {
+    if (!isValidNoteId(id)) {
+      setCurrentFolderId(undefined);
+      setBreadcrumbs([{ id: "", name: "Home" }]);
+      router.replace("/drive");
+      return;
+    }
     try {
       const crumbs = await getBreadcrumbs(id);
       setBreadcrumbs(crumbs);
