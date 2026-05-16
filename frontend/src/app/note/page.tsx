@@ -30,6 +30,7 @@ import {
   deleteFile,
   renameNote,
   getBreadcrumbs,
+  isValidNoteId,
   BreadcrumbItem,
 } from "@/lib/api";
 import { Editor } from "@/components/Editor";
@@ -137,6 +138,14 @@ function NoteContent() {
         return;
       }
 
+      // All note IDs are server-minted UUID v4 (backend uuid.New()). Guard placed after
+      // the offline branch so a locally-cached note still opens when offline.
+      if (!isValidNoteId(id!)) {
+        setError("Note not found");
+        setLoading(false);
+        return;
+      }
+
       try {
         const lockRes = await apiFetch(`/sessions/${id}/lock`, {
           method: "POST",
@@ -171,7 +180,10 @@ function NoteContent() {
           setError("Unauthorized. Please login.");
           return;
         }
-        if (!res.ok) throw new Error("Failed to load note");
+        if (!res.ok) {
+          if (res.status === 404) throw new Error("Note not found");
+          throw new Error("Failed to load note");
+        }
 
         const data = await parseJson<{
           content?: string;
