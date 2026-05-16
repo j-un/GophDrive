@@ -13,6 +13,7 @@ import {
   searchFiles,
   listTags,
   exportNotes,
+  isValidNoteId,
   setFetchFn,
   resetFetchFn,
 } from "./api";
@@ -327,6 +328,36 @@ describe("API functions", () => {
 
     const result = await exportNotes();
     expect(result.filename).toBe("gophdrive-export.zip");
+  });
+});
+
+describe("isValidNoteId", () => {
+  it("returns true for a valid UUID v4", () => {
+    expect(isValidNoteId("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
+  });
+
+  it("returns false for a Google Drive-style ID", () => {
+    expect(isValidNoteId("1IZs1hz3OOdkQI-dlnjm4PSwucbSNHwtB")).toBe(false);
+  });
+
+  it("returns false for empty string", () => {
+    expect(isValidNoteId("")).toBe(false);
+  });
+
+  it("returns false for a UUID with wrong version", () => {
+    expect(isValidNoteId("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")).toBe(false);
+  });
+
+  it("returns true for a valid UUID v4 with uppercase hex", () => {
+    expect(isValidNoteId("550E8400-E29B-41D4-A716-446655440000")).toBe(true);
+  });
+
+  it("returns false for a UUID with leading/trailing whitespace", () => {
+    expect(isValidNoteId(" 550e8400-e29b-41d4-a716-446655440000 ")).toBe(false);
+  });
+
+  it("returns false for a UUID with invalid variant nibble", () => {
+    expect(isValidNoteId("550e8400-e29b-41d4-c716-446655440000")).toBe(false);
   });
 });
 

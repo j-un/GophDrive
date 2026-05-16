@@ -34,6 +34,13 @@ export function isLoggedIn(): boolean {
   return !!getToken();
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidNoteId(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
@@ -301,6 +308,12 @@ export async function getBreadcrumbs(
   while (currentId) {
     // If we reached the base folder, stop (don't include it in breadcrumbs, as 'Home' represents it)
     if (baseFolderId && currentId === baseFolderId) {
+      break;
+    }
+
+    // Stop if currentId is not a valid UUID — catches the Home sentinel (empty string)
+    // and any external/malformed IDs, avoiding a spurious /notes/{id} request.
+    if (!isValidNoteId(currentId)) {
       break;
     }
 
