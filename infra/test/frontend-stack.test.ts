@@ -38,22 +38,13 @@ describe("FrontendStack", () => {
     });
   });
 
-  test("CloudFront has SPA error responses for 404 and 403", () => {
+  test("CloudFront has no custom error responses that would mask API errors", () => {
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
-      DistributionConfig: Match.objectLike({
-        CustomErrorResponses: Match.arrayWith([
-          Match.objectLike({
-            ErrorCode: 404,
-            ResponseCode: 200,
-            ResponsePagePath: "/index.html",
-          }),
-          Match.objectLike({
-            ErrorCode: 403,
-            ResponseCode: 200,
-            ResponsePagePath: "/index.html",
-          }),
-        ]),
-      }),
+      DistributionConfig: Match.not(
+        Match.objectLike({
+          CustomErrorResponses: Match.anyValue(),
+        }),
+      ),
     });
   });
 
