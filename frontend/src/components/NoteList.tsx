@@ -1067,7 +1067,6 @@ export default function NoteList({
                   </div>
                 ))}
             </div>
-
           </div>
         </div>
       )}
