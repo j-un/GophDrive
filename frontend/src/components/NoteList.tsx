@@ -3,14 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  FileText,
-  Plus,
-  RefreshCw,
-  Folder,
-  FolderPlus,
-  ChevronRight,
-} from "lucide-react";
+import { FileText, Plus, RefreshCw, Folder, FolderPlus } from "lucide-react";
 import {
   FileItem,
   duplicateNote,
@@ -28,6 +21,7 @@ import { RenameDialog } from "@/components/RenameDialog";
 import { useOffline } from "@/hooks/useOffline";
 import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
 import { buildSearchRequest } from "@/lib/searchQuery";
+import { partitionFilesByKind } from "@/lib/partitionFiles";
 
 interface NoteListProps {
   folderId?: string;
@@ -60,6 +54,7 @@ export default function NoteList({
 
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const loadRequestRef = useRef(0);
 
   // Delete State
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
@@ -69,12 +64,19 @@ export default function NoteList({
   const [renameNoteId, setRenameNoteId] = useState<string | null>(null);
   const [renameNoteName, setRenameNoteName] = useState<string>("");
 
+  // Folder Delete/Rename State
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
+  const [deleteFolderName, setDeleteFolderName] = useState<string>("");
+  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState<string>("");
+
   const isOffline = useOffline();
 
   // List view for search/tag filter, grid for normal browse
   const viewMode = searchQuery || tagFilter?.length ? "list" : "grid";
 
   const loadNotes = async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -82,15 +84,16 @@ export default function NoteList({
       if (searchQuery || tagFilter?.length) {
         const { text, tags } = buildSearchRequest(searchQuery, tagFilter);
         const results = await searchFiles(text, tags);
+        if (requestId !== loadRequestRef.current) return;
         setFolders([]);
         setNotes(results || []);
-        setLoading(false);
         return;
       }
 
       // Offline Mode — notes only from IndexedDB
       if (isOffline) {
         const localNotes = await getAllNotesLocal();
+        if (requestId !== loadRequestRef.current) return;
         const fileItems: FileItem[] = localNotes.map((n) => ({
           id: n.id,
           name: n.name,
@@ -112,37 +115,23 @@ export default function NoteList({
               new Date(a.modifiedTime).getTime(),
           ),
         );
-        setLoading(false);
         return;
       }
 
       // Online browse mode — split into folders and notes
       const items = await listFiles(folderId);
-      const allItems = items || [];
-
-      const folderItems = allItems
-        .filter(
-          (item) => item.mimeType === "application/vnd.google-apps.folder",
-        )
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      const noteItems = allItems
-        .filter(
-          (item) => item.mimeType !== "application/vnd.google-apps.folder",
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.modifiedTime).getTime() -
-            new Date(a.modifiedTime).getTime(),
-        );
-
+      if (requestId !== loadRequestRef.current) return;
+      const { folders: folderItems, notes: noteItems } = partitionFilesByKind(
+        items || [],
+      );
       setFolders(folderItems);
       setNotes(noteItems);
     } catch (error) {
+      if (requestId !== loadRequestRef.current) return;
       const err = error as Error;
       setError(err.message || String(error));
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   };
 
@@ -164,7 +153,7 @@ export default function NoteList({
 
   const navigateToFolder = (id: string | null) => {
     if (id) {
-      router.push(`?folderId=${id}`);
+      router.push(`/drive?folderId=${id}`);
     } else {
       router.push("/drive");
     }
@@ -280,6 +269,68 @@ export default function NoteList({
     }
   };
 
+  const requestDeleteFolder = (e: React.MouseEvent, folder: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setDeleteFolderId(folder.id);
+    setDeleteFolderName(folder.name || "Untitled Folder");
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!deleteFolderId) return;
+    try {
+      await deleteFile(deleteFolderId);
+      setDeleteFolderId(null);
+      loadNotes();
+      onAfterMutation?.();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to delete folder");
+    }
+  };
+
+  const requestRenameFolder = (e: React.MouseEvent, folder: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setRenameFolderId(folder.id);
+    setRenameFolderName(folder.name || "Untitled Folder");
+  };
+
+  const executeFolderRename = async (newName: string) => {
+    if (!renameFolderId) return;
+    try {
+      await renameNote(renameFolderId, newName);
+      setRenameFolderId(null);
+      loadNotes();
+      onAfterMutation?.();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to rename folder");
+    }
+  };
+
+  const handleToggleFolderStar = async (
+    e: React.MouseEvent,
+    folder: FileItem,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    try {
+      await starFile(folder.id, !folder.starred);
+      loadNotes();
+      onAfterMutation?.();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to toggle star");
+    }
+  };
+
   if (error) {
     return (
       <div
@@ -326,6 +377,20 @@ export default function NoteList({
         onRename={executeRename}
         onCancel={() => setRenameNoteId(null)}
         title="Rename"
+      />
+      <ConfirmDialog
+        isOpen={!!deleteFolderId}
+        title="Delete Folder"
+        message={`Are you sure you want to delete "${deleteFolderName}"? This cannot be undone.`}
+        onConfirm={confirmDeleteFolder}
+        onCancel={() => setDeleteFolderId(null)}
+      />
+      <RenameDialog
+        isOpen={!!renameFolderId}
+        initialName={renameFolderName}
+        onRename={executeFolderRename}
+        onCancel={() => setRenameFolderId(null)}
+        title="Rename Folder"
       />
       <div
         style={{
@@ -538,205 +603,224 @@ export default function NoteList({
               : ""
           }
         >
-          {/* Folders Section */}
-          {(loading || folders.length > 0 || isCreatingFolder) && (
-            <div style={{ marginBottom: "2rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "1rem",
-                }}
-              >
-                <h3
+          {/* Folders Section — always shown in browse mode to expose New Folder button */}
+          <div style={{ marginBottom: "2rem" }}>
+            <h3
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                color: "var(--muted-foreground)",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.375rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <Folder size={14} /> Folders
+            </h3>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                gap: "1rem",
+                alignItems: "start",
+              }}
+            >
+              {/* New Folder dashed card — same pattern as New Note */}
+              {!isCreatingFolder && (
+                <button
+                  onClick={() => {
+                    setIsCreatingFolder(true);
+                    setNewFolderName("");
+                  }}
+                  className="glass"
                   style={{
-                    fontSize: "0.75rem",
-                    fontWeight: "bold",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
+                    ...folderCardStyle,
+                    cursor: "pointer",
+                    border: "1px dashed var(--border)",
+                    background: "transparent",
                     color: "var(--muted-foreground)",
-                    display: "flex",
+                    flexDirection: "row",
                     alignItems: "center",
-                    gap: "0.375rem",
+                    justifyContent: "flex-start",
+                    gap: "0.5rem",
+                    padding: "1rem 1.25rem",
                   }}
                 >
-                  <Folder size={14} /> Folders
-                </h3>
-                {!isCreatingFolder && (
-                  <button
-                    onClick={() => {
-                      setIsCreatingFolder(true);
-                      setNewFolderName("");
-                    }}
-                    className="btn"
-                    style={{
-                      padding: "0.25rem 0.5rem",
-                      background: "transparent",
-                      color: "var(--muted-foreground)",
-                      fontSize: "0.75rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      border: "1px solid var(--border)",
-                    }}
-                    title="New Folder"
-                  >
-                    <FolderPlus size={14} /> New Folder
-                  </button>
-                )}
-              </div>
+                  <FolderPlus size={20} style={{ color: "var(--primary)" }} />
+                  <span>New Folder</span>
+                </button>
+              )}
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-                  gap: "1rem",
-                  alignItems: "start",
-                }}
-              >
-                {/* Inline New Folder input */}
-                {isCreatingFolder && (
+              {/* Inline New Folder input */}
+              {isCreatingFolder && (
+                <div
+                  className="glass"
+                  style={{
+                    ...folderCardStyle,
+                    background: "var(--card)",
+                    color: "var(--card-foreground)",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Folder Name..."
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (e.nativeEvent.isComposing) return;
+                        if (newFolderName.trim())
+                          handleCreateFolder(newFolderName.trim());
+                      }
+                      if (e.key === "Escape") setIsCreatingFolder(false);
+                    }}
+                    onBlur={() => {
+                      if (!newFolderName.trim()) setIsCreatingFolder(false);
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: "1px solid var(--border)",
+                      textAlign: "center",
+                      outline: "none",
+                      width: "80%",
+                      color: "inherit",
+                    }}
+                  />
+                  <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
+                    Press Enter
+                  </span>
+                </div>
+              )}
+
+              {/* Folder skeletons */}
+              {loading &&
+                Array.from({ length: 3 }).map((_, i) => (
                   <div
-                    className="glass"
+                    key={`skeleton-folder-${i}`}
+                    className="glass animate-pulse"
                     style={{
                       ...folderCardStyle,
                       background: "var(--card)",
-                      color: "var(--card-foreground)",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: "0.5rem",
+                      border: "1px solid var(--border)",
                     }}
                   >
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder="Folder Name..."
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (e.nativeEvent.isComposing) return;
-                          if (newFolderName.trim())
-                            handleCreateFolder(newFolderName.trim());
-                        }
-                        if (e.key === "Escape") setIsCreatingFolder(false);
-                      }}
-                      onBlur={() => {
-                        if (!newFolderName.trim()) setIsCreatingFolder(false);
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: "1px solid var(--border)",
-                        textAlign: "center",
-                        outline: "none",
-                        width: "80%",
-                        color: "inherit",
-                      }}
-                    />
-                    <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
-                      Press Enter
-                    </span>
-                  </div>
-                )}
-
-                {/* Folder skeletons */}
-                {loading &&
-                  Array.from({ length: 3 }).map((_, i) => (
                     <div
-                      key={`skeleton-folder-${i}`}
-                      className="glass animate-pulse"
                       style={{
-                        ...folderCardStyle,
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "20px",
-                            height: "20px",
-                            borderRadius: "4px",
-                            background: "var(--border)",
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div
-                          style={{
-                            width: "60%",
-                            height: "18px",
-                            borderRadius: "4px",
-                            background: "var(--border)",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-
-                {/* Folder cards */}
-                {!loading &&
-                  folders.map((folder) => (
-                    <div
-                      key={folder.id}
-                      onClick={() => navigateToFolder(folder.id)}
-                      className="glass"
-                      style={{
-                        ...folderCardStyle,
-                        cursor: "pointer",
-                        background: "var(--card)",
-                        color: "var(--card-foreground)",
-                        border: "1px solid var(--border)",
-                        flexDirection: "row",
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
-                        height: "auto",
-                        padding: "1rem 1.25rem",
+                        gap: "0.75rem",
                       }}
                     >
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                          overflow: "hidden",
-                          flex: 1,
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                          flexShrink: 0,
                         }}
-                      >
-                        <Folder
-                          size={20}
-                          style={{ color: "var(--primary)", flexShrink: 0 }}
-                        />
-                        <span
-                          style={{
-                            fontWeight: 600,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={folder.name}
-                        >
-                          {folder.name}
-                        </span>
-                      </div>
-                      <ChevronRight
-                        size={16}
-                        style={{ flexShrink: 0, opacity: 0.4 }}
+                      />
+                      <div
+                        style={{
+                          width: "60%",
+                          height: "18px",
+                          borderRadius: "4px",
+                          background: "var(--border)",
+                        }}
                       />
                     </div>
-                  ))}
-              </div>
+                  </div>
+                ))}
+
+              {/* Folder cards */}
+              {!loading &&
+                folders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigateToFolder(folder.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigateToFolder(folder.id);
+                      }
+                    }}
+                    className="glass"
+                    style={{
+                      ...folderCardStyle,
+                      cursor: "pointer",
+                      background: "var(--card)",
+                      color: "var(--card-foreground)",
+                      border: "1px solid var(--border)",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      height: "auto",
+                      padding: "1rem 1.25rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        overflow: "hidden",
+                        flex: 1,
+                      }}
+                    >
+                      <Folder
+                        size={20}
+                        style={{ color: "var(--primary)", flexShrink: 0 }}
+                      />
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={folder.name}
+                      >
+                        {folder.name}
+                      </span>
+                    </div>
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <NoteMenu
+                        isOpen={activeMenuId === folder.id}
+                        onToggle={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveMenuId(
+                            activeMenuId === folder.id ? null : folder.id,
+                          );
+                        }}
+                        onClose={() => setActiveMenuId(null)}
+                        onDelete={(e) => requestDeleteFolder(e, folder)}
+                        onRename={(e) => requestRenameFolder(e, folder)}
+                        onStar={(e) => handleToggleFolderStar(e, folder)}
+                        isStarred={folder.starred}
+                        align="right"
+                      />
+                    </div>
+                  </div>
+                ))}
             </div>
-          )}
+          </div>
 
           {/* Notes Section */}
           <div>
@@ -984,15 +1068,6 @@ export default function NoteList({
                 ))}
             </div>
 
-            {/* Empty state */}
-            {!loading &&
-              folders.length === 0 &&
-              notes.length === 0 &&
-              !isCreatingFolder && (
-                <div className="text-center py-10 text-gray-500">
-                  This folder is empty.
-                </div>
-              )}
           </div>
         </div>
       )}

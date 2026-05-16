@@ -17,6 +17,8 @@ const mockListFiles = vi.hoisted(() =>
   ]),
 );
 
+const mockPush = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/api", () => ({
   listFiles: mockListFiles,
   deleteFile: vi.fn().mockResolvedValue(undefined),
@@ -38,7 +40,7 @@ vi.mock("@/hooks/useOffline", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 import NoteList from "./NoteList";
@@ -82,6 +84,25 @@ describe("NoteList folder display", () => {
     expect(screen.getByText("Folders")).toBeTruthy();
     expect(screen.getByText("Notes")).toBeTruthy();
   });
+
+  it("navigates to /drive?folderId=... when a folder card is clicked", async () => {
+    mockListFiles.mockResolvedValueOnce([
+      {
+        id: "folder-1",
+        name: "My Folder",
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [],
+        modifiedTime: "2026-05-14T00:00:00Z",
+        starred: false,
+      },
+    ]);
+    render(<NoteList />);
+
+    fireEvent.click(await screen.findByText("My Folder"));
+
+    expect(mockPush).toHaveBeenCalledWith("/drive?folderId=folder-1");
+  });
+
 });
 
 describe("NoteList onAfterMutation — delete", () => {
