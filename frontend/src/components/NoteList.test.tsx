@@ -102,7 +102,6 @@ describe("NoteList folder display", () => {
 
     expect(mockPush).toHaveBeenCalledWith("/drive?folderId=folder-1");
   });
-
 });
 
 describe("NoteList onAfterMutation — delete", () => {
