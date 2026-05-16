@@ -52,13 +52,7 @@ const NOTE_ITEM: FileItem = {
 };
 
 const renderSidebar = (props: { refreshTrigger?: number } = {}) =>
-  render(
-    <Sidebar
-      onNavigate={() => {}}
-      breadcrumbs={[{ name: "Home" }]}
-      {...props}
-    />,
-  );
+  render(<Sidebar onNavigate={() => {}} {...props} />);
 
 const getRecentButton = () => screen.getByRole("button", { name: /recent/i });
 
@@ -126,13 +120,7 @@ describe("Sidebar refreshTrigger", () => {
     const { rerender } = renderSidebar({ refreshTrigger: 0 });
     await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(1));
 
-    rerender(
-      <Sidebar
-        onNavigate={() => {}}
-        breadcrumbs={[{ name: "Home" }]}
-        refreshTrigger={1}
-      />,
-    );
+    rerender(<Sidebar onNavigate={() => {}} refreshTrigger={1} />);
 
     await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(2));
   });
@@ -141,13 +129,7 @@ describe("Sidebar refreshTrigger", () => {
     const { rerender } = renderSidebar({ refreshTrigger: 0 });
     await waitFor(() => expect(listRecent).toHaveBeenCalledTimes(1));
 
-    rerender(
-      <Sidebar
-        onNavigate={() => {}}
-        breadcrumbs={[{ name: "Home" }]}
-        refreshTrigger={0}
-      />,
-    );
+    rerender(<Sidebar onNavigate={() => {}} refreshTrigger={0} />);
 
     // Allow a render cycle; count must not increase
     await new Promise((r) => setTimeout(r, 50));
@@ -177,9 +159,7 @@ describe("Sidebar Starred section", () => {
   it("calls onNavigate when a starred folder is clicked", async () => {
     vi.mocked(listStarred).mockResolvedValueOnce([FOLDER_ITEM]);
     const onNavigate = vi.fn();
-    render(
-      <Sidebar onNavigate={onNavigate} breadcrumbs={[{ name: "Home" }]} />,
-    );
+    render(<Sidebar onNavigate={onNavigate} />);
     await screen.findByText("StarredFolder");
     fireEvent.click(screen.getByText("StarredFolder"));
     expect(onNavigate).toHaveBeenCalledWith("folder-1", "StarredFolder");
@@ -189,13 +169,7 @@ describe("Sidebar Starred section", () => {
   it("calls router.push and onClose when a starred note is clicked", async () => {
     vi.mocked(listStarred).mockResolvedValueOnce([NOTE_ITEM]);
     const onClose = vi.fn();
-    render(
-      <Sidebar
-        onNavigate={() => {}}
-        breadcrumbs={[{ name: "Home" }]}
-        onClose={onClose}
-      />,
-    );
+    render(<Sidebar onNavigate={() => {}} onClose={onClose} />);
     await screen.findByText("StarredNote");
     fireEvent.click(screen.getByText("StarredNote"));
     expect(mockPush).toHaveBeenCalledWith("/note?id=note-1");

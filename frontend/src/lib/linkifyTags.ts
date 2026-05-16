@@ -9,7 +9,7 @@ export function linkifyTags(html: string): string {
       if (codeBlock !== undefined) return codeBlock;
       const cleaned = tag.replace(/[-_/]+$/, "");
       if (!cleaned) return match;
-      return `${prefix}<a href="/notes?tag=${encodeURIComponent(cleaned)}" class="tag-link">#${cleaned}</a>`;
+      return `${prefix}<a href="/drive?tag=${encodeURIComponent(cleaned)}" class="tag-link">#${cleaned}</a>`;
     },
   );
 }

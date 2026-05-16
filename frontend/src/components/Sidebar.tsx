@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Folder,
-  FolderPlus,
   ChevronRight,
   Star,
   Settings,
@@ -11,27 +10,18 @@ import {
   Hash,
 } from "lucide-react";
 import {
-  createFolder,
-  deleteFile,
-  renameNote,
   listStarred,
   starFile,
   FileItem,
-  listFiles,
   listRecent,
   listTags,
   TagCount,
 } from "@/lib/api";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { RenameDialog } from "./RenameDialog";
 import SearchInput from "./SearchInput";
-import { NoteMenu } from "./NoteMenu";
 import { useLocalStorageBoolean } from "@/hooks/useLocalStorageBoolean";
 
 interface SidebarProps {
-  currentFolderId?: string;
   onNavigate: (folderId?: string, folderName?: string) => void;
-  breadcrumbs: { id?: string; name: string }[];
   isOpen?: boolean;
   onClose?: () => void;
   refreshTrigger?: number;
@@ -40,9 +30,7 @@ interface SidebarProps {
 const RECENT_COLLAPSED_KEY = "sidebar:recent:collapsed";
 
 export function Sidebar({
-  currentFolderId,
   onNavigate,
-  breadcrumbs,
   isOpen = true,
   onClose,
   refreshTrigger = 0,
@@ -52,56 +40,35 @@ export function Sidebar({
     onClose?.();
   };
   const router = useRouter();
-  const [folders, setFolders] = useState<FileItem[]>([]);
   const [starredItems, setStarredItems] = useState<FileItem[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [recentCollapsed, setRecentCollapsed] = useLocalStorageBoolean(
     RECENT_COLLAPSED_KEY,
     false,
   );
-  const [deleteConfirmation, setDeleteConfirmation] = useState<{
-    isOpen: boolean;
-    folder: FileItem | null;
-  }>({ isOpen: false, folder: null });
 
-  // Rename State
-  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
-  const [renameFolderName, setRenameFolderName] = useState<string>("");
-
-  const menuRef = useRef<HTMLDivElement>(null);
   const loadRequestRef = useRef(0);
 
   const loadFolders = async () => {
     const requestId = ++loadRequestRef.current;
     setLoading(true);
     try {
-      const items = await listFiles(currentFolderId);
       const starred = await listStarred();
       const recent = await listRecent(5);
       const tagList = await listTags(50);
 
       if (requestId !== loadRequestRef.current) return;
 
-      const folderItems = (items || []).filter(
-        (item) => item.mimeType === "application/vnd.google-apps.folder",
-      );
-      setFolders(folderItems.sort((a, b) => a.name.localeCompare(b.name)));
-
       setStarredItems(
         (starred || []).sort((a, b) => a.name.localeCompare(b.name)),
       );
-
       setRecentFiles(recent || []);
       setTags(tagList || []);
     } catch (err) {
       if (requestId !== loadRequestRef.current) return;
-      console.error("Failed to load folders:", err);
+      console.error("Failed to load sidebar:", err);
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
@@ -109,94 +76,7 @@ export function Sidebar({
 
   useEffect(() => {
     loadFolders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFolderId, refreshTrigger]);
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setActiveMenuId(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const requestDeleteFolder = (e: React.MouseEvent, folder: FileItem) => {
-    e.stopPropagation();
-    setActiveMenuId(null);
-    setDeleteConfirmation({ isOpen: true, folder });
-  };
-
-  const confirmDeleteFolder = async () => {
-    const folder = deleteConfirmation.folder;
-    if (!folder) return;
-
-    try {
-      await deleteFile(folder.id);
-      loadFolders();
-      if (currentFolderId === folder.id) {
-        onNavigate(undefined, "Home");
-      }
-    } catch (error) {
-      const err = error as Error;
-      alert(err.message || "Failed to delete folder");
-    } finally {
-      setDeleteConfirmation({ isOpen: false, folder: null });
-    }
-  };
-
-  const requestRenameFolder = (e: React.MouseEvent, folder: FileItem) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setActiveMenuId(null);
-    setRenameFolderId(folder.id);
-    setRenameFolderName(folder.name || "Untitled Folder");
-  };
-
-  const executeRename = async (newName: string) => {
-    if (!renameFolderId) return;
-    try {
-      await renameNote(renameFolderId, newName);
-      setRenameFolderId(null);
-      loadFolders();
-    } catch (error) {
-      const err = error as Error;
-      console.error(err);
-      alert(err.message || "Failed to rename folder");
-    }
-  };
-
-  const handleCreateFolder = async (name: string) => {
-    if (!name.trim()) return;
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      await createFolder(name, currentFolderId);
-      setIsCreating(false);
-      setNewFolderName("");
-      loadFolders();
-    } catch (error) {
-      const err = error as Error;
-      alert(err.message || "Failed to create folder");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleToggleStar = async (e: React.MouseEvent, item: FileItem) => {
-    e.stopPropagation();
-    setActiveMenuId(null);
-    try {
-      await starFile(item.id, !item.starred);
-      loadFolders();
-    } catch (error) {
-      const err = error as Error;
-      console.error("Failed to toggle star", err);
-      alert(err.message || "Failed to toggle star");
-    }
-  };
+  }, [refreshTrigger]);
 
   return (
     <>
@@ -205,22 +85,6 @@ export function Sidebar({
         onClick={onClose}
       />
       <div className={`sidebar ${isOpen ? "open" : ""}`}>
-        <ConfirmDialog
-          isOpen={deleteConfirmation.isOpen}
-          title="Delete Folder"
-          message={`Are you sure you want to delete folder "${deleteConfirmation.folder?.name}"? taking all its contents with it? This cannot be undone.`}
-          onConfirm={confirmDeleteFolder}
-          onCancel={() =>
-            setDeleteConfirmation({ isOpen: false, folder: null })
-          }
-        />
-        <RenameDialog
-          isOpen={!!renameFolderId}
-          initialName={renameFolderName}
-          onRename={executeRename}
-          onCancel={() => setRenameFolderId(null)}
-          title="Rename Folder"
-        />
         {/* Header */}
         <div
           style={{
@@ -248,55 +112,11 @@ export function Sidebar({
                 gap: "0.5rem",
               }}
             >
-              {/* You could add a Logo icon here if you want, e.g. <Cloud size={24} className="text-primary" /> */}
               GophDrive
             </h2>
-            <button
-              onClick={() => setIsCreating(true)}
-              className="btn"
-              style={{
-                padding: "0.25rem",
-                background: "transparent",
-                color: "var(--muted-foreground)",
-              }}
-              title="New Folder"
-            >
-              <FolderPlus size={18} />
-            </button>
           </div>
           <SearchInput />
         </div>
-
-        {/* Breadcrumbs Navigation (Simplified for Sidebar context, showing Back/Up) */}
-        {breadcrumbs.length > 1 && (
-          <div
-            style={{
-              padding: "0.5rem 1rem",
-              borderBottom: "1px solid var(--border)",
-              fontSize: "0.875rem",
-            }}
-          >
-            <button
-              onClick={() => {
-                // Go up one level
-                const parent = breadcrumbs[breadcrumbs.length - 2];
-                handleNavigate(parent.id, parent.name);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--muted-foreground)",
-              }}
-            >
-              <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />{" "}
-              Back
-            </button>
-          </div>
-        )}
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
           {/* Starred Section */}
@@ -366,8 +186,6 @@ export function Sidebar({
                     if (isFolder) {
                       handleNavigate(item.id, item.name);
                     } else {
-                      // Notes navigate to /note page which unmounts this Sidebar,
-                      // so no active-highlight state is needed for notes.
                       router.push(`/note?id=${item.id}`);
                       onClose?.();
                     }
@@ -391,17 +209,21 @@ export function Sidebar({
                         padding: "0.5rem",
                         borderRadius: "0.25rem",
                         cursor: "pointer",
-                        // Active highlight only applies to folders; notes unmount the Sidebar on click
-                        background:
-                          isFolder && currentFolderId === item.id
-                            ? "var(--muted)"
-                            : "transparent",
+                        background: "transparent",
                         color: "var(--foreground)",
                       }}
                       className="hover:bg-[var(--muted)]"
                     >
                       <button
-                        onClick={(e) => handleToggleStar(e, item)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          starFile(item.id, !item.starred)
+                            .then(() => loadFolders())
+                            .catch((err: Error) => {
+                              console.error("Failed to toggle star", err);
+                              alert(err.message || "Failed to toggle star");
+                            });
+                        }}
                         style={{
                           background: "none",
                           border: "none",
@@ -608,7 +430,7 @@ export function Sidebar({
                 {tags.map((tag) => (
                   <a
                     key={tag.name}
-                    href={`/notes?tag=${encodeURIComponent(tag.name)}`}
+                    href={`/drive?tag=${encodeURIComponent(tag.name)}`}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -636,157 +458,6 @@ export function Sidebar({
                   margin: "0.5rem 0",
                 }}
               />
-            </div>
-          )}
-
-          {/* Create Input */}
-          {isCreating && (
-            <div style={{ padding: "0.5rem" }}>
-              <input
-                autoFocus
-                type="text"
-                placeholder="Folder Name"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (e.nativeEvent.isComposing) return;
-                    handleCreateFolder(newFolderName);
-                  }
-                  if (e.key === "Escape") setIsCreating(false);
-                }}
-                onBlur={() => {
-                  if (!newFolderName) setIsCreating(false);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "0.25rem",
-                  borderRadius: "0.25rem",
-                  border: "1px solid var(--primary)",
-                  background: "var(--background)",
-                  color: "var(--foreground)",
-                }}
-              />
-            </div>
-          )}
-
-          {/* Folder List */}
-          {loading ? (
-            <div className="animate-fade-in">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={`skeleton-folder-${i}`}
-                  className="animate-pulse"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    margin: "0.25rem 0",
-                    borderRadius: "0.25rem",
-                    background: "var(--muted)",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      width: "80%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "4px",
-                        background: "var(--border)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div
-                      style={{
-                        width: "70%",
-                        height: "14px",
-                        borderRadius: "4px",
-                        background: "var(--border)",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      borderRadius: "50%",
-                      background: "var(--border)",
-                      flexShrink: 0,
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="animate-fade-in">
-              {folders.map((folder) => (
-                <div
-                  key={folder.id}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "0.5rem",
-                    borderRadius: "0.25rem",
-                    cursor: "pointer",
-                    marginTop: "0.25rem",
-                    color: "var(--foreground)",
-                  }}
-                  className="hover:bg-[var(--muted)] group"
-                  onClick={() => handleNavigate(folder.id, folder.name)}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Folder
-                      size={18}
-                      style={{ color: "var(--foreground)", flexShrink: 0 }}
-                    />
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {folder.name}
-                    </span>
-                  </div>
-
-                  {/* Unified Menu Component */}
-                  <NoteMenu
-                    isOpen={activeMenuId === folder.id}
-                    onToggle={(e) => {
-                      e.stopPropagation();
-                      setActiveMenuId(
-                        activeMenuId === folder.id ? null : folder.id,
-                      );
-                    }}
-                    onClose={() => setActiveMenuId(null)}
-                    onStar={(e) => handleToggleStar(e, folder)}
-                    isStarred={folder.starred}
-                    onDelete={(e) => requestDeleteFolder(e, folder)}
-                    onRename={(e) => requestRenameFolder(e, folder)}
-                    align="right"
-                  />
-                </div>
-              ))}
             </div>
           )}
         </div>
