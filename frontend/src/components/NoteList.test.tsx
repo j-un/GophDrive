@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { deleteFile } from "@/lib/api";
 import { getAllNotesLocal } from "@/lib/idb";
@@ -51,6 +51,13 @@ const openDeleteDialog = async () => {
   fireEvent.click(screen.getByText("Delete"));
   await screen.findByRole("button", { name: "Delete" });
 };
+
+beforeEach(() => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("NoteList folder display", () => {
   beforeEach(() => {

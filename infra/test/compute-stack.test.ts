@@ -87,7 +87,7 @@ describe("ComputeStack", () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
-            Action: Match.arrayWith(["s3:GetObject", "s3:PutObject"]),
+            Action: Match.arrayWith(["s3:GetObject*", "s3:PutObject"]),
             Effect: "Allow",
           }),
         ]),

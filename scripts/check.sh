@@ -30,7 +30,8 @@ mise x node -- bash -c '
   cd infra &&
   npx --yes prettier --write . &&
   npm run lint &&
-  npx --yes tsc --noEmit
+  npx --yes tsc --noEmit &&
+  npm run test
 '
 
 echo -e "\n${GREEN}=== All checks passed ===${NC}"
