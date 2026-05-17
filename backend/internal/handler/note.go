@@ -138,23 +138,35 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 	}
 
 	type NoteResponse struct {
-		ID       string   `json:"id"`
-		Name     string   `json:"name"`
-		Content  string   `json:"content"`
-		Modified string   `json:"modified"`
-		ETag     string   `json:"etag"`
-		Parents  []string `json:"parents"`
-		Tags     []string `json:"tags,omitempty"`
+		ID        string                  `json:"id"`
+		Name      string                  `json:"name"`
+		Content   string                  `json:"content"`
+		Modified  string                  `json:"modified"`
+		ETag      string                  `json:"etag"`
+		Parents   []string                `json:"parents"`
+		Tags      []string                `json:"tags,omitempty"`
+		Links     []adapter.LinkRef       `json:"links,omitempty"`
+		Backlinks []adapter.BacklinkEntry `json:"backlinks,omitempty"`
+	}
+
+	enriched, backlinks, err := storage.EnrichNoteLinks(ctx, file.ID, file.Links)
+	if err != nil {
+		fmt.Printf("EnrichNoteLinks error (noteID=%s): %v\n", file.ID, err)
+		// Non-fatal: return note with stored links (no currentTitle, no
+		// backlinks) rather than failing the whole request.
+		enriched = file.Links
 	}
 
 	resp := NoteResponse{
-		ID:       file.ID,
-		Name:     file.Name,
-		Content:  string(file.Content),
-		Modified: file.ModifiedTime.Format(time.RFC3339),
-		ETag:     file.ETag,
-		Parents:  file.Parents,
-		Tags:     file.Tags,
+		ID:        file.ID,
+		Name:      file.Name,
+		Content:   string(file.Content),
+		Modified:  file.ModifiedTime.Format(time.RFC3339),
+		ETag:      file.ETag,
+		Parents:   file.Parents,
+		Tags:      file.Tags,
+		Links:     enriched,
+		Backlinks: backlinks,
 	}
 
 	body, _ := json.Marshal(resp)
