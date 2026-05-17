@@ -15,6 +15,7 @@ import {
   listTags,
   exportNotes,
   isValidNoteId,
+  getBreadcrumbs,
   setFetchFn,
   resetFetchFn,
 } from "./api";
@@ -399,6 +400,140 @@ describe("isValidNoteId", () => {
 
   it("returns false for a UUID with invalid variant nibble", () => {
     expect(isValidNoteId("550e8400-e29b-41d4-c716-446655440000")).toBe(false);
+  });
+});
+
+describe("getBreadcrumbs", () => {
+  const BASE_ID = "00000000-0000-4000-8000-000000000000";
+  const FOLDER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const FOLDER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const FOLDER_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  function makeRoutedFetch(
+    routes: Record<string, { status: number; body: unknown }>,
+  ): typeof fetch {
+    return vi.fn().mockImplementation(async (url: string) => {
+      for (const [pattern, { status, body }] of Object.entries(routes)) {
+        if (url.includes(pattern)) {
+          return {
+            ok: status >= 200 && status < 300,
+            status,
+            headers: {
+              get: (name: string) =>
+                name.toLowerCase() === "content-type"
+                  ? "application/json"
+                  : null,
+            },
+            json: () => Promise.resolve(body),
+            text: () => Promise.resolve(JSON.stringify(body)),
+          } as unknown as Response;
+        }
+      }
+      return {
+        ok: false,
+        status: 404,
+        headers: { get: () => "application/json" },
+        json: () => Promise.resolve({ error: "not found" }),
+        text: () => Promise.resolve("not found"),
+      } as unknown as Response;
+    });
+  }
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    resetFetchFn();
+  });
+
+  it("returns full ancestor chain for 3-level hierarchy", async () => {
+    setFetchFn(
+      makeRoutedFetch({
+        "/auth/user": {
+          status: 200,
+          body: { id: "u1", base_folder_id: BASE_ID },
+        },
+        [`/notes/${FOLDER_C}`]: {
+          status: 200,
+          body: { id: FOLDER_C, name: "FolderC", parents: [FOLDER_B] },
+        },
+        [`/notes/${FOLDER_B}`]: {
+          status: 200,
+          body: { id: FOLDER_B, name: "FolderB", parents: [FOLDER_A] },
+        },
+        [`/notes/${FOLDER_A}`]: {
+          status: 200,
+          body: { id: FOLDER_A, name: "FolderA", parents: [BASE_ID] },
+        },
+      }),
+    );
+
+    const crumbs = await getBreadcrumbs(FOLDER_C);
+    expect(crumbs).toEqual([
+      { id: "", name: "Home" },
+      { id: FOLDER_A, name: "FolderA" },
+      { id: FOLDER_B, name: "FolderB" },
+      { id: FOLDER_C, name: "FolderC" },
+    ]);
+  });
+
+  it("returns only Home when given the base folder ID", async () => {
+    setFetchFn(
+      makeRoutedFetch({
+        "/auth/user": {
+          status: 200,
+          body: { id: "u1", base_folder_id: BASE_ID },
+        },
+      }),
+    );
+
+    const crumbs = await getBreadcrumbs(BASE_ID);
+    expect(crumbs).toEqual([{ id: "", name: "Home" }]);
+  });
+
+  it("stops traversal when a parent ID is not a valid UUID", async () => {
+    setFetchFn(
+      makeRoutedFetch({
+        "/auth/user": {
+          status: 200,
+          body: { id: "u1", base_folder_id: BASE_ID },
+        },
+        [`/notes/${FOLDER_A}`]: {
+          status: 200,
+          body: { id: FOLDER_A, name: "FolderA", parents: ["not-a-uuid"] },
+        },
+      }),
+    );
+
+    const crumbs = await getBreadcrumbs(FOLDER_A);
+    expect(crumbs).toEqual([
+      { id: "", name: "Home" },
+      { id: FOLDER_A, name: "FolderA" },
+    ]);
+  });
+
+  it("returns partial chain when an ancestor fetch fails", async () => {
+    setFetchFn(
+      makeRoutedFetch({
+        "/auth/user": {
+          status: 200,
+          body: { id: "u1", base_folder_id: BASE_ID },
+        },
+        [`/notes/${FOLDER_A}`]: {
+          status: 200,
+          body: { id: FOLDER_A, name: "FolderA", parents: [FOLDER_B] },
+        },
+        // FOLDER_B not in routes → 404 → traversal stops
+      }),
+    );
+
+    const crumbs = await getBreadcrumbs(FOLDER_A);
+    expect(crumbs).toEqual([
+      { id: "", name: "Home" },
+      { id: FOLDER_A, name: "FolderA" },
+    ]);
   });
 });
 

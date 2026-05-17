@@ -162,7 +162,7 @@ describe("Sidebar Starred section", () => {
     render(<Sidebar onNavigate={onNavigate} />);
     await screen.findByText("StarredFolder");
     fireEvent.click(screen.getByText("StarredFolder"));
-    expect(onNavigate).toHaveBeenCalledWith("folder-1", "StarredFolder");
+    expect(onNavigate).toHaveBeenCalledWith("folder-1");
     expect(mockPush).not.toHaveBeenCalled();
   });
 

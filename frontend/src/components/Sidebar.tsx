@@ -21,7 +21,7 @@ import SearchInput from "./SearchInput";
 import { useLocalStorageBoolean } from "@/hooks/useLocalStorageBoolean";
 
 interface SidebarProps {
-  onNavigate: (folderId?: string, folderName?: string) => void;
+  onNavigate: (folderId?: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
   refreshTrigger?: number;
@@ -35,8 +35,8 @@ export function Sidebar({
   onClose,
   refreshTrigger = 0,
 }: SidebarProps) {
-  const handleNavigate = (folderId?: string, folderName?: string) => {
-    onNavigate(folderId, folderName);
+  const handleNavigate = (folderId?: string) => {
+    onNavigate(folderId);
     onClose?.();
   };
   const router = useRouter();
@@ -184,7 +184,7 @@ export function Sidebar({
                     item.mimeType === "application/vnd.google-apps.folder";
                   const navigate = () => {
                     if (isFolder) {
-                      handleNavigate(item.id, item.name);
+                      handleNavigate(item.id);
                     } else {
                       router.push(`/note?id=${item.id}`);
                       onClose?.();
