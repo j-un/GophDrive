@@ -18,6 +18,10 @@ dist/
 .env.local
 frontend/next-env.d.ts
 
+# Wasm build artifacts (generated from core/ by scripts/internal/build-wasm.sh)
+frontend/public/core.wasm
+frontend/public/wasm_exec.js
+
 # Go
 backend/bin/
 backend/dist/

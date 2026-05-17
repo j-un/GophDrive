@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "mise x go -- bash -c 'cd .. && ./scripts/internal/build-wasm.sh'",
     "dev": "next dev",
+    "prebuild": "mise x go -- bash -c 'cd .. && ./scripts/internal/build-wasm.sh'",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

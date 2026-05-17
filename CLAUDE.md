@@ -7,7 +7,7 @@ GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, sing
 ## Mandatory Post-Change Checklist
 
 1. **Run `./scripts/check.sh`** (fmt + vet + test + prettier + tsc + eslint + vitest across all stacks) and ensure it passes. Runs entirely on the host via `mise x` — no DynamoDB Local / overmind required.
-2. **If `core/` changed** → `frontend/public/core.wasm` must be regenerated. The `wasm` overmind process does this automatically while `dev.sh` / `overmind start` is up; otherwise run `./scripts/internal/build-wasm.sh`.
+2. **If `core/` changed** → `core.wasm` is rebuilt automatically by the `wasm` overmind process (`dev.sh` / `overmind start`) and by `npm run dev`/`build` via the `predev`/`prebuild` hooks. For builds outside those paths run `./scripts/internal/build-wasm.sh` manually. (`core.wasm` and `wasm_exec.js` are gitignored build artifacts — do not commit them.)
 3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → bump `CACHE_NAME` in `frontend/public/sw.js` to `gophdrive-YYYYMMDD-NN`. The PWA service worker is only re-evaluated when `sw.js` changes by ≥1 byte; skipping this leaves users on stale code or a JS↔Wasm signature mismatch. Mention the bump in the commit message (e.g. `feat: ... and PWA cache v20260508-01`).
 
 ## Common Commands
