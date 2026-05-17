@@ -1050,6 +1050,163 @@ func (m *Adapter) renameFileMap(ctx context.Context, fileID string, newName stri
 	return &f.FileMetadata, nil
 }
 
+func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID string) (*adapter.FileMetadata, error) {
+	if m.client == nil {
+		return m.moveFileMap(ctx, fileID, newParentID)
+	}
+
+	item, err := m.getFileItem(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if item.UserID != m.userID {
+		return nil, adapter.ErrNotFound
+	}
+
+	resolvedParentID := newParentID
+	if resolvedParentID == "" {
+		if m.BaseFolderID != "" {
+			resolvedParentID = m.BaseFolderID
+		} else {
+			resolvedParentID = "root"
+		}
+	}
+
+	if resolvedParentID == fileID {
+		return nil, adapter.ErrInvalidMove
+	}
+
+	if resolvedParentID != "root" {
+		dest, err := m.getFileItem(ctx, resolvedParentID)
+		if err != nil {
+			return nil, err
+		}
+		if dest.UserID != m.userID {
+			return nil, adapter.ErrNotFound
+		}
+		if dest.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, adapter.ErrInvalidMove
+		}
+	}
+
+	// Only folders can create a cycle; notes have no children.
+	if item.MIMEType == "application/vnd.google-apps.folder" {
+		items, err := m.scanUserItems(ctx)
+		if err != nil {
+			return nil, err
+		}
+		parentOf := make(map[string]string, len(items))
+		for _, it := range items {
+			if len(it.Parents) > 0 {
+				parentOf[it.ID] = it.Parents[0]
+			}
+		}
+		visited := make(map[string]bool)
+		cur := resolvedParentID
+		for cur != "" && cur != "root" {
+			if visited[cur] {
+				break
+			}
+			visited[cur] = true
+			if cur == fileID {
+				return nil, adapter.ErrInvalidMove
+			}
+			cur = parentOf[cur]
+		}
+	}
+
+	item.Parents = []string{resolvedParentID}
+	item.ModifiedTime = time.Now()
+	item.ETag = uuid.New().String()
+	item.TTL = m.itemTTL()
+
+	av, err := attributevalue.MarshalMap(item)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: getTableName(),
+		Item:      av,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &adapter.FileMetadata{
+		ID:           item.ID,
+		Name:         fromStoredName(item.Name),
+		MIMEType:     item.MIMEType,
+		ModifiedTime: item.ModifiedTime,
+		Size:         item.Size,
+		ETag:         item.ETag,
+		Parents:      item.Parents,
+		Starred:      item.Starred,
+		Tags:         item.Tags,
+	}, nil
+}
+
+func (m *Adapter) moveFileMap(ctx context.Context, fileID string, newParentID string) (*adapter.FileMetadata, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	f, ok := m.files[fileID]
+	if !ok {
+		return nil, adapter.ErrNotFound
+	}
+
+	resolvedParentID := newParentID
+	if resolvedParentID == "" {
+		if m.BaseFolderID != "" {
+			resolvedParentID = m.BaseFolderID
+		} else {
+			resolvedParentID = "root"
+		}
+	}
+
+	if resolvedParentID == fileID {
+		return nil, adapter.ErrInvalidMove
+	}
+
+	// "root" and BaseFolderID are meta-destinations that always exist for the user.
+	if resolvedParentID != "root" && resolvedParentID != m.BaseFolderID {
+		dest, ok := m.files[resolvedParentID]
+		if !ok {
+			return nil, adapter.ErrNotFound
+		}
+		if dest.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, adapter.ErrInvalidMove
+		}
+	}
+
+	if f.MIMEType == "application/vnd.google-apps.folder" {
+		parentOf := make(map[string]string, len(m.files))
+		for id, it := range m.files {
+			if len(it.Parents) > 0 {
+				parentOf[id] = it.Parents[0]
+			}
+		}
+		visited := make(map[string]bool)
+		cur := resolvedParentID
+		for cur != "" && cur != "root" {
+			if visited[cur] {
+				break
+			}
+			visited[cur] = true
+			if cur == fileID {
+				return nil, adapter.ErrInvalidMove
+			}
+			cur = parentOf[cur]
+		}
+	}
+
+	f.Parents = []string{resolvedParentID}
+	f.ModifiedTime = time.Now()
+	f.ETag = uuid.New().String()
+
+	return &f.FileMetadata, nil
+}
+
 // Provider implements adapter.StorageProvider backed by DynamoDB.
 //
 // When client is nil, adapters use an in-memory map (used by tests). The

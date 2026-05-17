@@ -9,6 +9,7 @@ import {
   listFiles,
   createNote,
   updateNote,
+  moveFile,
   deleteFile,
   searchFiles,
   listTags,
@@ -203,6 +204,38 @@ describe("API functions", () => {
     await expect(updateNote("1", "content", "stale-etag")).rejects.toThrow(
       "Conflict",
     );
+  });
+
+  it("moveFile sends PATCH with parentId in body", async () => {
+    const mockFetch = fakeFetch(200, {
+      id: "1",
+      name: "note.md",
+      parents: ["dest-folder"],
+    });
+    setFetchFn(mockFetch);
+
+    await moveFile("note-id", "dest-folder");
+
+    const [url, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/notes/note-id");
+    expect(init.method).toBe("PATCH");
+    const body = JSON.parse(init.body);
+    expect(body.parentId).toBe("dest-folder");
+  });
+
+  it("moveFile sends empty string parentId for root", async () => {
+    const mockFetch = fakeFetch(200, {
+      id: "1",
+      name: "note.md",
+      parents: ["root"],
+    });
+    setFetchFn(mockFetch);
+
+    await moveFile("note-id", "");
+
+    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.parentId).toBe("");
   });
 
   it("deleteFile succeeds on 2xx", async () => {

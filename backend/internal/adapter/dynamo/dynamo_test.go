@@ -2,6 +2,7 @@ package dynamo
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jun/gophdrive/backend/internal/adapter"
@@ -167,6 +168,106 @@ func TestAdapter_RenameFile(t *testing.T) {
 	}
 	if folderRenamed.Name != "NewFolder" {
 		t.Errorf("Expected folder name 'NewFolder', got '%s'", folderRenamed.Name)
+	}
+}
+
+func TestAdapter_MoveFile(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	// Create: root → folderA → folderB
+	folderA, _ := m.CreateFolder(ctx, "FolderA", []string{"root"})
+	folderB, _ := m.CreateFolder(ctx, "FolderB", []string{folderA.ID})
+	note, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
+	originalETag := note.ETag
+
+	// Move note from root into folderA
+	moved, err := m.MoveFile(ctx, note.ID, folderA.ID)
+	if err != nil {
+		t.Fatalf("MoveFile(note) failed: %v", err)
+	}
+	if len(moved.Parents) == 0 || moved.Parents[0] != folderA.ID {
+		t.Errorf("Expected parent %s, got %v", folderA.ID, moved.Parents)
+	}
+	if moved.ETag == originalETag {
+		t.Error("Expected ETag to change after move")
+	}
+
+	// Verify the note appears in folderA's listing
+	items, _ := m.ListFiles(ctx, folderA.ID)
+	found := false
+	for _, it := range items {
+		if it.ID == note.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Moved note not found in destination folder")
+	}
+
+	// Move a folder: folderB into root
+	movedFolder, err := m.MoveFile(ctx, folderB.ID, "root")
+	if err != nil {
+		t.Fatalf("MoveFile(folder) failed: %v", err)
+	}
+	if len(movedFolder.Parents) == 0 || movedFolder.Parents[0] != "root" {
+		t.Errorf("Expected parent 'root', got %v", movedFolder.Parents)
+	}
+
+	// ErrNotFound for unknown item
+	_, err = m.MoveFile(ctx, "no-such-id", folderA.ID)
+	if err != adapter.ErrNotFound {
+		t.Errorf("Expected ErrNotFound for unknown item, got %v", err)
+	}
+
+	// ErrNotFound for unknown destination
+	_, err = m.MoveFile(ctx, note.ID, "no-such-dest")
+	if err != adapter.ErrNotFound {
+		t.Errorf("Expected ErrNotFound for unknown destination, got %v", err)
+	}
+}
+
+func TestAdapter_MoveFile_CycleRejected(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	// Build: root → parent → child
+	parent, _ := m.CreateFolder(ctx, "Parent", []string{"root"})
+	child, _ := m.CreateFolder(ctx, "Child", []string{parent.ID})
+
+	// Moving parent into itself must be rejected
+	_, err := m.MoveFile(ctx, parent.ID, parent.ID)
+	if !errors.Is(err, adapter.ErrInvalidMove) {
+		t.Errorf("Expected ErrInvalidMove for self-move, got %v", err)
+	}
+
+	// Moving parent into its own descendant must be rejected
+	_, err = m.MoveFile(ctx, parent.ID, child.ID)
+	if !errors.Is(err, adapter.ErrInvalidMove) {
+		t.Errorf("Expected ErrInvalidMove for descendant-move, got %v", err)
+	}
+
+	// Moving child into parent is fine (not a cycle)
+	grandchild, _ := m.CreateFolder(ctx, "Grandchild", []string{child.ID})
+	_, err = m.MoveFile(ctx, grandchild.ID, parent.ID)
+	if err != nil {
+		t.Errorf("Expected no error for valid move, got %v", err)
+	}
+}
+
+func TestAdapter_MoveFile_ResolvesBaseFolder(t *testing.T) {
+	m := NewAdapter(nil, "user1", "base-folder-1")
+	ctx := context.Background()
+
+	note, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
+
+	// Empty newParentID must resolve to BaseFolderID
+	moved, err := m.MoveFile(ctx, note.ID, "")
+	if err != nil {
+		t.Fatalf("MoveFile with empty parentID failed: %v", err)
+	}
+	if len(moved.Parents) == 0 || moved.Parents[0] != "base-folder-1" {
+		t.Errorf("Expected parent base-folder-1, got %v", moved.Parents)
 	}
 }
 

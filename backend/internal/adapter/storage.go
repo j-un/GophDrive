@@ -76,6 +76,12 @@ type StorageAdapter interface {
 	// RenameFile renames a file by its ID.
 	RenameFile(ctx context.Context, fileID string, newName string) (*FileMetadata, error)
 
+	// MoveFile changes the parent folder of a file or folder.
+	// newParentID == "" is resolved to the user's root/base folder.
+	// Returns ErrNotFound if the item or destination does not exist,
+	// ErrInvalidMove if the destination is the item itself or one of its descendants.
+	MoveFile(ctx context.Context, fileID string, newParentID string) (*FileMetadata, error)
+
 	// SetStarred sets the starred status of a file.
 	SetStarred(ctx context.Context, fileID string, starred bool) (*FileMetadata, error)
 

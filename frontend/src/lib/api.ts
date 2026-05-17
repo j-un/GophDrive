@@ -266,6 +266,19 @@ export async function duplicateNote(id: string): Promise<FileItem> {
   return parseJson(res);
 }
 
+export async function moveFile(
+  id: string,
+  parentId: string,
+): Promise<FileItem> {
+  const res = await apiFetch(`/notes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ parentId }),
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) return handleError(res, "Failed to move file");
+  return parseJson(res);
+}
+
 export async function starFile(
   id: string,
   starred: boolean,

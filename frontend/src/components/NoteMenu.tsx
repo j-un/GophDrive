@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from "react";
-import { Trash2, Copy, MoreVertical, PenLine, Star } from "lucide-react";
+import {
+  Trash2,
+  Copy,
+  MoreVertical,
+  PenLine,
+  Star,
+  FolderInput,
+} from "lucide-react";
 
 interface NoteMenuProps {
   isOpen: boolean;
@@ -8,6 +15,7 @@ interface NoteMenuProps {
   onDelete: (e: React.MouseEvent) => void;
   onDuplicate?: (e: React.MouseEvent) => void;
   onRename?: (e: React.MouseEvent) => void;
+  onMove?: (e: React.MouseEvent) => void;
   onStar?: (e: React.MouseEvent) => void;
   isStarred?: boolean;
   align?: "right" | "left";
@@ -20,6 +28,7 @@ export const NoteMenu: React.FC<NoteMenuProps> = ({
   onDelete,
   onDuplicate,
   onRename,
+  onMove,
   onStar,
   isStarred,
   align = "right",
@@ -133,6 +142,20 @@ export const NoteMenu: React.FC<NoteMenuProps> = ({
               }
             >
               <PenLine size={16} /> Rename
+            </button>
+          )}
+          {onMove && (
+            <button
+              onClick={onMove}
+              style={menuItemStyle}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.backgroundColor = "var(--muted)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.backgroundColor = "transparent")
+              }
+            >
+              <FolderInput size={16} /> Move
             </button>
           )}
           <div

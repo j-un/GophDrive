@@ -354,6 +354,71 @@ func TestNoteHandler_RenameNote(t *testing.T) {
 	}
 }
 
+func TestNoteHandler_MoveNote(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	// Create a folder and a note
+	folderReq := makeRequest("POST", "/folders", `{"name":"Dest","parentId":"root"}`)
+	folderResp, _ := h.CreateFolder(ctx, folderReq)
+	var folder adapter.FileMetadata
+	json.Unmarshal([]byte(folderResp.Body), &folder)
+
+	createReq := makeRequest("POST", "/notes", `{"name":"note.md","content":"data"}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var note adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &note)
+
+	// Move note into the folder via PATCH { parentId }
+	moveReq := makeRequest("PATCH", "/notes/"+note.ID, `{"parentId":"`+folder.ID+`"}`)
+	moveReq.PathParameters["id"] = note.ID
+	resp, err := h.PatchNote(ctx, moveReq)
+	if err != nil {
+		t.Fatalf("PatchNote(move) returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+
+	var moved adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &moved)
+	if len(moved.Parents) == 0 || moved.Parents[0] != folder.ID {
+		t.Errorf("Expected parent %s, got %v", folder.ID, moved.Parents)
+	}
+
+	// Move to unknown destination should return 404
+	badReq := makeRequest("PATCH", "/notes/"+note.ID, `{"parentId":"no-such-folder"}`)
+	badReq.PathParameters["id"] = note.ID
+	badResp, _ := h.PatchNote(ctx, badReq)
+	if badResp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected 404 for unknown destination, got %d", badResp.StatusCode)
+	}
+}
+
+func TestNoteHandler_MoveNote_InvalidMove(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	// Create a folder and attempt to move it into itself
+	folderReq := makeRequest("POST", "/folders", `{"name":"SelfMove","parentId":"root"}`)
+	folderResp, _ := h.CreateFolder(ctx, folderReq)
+	var folder adapter.FileMetadata
+	json.Unmarshal([]byte(folderResp.Body), &folder)
+
+	// Moving a folder into itself must return 400 (ErrInvalidMove → PatchNote → 400)
+	moveReq := makeRequest("PATCH", "/notes/"+folder.ID, `{"parentId":"`+folder.ID+`"}`)
+	moveReq.PathParameters["id"] = folder.ID
+	resp, err := h.PatchNote(ctx, moveReq)
+	if err != nil {
+		t.Fatalf("PatchNote returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 for self-move, got %d: %s", resp.StatusCode, resp.Body)
+	}
+}
+
 func TestNoteHandler_PatchNote_Star(t *testing.T) {
 	provider := dynamo.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")
