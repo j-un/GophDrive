@@ -33,11 +33,9 @@ function NotesContent() {
   // Sync state with URL param
   useEffect(() => {
     setCurrentFolderId(folderIdParam);
-
-    // If we have a folderId but breadcrumbs are just Home, assume we need to fetch info
-    if (folderIdParam && breadcrumbs.length === 1) {
+    if (folderIdParam) {
       fetchFolderInfo(folderIdParam);
-    } else if (!folderIdParam) {
+    } else {
       setBreadcrumbs([{ id: "", name: "Home" }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,34 +53,17 @@ function NotesContent() {
       setBreadcrumbs(crumbs);
     } catch (e) {
       console.error("Failed to fetch folder info", e);
+      setBreadcrumbs([{ id: "", name: "Home" }]);
     }
   };
 
-  const handleNavigate = (folderId?: string, folderName?: string) => {
-    // Update URL
+  const handleNavigate = (folderId?: string) => {
     if (folderId) {
       router.push(`/drive?folderId=${folderId}`);
     } else {
       router.push("/drive");
     }
-
-    // Update local state immediately for responsiveness
     setCurrentFolderId(folderId);
-
-    if (folderId === undefined) {
-      setBreadcrumbs([{ id: "", name: "Home" }]);
-      return;
-    }
-
-    const existingIndex = breadcrumbs.findIndex((b) => b.id === folderId);
-    if (existingIndex !== -1) {
-      setBreadcrumbs((prev) => prev.slice(0, existingIndex + 1));
-    } else {
-      setBreadcrumbs((prev) => [
-        ...prev,
-        { id: folderId, name: folderName || "Folder" },
-      ]);
-    }
   };
 
   return (
@@ -139,7 +120,7 @@ function NotesContent() {
               <React.Fragment key={idx}>
                 {idx > 0 && <ChevronRight size={16} style={{ opacity: 0.5 }} />}
                 <button
-                  onClick={() => handleNavigate(bc.id, bc.name)}
+                  onClick={() => handleNavigate(bc.id)}
                   className="hover:underline"
                   style={{
                     display: "flex",
