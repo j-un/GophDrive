@@ -8,6 +8,7 @@ import {
   FileItem,
   duplicateNote,
   renameNote,
+  moveFile,
   deleteFile,
   starFile,
   createNote as apiCreateNote,
@@ -18,6 +19,7 @@ import {
 import { NoteMenu } from "@/components/NoteMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RenameDialog } from "@/components/RenameDialog";
+import { MoveDialog } from "@/components/MoveDialog";
 import { useOffline } from "@/hooks/useOffline";
 import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
 import { buildSearchRequest } from "@/lib/searchQuery";
@@ -69,6 +71,12 @@ export default function NoteList({
   const [deleteFolderName, setDeleteFolderName] = useState<string>("");
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
   const [renameFolderName, setRenameFolderName] = useState<string>("");
+
+  // Move State
+  const [moveItemId, setMoveItemId] = useState<string | null>(null);
+  const [moveItemName, setMoveItemName] = useState<string>("");
+  const [moveItemIsFolder, setMoveItemIsFolder] = useState(false);
+  const [moveItemParentId, setMoveItemParentId] = useState<string>("");
 
   const isOffline = useOffline();
 
@@ -331,6 +339,41 @@ export default function NoteList({
     }
   };
 
+  const requestMoveNote = (e: React.MouseEvent, note: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setMoveItemId(note.id);
+    setMoveItemName(note.name || "Untitled Note");
+    setMoveItemIsFolder(false);
+    setMoveItemParentId(note.parents?.[0] ?? "");
+  };
+
+  const requestMoveFolder = (e: React.MouseEvent, folder: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setMoveItemId(folder.id);
+    setMoveItemName(folder.name || "Untitled Folder");
+    setMoveItemIsFolder(true);
+    setMoveItemParentId(folder.parents?.[0] ?? "");
+  };
+
+  const executeMove = async (dest: string) => {
+    if (!moveItemId) return;
+    try {
+      await moveFile(moveItemId, dest);
+      setMoveItemId(null);
+      setMoveItemParentId("");
+      loadNotes();
+      onAfterMutation?.();
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
+      alert(err.message || "Failed to move item");
+    }
+  };
+
   if (error) {
     return (
       <div
@@ -391,6 +434,18 @@ export default function NoteList({
         onRename={executeFolderRename}
         onCancel={() => setRenameFolderId(null)}
         title="Rename Folder"
+      />
+      <MoveDialog
+        isOpen={!!moveItemId}
+        itemId={moveItemId ?? ""}
+        itemName={moveItemName}
+        itemIsFolder={moveItemIsFolder}
+        currentParentId={moveItemParentId}
+        onMove={executeMove}
+        onCancel={() => {
+          setMoveItemId(null);
+          setMoveItemParentId("");
+        }}
       />
       <div
         style={{
@@ -585,6 +640,7 @@ export default function NoteList({
                       onDelete={(e) => requestDeleteNote(e, note)}
                       onDuplicate={(e) => handleDuplicateNote(e, note)}
                       onRename={(e) => requestRenameNote(e, note)}
+                      onMove={(e) => requestMoveNote(e, note)}
                       onStar={(e) => handleToggleStar(e, note)}
                       isStarred={note.starred}
                     />
@@ -812,6 +868,7 @@ export default function NoteList({
                         onClose={() => setActiveMenuId(null)}
                         onDelete={(e) => requestDeleteFolder(e, folder)}
                         onRename={(e) => requestRenameFolder(e, folder)}
+                        onMove={(e) => requestMoveFolder(e, folder)}
                         onStar={(e) => handleToggleFolderStar(e, folder)}
                         isStarred={folder.starred}
                         align="right"
@@ -1060,6 +1117,7 @@ export default function NoteList({
                         onDelete={(e) => requestDeleteNote(e, note)}
                         onDuplicate={(e) => handleDuplicateNote(e, note)}
                         onRename={(e) => requestRenameNote(e, note)}
+                        onMove={(e) => requestMoveNote(e, note)}
                         onStar={(e) => handleToggleStar(e, note)}
                         isStarred={note.starred}
                       />

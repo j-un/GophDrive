@@ -373,8 +373,9 @@ func (h *NoteHandler) PatchNote(ctx context.Context, req events.APIGatewayProxyR
 	}
 
 	var input struct {
-		Name    *string `json:"name"`
-		Starred *bool   `json:"starred"`
+		Name     *string `json:"name"`
+		Starred  *bool   `json:"starred"`
+		ParentID *string `json:"parentId"`
 	}
 	if err := json.Unmarshal([]byte(req.Body), &input); err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Invalid request body"}, nil
@@ -416,11 +417,26 @@ func (h *NoteHandler) PatchNote(ctx context.Context, req events.APIGatewayProxyR
 		}
 	}
 
-	// If no fields to update were found (or handled), we could return 400 or just current file.
-	// For now, if updatedFile is nil, it means nothing changed.
+	if input.ParentID != nil {
+		var err error
+		updatedFile, err = storage.MoveFile(ctx, id, *input.ParentID)
+		if err != nil {
+			if errors.Is(err, adapter.ErrNotFound) {
+				return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound, Body: "Note or destination not found"}, nil
+			}
+			if errors.Is(err, adapter.ErrUnauthorized) {
+				return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+			}
+			if errors.Is(err, adapter.ErrInvalidMove) {
+				return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: err.Error()}, nil
+			}
+			fmt.Printf("MoveFile error: %v\n", err)
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to move file: %v", err)}, nil
+		}
+	}
+
+	// PatchNote requires at least one recognized field (name/starred/parentId).
 	if updatedFile == nil {
-		// Just return the file as is? Or error?
-		// Let's assume we wanted to do something.
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "No valid fields to update"}, nil
 	}
 
