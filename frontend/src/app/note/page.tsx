@@ -32,6 +32,8 @@ import {
   getBreadcrumbs,
   isValidNoteId,
   BreadcrumbItem,
+  LinkRef,
+  BacklinkEntry,
 } from "@/lib/api";
 import { Editor } from "@/components/Editor";
 import { Preview } from "@/components/Preview";
@@ -64,6 +66,8 @@ function NoteContent() {
   const [conflictLocal, setConflictLocal] = useState<string | null>(null);
   const [conflictRemote, setConflictRemote] = useState<RemoteData | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [noteLinks, setNoteLinks] = useState<LinkRef[]>([]);
+  const [noteBacklinks, setNoteBacklinks] = useState<BacklinkEntry[]>([]);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
@@ -191,10 +195,14 @@ function NoteContent() {
           modifiedTime?: string;
           parents?: string[];
           etag?: string;
+          links?: LinkRef[];
+          backlinks?: BacklinkEntry[];
         }>(res);
         setContent(data.content || "");
         setTitle(data.name || "Untitled Note");
         if (data.modifiedTime) setModifiedTime(data.modifiedTime);
+        setNoteLinks(data.links ?? []);
+        setNoteBacklinks(data.backlinks ?? []);
 
         if (data.parents && data.parents.length > 0) {
           setParentId(data.parents[0]);
@@ -293,9 +301,27 @@ function NoteContent() {
 
         if (!res.ok) throw new Error(`Failed to save: ${res.status}`);
 
-        const data = await parseJson<{ etag?: string }>(res);
+        const data = await parseJson<{ etag?: string; links?: LinkRef[] }>(res);
         const newEtag = res.headers.get("ETag") || data.etag;
         setEtag(newEtag ?? "");
+        if (data.links !== undefined) {
+          const incoming = data.links;
+          // The save response carries no currentTitle (enrichment is GET-only).
+          // Preserve the last enriched currentTitle per targetId so a renamed
+          // target keeps its up-to-date label until the next full GET.
+          setNoteLinks((prev) => {
+            const prevTitle = new Map(
+              prev
+                .filter((l) => l.targetId && l.currentTitle)
+                .map((l) => [l.targetId, l.currentTitle]),
+            );
+            return incoming.map((l) =>
+              l.targetId && !l.currentTitle && prevTitle.has(l.targetId)
+                ? { ...l, currentTitle: prevTitle.get(l.targetId) }
+                : l,
+            );
+          });
+        }
 
         // Update local cache (clean)
         const now = new Date().toISOString();
@@ -876,8 +902,61 @@ function NoteContent() {
             <div className="flex-1">
               <Preview
                 markdown={content}
+                links={noteLinks}
                 className="h-full max-w-3xl mx-auto"
               />
+              {noteBacklinks.length > 0 && (
+                <div
+                  style={{
+                    maxWidth: "48rem",
+                    margin: "0 auto",
+                    padding: "1rem",
+                    borderTop: "1px solid var(--border)",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      opacity: 0.5,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Backlinks
+                  </p>
+                  <ul
+                    style={{
+                      listStyle: "none",
+                      padding: 0,
+                      margin: 0,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {noteBacklinks.map((bl) => (
+                      <li key={bl.id}>
+                        <Link
+                          href={`/note?id=${bl.id}`}
+                          style={{
+                            fontSize: "0.875rem",
+                            padding: "0.125rem 0.5rem",
+                            borderRadius: "0.25rem",
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            color: "var(--foreground)",
+                            textDecoration: "none",
+                          }}
+                        >
+                          {bl.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
