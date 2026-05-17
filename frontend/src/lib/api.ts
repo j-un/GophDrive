@@ -389,6 +389,18 @@ export async function searchFiles(
   return parseJson(res);
 }
 
+export interface LinkRef {
+  title: string;
+  targetId?: string;
+  currentTitle?: string;
+  resolved: boolean;
+}
+
+export interface BacklinkEntry {
+  id: string;
+  name: string;
+}
+
 export interface TagCount {
   name: string;
   count: number;

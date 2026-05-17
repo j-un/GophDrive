@@ -122,6 +122,22 @@
   border-bottom-style: solid;
 }
 
+.preview :global(.wikilink) {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--primary);
+}
+
+.preview :global(.wikilink):hover {
+  opacity: 0.8;
+}
+
+.preview :global(.wikilink-unresolved) {
+  color: var(--muted-foreground);
+  border-bottom: 1px dashed var(--muted-foreground);
+  cursor: not-allowed;
+}
+
 .preview hr {
   border: 0;
   border-top: 1px solid var(--border);
