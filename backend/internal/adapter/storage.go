@@ -16,6 +16,7 @@ type FileMetadata struct {
 	Parents      []string  `json:"parents,omitempty"`
 	Starred      bool      `json:"starred"`
 	Tags         []string  `json:"tags,omitempty"`
+	Links        []LinkRef `json:"links,omitempty"`
 	ViewedTime   time.Time `json:"viewedTime,omitempty"`
 }
 
@@ -23,6 +24,40 @@ type FileMetadata struct {
 type TagCount struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
+}
+
+// LinkRef describes a single [[wiki-link]] within a note.
+//
+// Title is the text as written in the source. TargetID is the resolved note
+// UUID — stable across renames. CurrentTitle is the target's present display
+// name, derived at read time from the live note set; it is never persisted.
+// Resolved is false when the target did not exist at the last write time (an
+// unresolved link may be re-resolved at read time if the target was created
+// later).
+type LinkRef struct {
+	Title        string `json:"title" dynamodbav:"title"`
+	TargetID     string `json:"targetId,omitempty" dynamodbav:"target_id,omitempty"`
+	CurrentTitle string `json:"currentTitle,omitempty" dynamodbav:"-"`
+	Resolved     bool   `json:"resolved" dynamodbav:"resolved"`
+}
+
+// BacklinkEntry identifies a note that contains a resolved [[wiki-link]]
+// pointing at another note.
+type BacklinkEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// GraphNode is a lightweight representation of a note used by GET /graph.
+// Body content is intentionally excluded to keep the payload small; callers
+// fetch bodies individually via GET /notes/{id}.
+type GraphNode struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Tags      []string  `json:"tags,omitempty"`
+	Links     []LinkRef `json:"links,omitempty"`
+	Backlinks []string  `json:"backlinks,omitempty"`
+	Modified  time.Time `json:"modified"`
 }
 
 // File represents a file with its content.
@@ -106,4 +141,14 @@ type StorageAdapter interface {
 	// Folders are not returned as separate entries; they are implied by the
 	// path components on each note.
 	Export(ctx context.Context) ([]ExportEntry, error)
+
+	// EnrichNoteLinks fills CurrentTitle on each resolved link (using the
+	// target's present display name), re-resolves unresolved links where the
+	// target now exists, and collects backlinks — all in a single user scan.
+	EnrichNoteLinks(ctx context.Context, noteID string, links []LinkRef) (enriched []LinkRef, backlinks []BacklinkEntry, err error)
+
+	// Graph returns a lightweight knowledge-graph view of all the caller's
+	// notes: IDs, titles, tags, outbound links (with currentTitle), and
+	// backlink IDs. Body content is excluded; callers fetch it per-note.
+	Graph(ctx context.Context) ([]GraphNode, error)
 }
