@@ -192,20 +192,21 @@ func (m *Adapter) scanUserItems(ctx context.Context) ([]FileItem, error) {
 //
 // Exactly one of the two should be set on a given row.
 type FileItem struct {
-	PK           string    `dynamodbav:"pk"`
-	UserID       string    `dynamodbav:"user_id"`
-	ID           string    `dynamodbav:"id"`
-	Name         string    `dynamodbav:"name"`
-	MIMEType     string    `dynamodbav:"mime_type"`
-	ModifiedTime time.Time `dynamodbav:"modified_time"`
-	Size         int64     `dynamodbav:"size"`
-	ETag         string    `dynamodbav:"etag"`
-	Parents      []string  `dynamodbav:"parents"`
-	Starred      bool      `dynamodbav:"starred"`
-	Tags         []string  `dynamodbav:"tags,omitempty"`
-	Content      []byte    `dynamodbav:"content,omitempty"`
-	BodyS3Key    string    `dynamodbav:"body_s3_key,omitempty"`
-	TTL          int64     `dynamodbav:"ttl,omitempty"`
+	PK           string            `dynamodbav:"pk"`
+	UserID       string            `dynamodbav:"user_id"`
+	ID           string            `dynamodbav:"id"`
+	Name         string            `dynamodbav:"name"`
+	MIMEType     string            `dynamodbav:"mime_type"`
+	ModifiedTime time.Time         `dynamodbav:"modified_time"`
+	Size         int64             `dynamodbav:"size"`
+	ETag         string            `dynamodbav:"etag"`
+	Parents      []string          `dynamodbav:"parents"`
+	Starred      bool              `dynamodbav:"starred"`
+	Tags         []string          `dynamodbav:"tags,omitempty"`
+	Links        []adapter.LinkRef `dynamodbav:"links,omitempty"`
+	Content      []byte            `dynamodbav:"content,omitempty"`
+	BodyS3Key    string            `dynamodbav:"body_s3_key,omitempty"`
+	TTL          int64             `dynamodbav:"ttl,omitempty"`
 }
 
 func NewAdapter(client *dynamodb.Client, userID string, baseFolderID string) *Adapter {
@@ -318,6 +319,7 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 			Parents:      item.Parents,
 			Starred:      item.Starred,
 			Tags:         item.Tags,
+			Links:        item.Links,
 		},
 		Content: item.Content,
 	}, nil
@@ -353,6 +355,13 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
 
+	f.Links, err = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
+		return m.scanUserItems(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	item := FileItem{
 		PK:           f.ID,
 		UserID:       m.userID,
@@ -365,6 +374,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Parents:      f.Parents,
 		Starred:      f.Starred,
 		Tags:         f.Tags,
+		Links:        f.Links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
@@ -418,6 +428,14 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 
 	id := uuid.New().String()
 	tags := markdown.ExtractTags(content)
+
+	links, err := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
+		return m.scanUserItems(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
@@ -428,6 +446,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 			ETag:         uuid.New().String(),
 			Parents:      []string{targetFolderID},
 			Tags:         tags,
+			Links:        links,
 		},
 		Content: inline,
 	}
@@ -443,6 +462,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Tags:         tags,
+		Links:        links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
@@ -772,6 +792,9 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
+	f.Links, _ = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
+		return m.mapItems(), nil
+	})
 	return &f.FileMetadata, nil
 }
 
@@ -779,6 +802,9 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
+	links, _ := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
+		return m.mapItems(), nil
+	})
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
@@ -789,6 +815,7 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 			ETag:         uuid.New().String(),
 			Parents:      []string{folderID},
 			Tags:         markdown.ExtractTags(content),
+			Links:        links,
 		},
 		Content: content,
 	}
@@ -1748,4 +1775,62 @@ func (m *Adapter) listAllTagsMap(_ context.Context) ([]adapter.TagCount, error) 
 		return result[i].Name < result[j].Name
 	})
 	return result, nil
+}
+
+// mapItems converts the in-memory file map to a FileItem slice for use by
+// resolveLinks and buildGraph. Must be called while holding m.mu (read or write).
+func (m *Adapter) mapItems() []FileItem {
+	items := make([]FileItem, 0, len(m.files))
+	for _, f := range m.files {
+		items = append(items, FileItem{
+			ID:           f.ID,
+			Name:         f.Name,
+			MIMEType:     f.MIMEType,
+			ModifiedTime: f.ModifiedTime,
+			Tags:         f.Tags,
+			Links:        f.Links,
+		})
+	}
+	return items
+}
+
+func (m *Adapter) EnrichNoteLinks(ctx context.Context, noteID string, links []adapter.LinkRef) ([]adapter.LinkRef, []adapter.BacklinkEntry, error) {
+	if m.client == nil {
+		return m.enrichNoteLinksMap(ctx, noteID, links)
+	}
+	items, err := m.scanUserItems(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID, titleToID := buildLookupMaps(items)
+	enriched := enrichLinks(links, byID, titleToID)
+	backs := backlinksOf(noteID, items, byID, titleToID)
+	return enriched, backs, nil
+}
+
+func (m *Adapter) enrichNoteLinksMap(_ context.Context, noteID string, links []adapter.LinkRef) ([]adapter.LinkRef, []adapter.BacklinkEntry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	items := m.mapItems()
+	byID, titleToID := buildLookupMaps(items)
+	enriched := enrichLinks(links, byID, titleToID)
+	backs := backlinksOf(noteID, items, byID, titleToID)
+	return enriched, backs, nil
+}
+
+func (m *Adapter) Graph(ctx context.Context) ([]adapter.GraphNode, error) {
+	if m.client == nil {
+		return m.graphMap(ctx)
+	}
+	items, err := m.scanUserItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return buildGraph(items), nil
+}
+
+func (m *Adapter) graphMap(_ context.Context) ([]adapter.GraphNode, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return buildGraph(m.mapItems()), nil
 }
