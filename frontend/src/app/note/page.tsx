@@ -35,7 +35,8 @@ import {
   LinkRef,
   BacklinkEntry,
 } from "@/lib/api";
-import { Editor } from "@/components/Editor";
+import { Editor, type EditorHandle } from "@/components/Editor";
+import { MobileMarkdownToolbar } from "@/components/MobileMarkdownToolbar";
 import { Preview } from "@/components/Preview";
 import { LockBanner } from "@/components/LockBanner";
 import { ConflictDialog } from "@/components/ConflictDialog";
@@ -82,6 +83,7 @@ function NoteContent() {
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
   const copyTimerRef = useRef<number | null>(null);
+  const editorRef = useRef<EditorHandle | null>(null);
 
   const handleEditorScroll = () => {
     if (
@@ -849,10 +851,11 @@ function NoteContent() {
               opacity: 0.5,
               borderBottom: "1px solid var(--border)",
             }}
-            className="note-header-meta"
+            className="note-header-meta editor-pane__label"
           >
             MARKDOWN
           </div>
+          <MobileMarkdownToolbar editorRef={editorRef} readOnly={!!lockedBy} />
           <div
             style={{
               flex: 1,
@@ -864,6 +867,7 @@ function NoteContent() {
             onScroll={handleEditorScroll}
           >
             <Editor
+              ref={editorRef}
               value={content}
               onChange={setContent}
               readOnly={!!lockedBy}
