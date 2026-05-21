@@ -1,14 +1,26 @@
 "use client";
 
-import React from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import type { TransactionSpec } from "@codemirror/state";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+
+export type EditorHandle = {
+  runCommand(fn: (state: EditorState) => TransactionSpec): void;
+  focus(): void;
+};
 
 interface EditorProps {
   value: string;
@@ -17,19 +29,34 @@ interface EditorProps {
   readOnly?: boolean;
 }
 
-export function Editor({
-  value,
-  onChange,
-  className,
-  readOnly = false,
-}: EditorProps) {
+export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  { value, onChange, className, readOnly = false },
+  ref,
+) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const viewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      runCommand(fn) {
+        if (!viewRef.current) return;
+        viewRef.current.dispatch(
+          viewRef.current.state.update(fn(viewRef.current.state)),
+        );
+      },
+      focus() {
+        viewRef.current?.focus();
+      },
+    }),
+    [],
+  );
 
   const handleChange = React.useCallback(
     (val: string) => {
@@ -57,6 +84,9 @@ export function Editor({
           EditorView.lineWrapping,
         ]}
         onChange={handleChange}
+        onCreateEditor={(v) => {
+          viewRef.current = v;
+        }}
         theme={mounted && resolvedTheme === "dark" ? oneDark : undefined}
         readOnly={readOnly}
         basicSetup={{
@@ -68,4 +98,5 @@ export function Editor({
       />
     </div>
   );
-}
+});
+Editor.displayName = "Editor";
