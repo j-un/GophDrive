@@ -92,7 +92,7 @@ cd ..
 # 2. Deploy Infrastructure
 echo "Deploying Infrastructure..."
 cd infra
-npm install
+npm ci
 # Ensure context is set if needed or just deploy
 npx cdk deploy --all --require-approval never
 cd ..
@@ -118,7 +118,7 @@ echo "Rebuilding core.wasm so the deploy never ships a stale Wasm artifact..."
 echo "Building Frontend with real FRONTEND_URL..."
 cd frontend
 rm -rf out .next
-npm install
+npm ci
 npm run build
 cd ..
 
