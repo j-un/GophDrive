@@ -16,6 +16,9 @@ mise x go -- bash -c 'cd backend && go fmt ./... && go vet ./... && go test ./..
 section "Core (Go / Wasm)"
 mise x go -- bash -c 'cd core && go fmt ./... && go vet ./... && go test ./...'
 
+section "gophmem CLI (Go)"
+mise x go -- bash -c 'cd tools/gophmem && go fmt ./... && go vet ./... && go test ./...'
+
 section "Frontend (Next.js / TS)"
 mise x node -- bash -c '
   cd frontend &&
