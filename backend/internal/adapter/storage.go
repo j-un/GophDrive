@@ -63,7 +63,8 @@ type GraphNode struct {
 // File represents a file with its content.
 type File struct {
 	FileMetadata
-	Content []byte `json:"content"`
+	Content     []byte    `json:"content"`
+	CreatedTime time.Time `json:"-"`
 }
 
 // ExportEntry is a single note flattened for archive packaging.
