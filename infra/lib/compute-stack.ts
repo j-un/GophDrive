@@ -11,6 +11,7 @@ import { execSync } from "child_process";
 interface ComputeStackProps extends cdk.StackProps {
   editingSessionsTable: dynamodb.Table;
   fileStoreTable: dynamodb.Table;
+  apiKeyHashesTable: dynamodb.Table;
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -77,6 +78,7 @@ export class ComputeStack extends cdk.Stack {
         GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
         JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
         API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
+        API_KEY_HASHES_TABLE: props.apiKeyHashesTable.tableName,
         FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
         GOOGLE_REDIRECT_URL: `${process.env.FRONTEND_URL || "http://localhost:3000"}/api/auth/callback`,
         ALLOWED_EMAILS: process.env.ALLOWED_EMAILS || "",
@@ -88,6 +90,25 @@ export class ComputeStack extends cdk.Stack {
     // Grant Permissions
     props.editingSessionsTable.grantReadWriteData(backendFunction);
     props.fileStoreTable.grantReadWriteData(backendFunction);
+    backendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:TransactWriteItems",
+        ],
+        resources: [props.apiKeyHashesTable.tableArn],
+      }),
+    );
+    backendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["dynamodb:Query"],
+        resources: [`${props.apiKeyHashesTable.tableArn}/index/user_id-index`],
+      }),
+    );
     this.bodyStoreBucket.grantReadWrite(backendFunction);
 
     // Grant SSM Parameter Store read access for secrets

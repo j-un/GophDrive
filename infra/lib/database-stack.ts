@@ -16,6 +16,9 @@ export class DatabaseStack extends cdk.Stack {
   /** FileStore table — primary storage for notes and folders. */
   public readonly fileStoreTable: dynamodb.Table;
 
+  /** APIKeyHashes table — hashed API keys for programmatic access. */
+  public readonly apiKeyHashesTable: dynamodb.Table;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -65,6 +68,37 @@ export class DatabaseStack extends cdk.Stack {
     });
 
     // ==========================================================================
+    // APIKeyHashes Table
+    // --------------------------------------------------------------------------
+    // PK: pk (string) — sha256(plaintext key), so plaintext is never stored.
+    // GSI: user_id-index (user_id) — for per-user lookup during Issue/Revoke.
+    // PITR: enabled — ensures recovery if a bad migration corrupts key records.
+    // RemovalPolicy: RETAIN — API keys are user data; losing them locks out CLI.
+    // ==========================================================================
+    this.apiKeyHashesTable = new dynamodb.Table(this, "APIKeyHashesTable", {
+      partitionKey: {
+        name: "pk",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+    });
+
+    // GSI is eventually consistent. Issue guards against races with
+    // ConditionExpression on PutItem and TransactWriteItems.
+    this.apiKeyHashesTable.addGlobalSecondaryIndex({
+      indexName: "user_id-index",
+      partitionKey: {
+        name: "user_id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+    });
+
+    // ==========================================================================
     // Outputs
     // ==========================================================================
     new cdk.CfnOutput(this, "EditingSessionsTableName", {
@@ -75,6 +109,11 @@ export class DatabaseStack extends cdk.Stack {
     new cdk.CfnOutput(this, "FileStoreTableName", {
       value: this.fileStoreTable.tableName,
       description: "DynamoDB table for notes and folders",
+    });
+
+    new cdk.CfnOutput(this, "APIKeyHashesTableName", {
+      value: this.apiKeyHashesTable.tableName,
+      description: "DynamoDB table for hashed API keys",
     });
   }
 }

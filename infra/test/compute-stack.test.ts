@@ -22,10 +22,14 @@ describe("ComputeStack", () => {
     const fileStoreTable = new dynamodb.Table(depStack, "FileStore", {
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
     });
+    const apiKeyHashesTable = new dynamodb.Table(depStack, "APIKeyHashes", {
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+    });
 
     const stack = new ComputeStack(app, "TestComputeStack", {
       editingSessionsTable,
       fileStoreTable,
+      apiKeyHashesTable,
     });
     template = Template.fromStack(stack);
   });
@@ -46,12 +50,23 @@ describe("ComputeStack", () => {
         Variables: Match.objectLike({
           EDITING_SESSIONS_TABLE: Match.anyValue(),
           FILE_STORE_TABLE: Match.anyValue(),
+          API_KEY_HASHES_TABLE: Match.anyValue(),
           BODY_STORE_BUCKET: Match.anyValue(),
           GOOGLE_CLIENT_SECRET_PARAM: "/gophdrive/google-client-secret",
           JWT_SECRET_PARAM: "/gophdrive/jwt-secret",
           API_GATEWAY_SECRET_PARAM: "/gophdrive/api-gateway-secret",
           ALLOWED_EMAILS: Match.anyValue(),
         }),
+      },
+    });
+  });
+
+  test("Lambda env does not include deprecated AGENT_API_KEY_PARAM", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.not(
+          Match.objectLike({ AGENT_API_KEY_PARAM: Match.anyValue() }),
+        ),
       },
     });
   });

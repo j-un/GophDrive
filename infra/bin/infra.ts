@@ -26,6 +26,7 @@ const computeStack = new ComputeStack(app, "GophDriveComputeStack", {
   description: "GophDrive - Backend (Lambda + API Gateway)",
   editingSessionsTable: databaseStack.editingSessionsTable,
   fileStoreTable: databaseStack.fileStoreTable,
+  apiKeyHashesTable: databaseStack.apiKeyHashesTable,
 });
 
 computeStack.addDependency(databaseStack);

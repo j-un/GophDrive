@@ -110,6 +110,21 @@ else
   ok "FileStore exists"
 fi
 
+if ! table_exists APIKeyHashes; then
+  $AWS_CMD dynamodb create-table \
+    --table-name APIKeyHashes \
+    --attribute-definitions \
+      AttributeName=pk,AttributeType=S \
+      AttributeName=user_id,AttributeType=S \
+    --key-schema AttributeName=pk,KeyType=HASH \
+    --global-secondary-indexes \
+      '[{"IndexName":"user_id-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"}],"Projection":{"ProjectionType":"KEYS_ONLY"}}]' \
+    --billing-mode PAY_PER_REQUEST >/dev/null
+  ok "created APIKeyHashes"
+else
+  ok "APIKeyHashes exists"
+fi
+
 # ---------------------------------------------------------------------------
 # 7. Initial Wasm build (so frontend doesn't 404 on first load before air settles)
 # ---------------------------------------------------------------------------
