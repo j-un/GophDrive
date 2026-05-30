@@ -1,107 +1,114 @@
-# AI エージェント外部記憶セットアップ
+# AI Agent External Memory Setup
 
-GophDrive を Claude Code の外部記憶として使うための手順書。
+How to use GophDrive as Claude Code's external memory.
 
-## 概要
+## Overview
 
-`gophmem` CLI が GophDrive REST API を叩き、Claude Code が `~/.claude/skills/gophdrive-memory.md` の Skill に従って記録・参照する。エージェントはあなたの Google アイデンティティ（同一 `sub`）で動作し、Vault の `AI Memory` フォルダに書き込む。
+The `gophmem` CLI hits the GophDrive REST API, and Claude Code follows the skill at `~/.claude/skills/gophdrive-memory/SKILL.md` to record and recall notes. The agent operates under your Google identity (same `sub`) and writes to the `AI Memory` folder in your Vault. The skill's source-of-truth is `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repository; `install.sh` symlinks it into `~/.claude/skills/`.
 
-## 前提
+## Prerequisites
 
-- GophDrive が本番デプロイ済み（`./scripts/deploy-aws.sh` 完了）
-- GophDrive に Google ログイン済みであること
-- `gophmem` バイナリがビルド済み（下記「CLI インストール」参照）
+- GophDrive is deployed to production (`./scripts/deploy-aws.sh` has run)
+- You can sign into GophDrive with Google
+- `mise` is installed (used to build the CLI against the Go version pinned in `.tool-versions`)
 
 ---
 
-## 1. CLI インストール
+## 1. Install CLI and skill in one shot
+
+From the repository root:
 
 ```bash
-cd tools/gophmem
-go build -o gophmem .
-# PATH の通った場所に置く（例）
-mv gophmem ~/bin/gophmem
+bash tools/gophmem/install.sh
 ```
 
-ローカル開発時は `GOPHMEM_BASE_URL=http://localhost:3000/api` が自動で使われる。
+The script does all of the following:
+
+- Builds `tools/gophmem` and places the binary at `~/.local/bin/gophmem`
+- Symlinks the `gophdrive-memory` Claude Code skill into `~/.claude/skills/gophdrive-memory/SKILL.md` (source: `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md`)
+- Warns if a legacy flat-file skill at `~/.claude/skills/gophdrive-memory.md` is still present
+- Warns when `GOPHMEM_API_KEY` is unset and shows the export commands you need
+
+If `~/.local/bin` is not on your `PATH`, the script warns; add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc.
+
+Re-run the script after `git pull` updates `tools/gophmem/`. Only the binary is rebuilt — the skill is a symlink and reflects repo changes immediately.
 
 ---
 
-## 2. API キーを発行する
+## 2. Issue an API key
 
-1. ブラウザで GophDrive にアクセスし Google ログイン
-2. 右上のメニューから **Settings** を開く
-3. **API Keys** セクションの「**Issue Key**」ボタンをクリック
-4. 表示された平文キーをコピー（このダイアログを閉じると再表示されません）
+1. Open GophDrive in the browser and sign in with Google
+2. Open **Settings** from the top-right menu
+3. Click **Issue Key** under the **API Keys** section
+4. Copy the plaintext key shown in the dialog — it is shown only once
 
 ---
 
-## 3. gophmem の環境変数を設定する
+## 3. Set environment variables
 
 ```bash
-# ~/.zshrc や ~/.bashrc に追記
+# Append to ~/.zshrc or ~/.bashrc
 export GOPHMEM_BASE_URL=https://<your-cloudfront-domain>/api
-export GOPHMEM_API_KEY=<手順 2 でコピーしたキー>
+export GOPHMEM_API_KEY=<the plaintext key from step 2>
 ```
 
 ---
 
-## 4. 動作確認
+## 4. Smoke test
 
 ```bash
-# AI Memory フォルダを作成し最初のノートを書く
-gophmem write "howto: agent memory セットアップ完了" --tags agent,ops
+# Create the AI Memory folder and write the first note
+gophmem write "howto: agent memory setup complete" --tags agent,ops
 
-# 一覧確認
+# List
 gophmem list
 
-# 検索確認
-gophmem search "セットアップ"
+# Search
+gophmem search "setup"
 ```
 
-Web UI の `AI Memory` フォルダにノートが表示されれば成功。
+The note should appear in the `AI Memory` folder in the Web UI.
 
 ---
 
-## ローカル開発での設定
+## Local development
 
-`.env` ファイル（`.env.example` を参照）に追記:
+Add the following to your `.env` (see `.env.example`):
 
 ```bash
 API_KEY_HASHES_TABLE=APIKeyHashes
 ```
 
-ローカルでは `gophmem` のデフォルト URL が `http://localhost:8080` を指すため `GOPHMEM_BASE_URL` は省略できる。
-（Next.js は静的エクスポートのため `:3000` は API プロキシを持たない。バックエンドの `:8080` に直接アクセスする。）
+For local dev, `gophmem`'s default URL is `http://localhost:8080`, so `GOPHMEM_BASE_URL` can be omitted. (Next.js is a static export, so port `:3000` has no API proxy — `gophmem` talks to the backend on `:8080` directly.)
 
-API キーの発行はローカルの GophDrive UI から行う（手順 2 と同様）。
-
----
-
-## キーのローテーション・失効
-
-Settings の **API Keys** セクションから即座に操作できます。
-
-- **Regenerate Key**: 旧キーを即時失効させ、新しいキーを発行します（DynamoDB 上でアトミックに置換）。
-- **Revoke**: キーを失効させます。再度使うには「Issue Key」が必要です。
-
-> **SSM 方式との違い**: 旧方式は Lambda の cold start まで旧キーが有効でした。新方式は DynamoDB ルックアップのため **即時失効**します。
+Issue the API key from the local GophDrive UI the same way as step 2.
 
 ---
 
-## Skill のインストール
+## Key rotation and revocation
 
-Claude Code は `~/.claude/skills/` ディレクトリ内の `.md` ファイルを Skill として読み込む。`gophdrive-memory.md` は既にこのリポジトリの `tools/gophmem/` 管理外の `~/.claude/skills/` に配置済み（セットアップスクリプトで自動インストール予定）。
+Both are available immediately under **Settings → API Keys**.
 
-Skill の使い方は `~/.claude/skills/gophdrive-memory.md` を参照。
+- **Regenerate Key**: revokes the old key and issues a new one atomically in DynamoDB.
+- **Revoke**: invalidates the key. To use the integration again, issue a new key.
+
+> **Difference from the legacy SSM scheme**: the old scheme kept the old key valid until Lambda cold start. The current scheme is a DynamoDB lookup, so revocation is **immediate**.
 
 ---
 
-## トラブルシューティング
+## Skill installation
 
-| 症状 | 原因 | 対処 |
-|------|------|------|
-| `gophmem write` で 401 | `GOPHMEM_API_KEY` が誤り | Settings > API Keys でキーを Regenerate してコピーし直す |
-| `gophmem write` で 401（ローカル） | キーが未発行またはローカル UI で発行していない | ローカルの GophDrive UI から「Issue Key」して再設定 |
-| `gophmem write` で 403 | demo アカウントでログイン中 | Google ログインで本アカウントに切り替える |
-| `AI Memory` フォルダが見つからない | 初回作成中にエラー | `gophmem list` を再実行。`~/.cache/gophmem/folders.json` を削除して再試行 |
+Step 1 (`bash tools/gophmem/install.sh`) symlinks `~/.claude/skills/gophdrive-memory/SKILL.md` to `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repo. No extra action is required.
+
+A **new Claude Code session** is required for the skill to be picked up. The repo-managed file `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` is the single source of truth.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `gophmem write` → 401 | `GOPHMEM_API_KEY` is wrong | Settings → API Keys → Regenerate, re-copy the plaintext |
+| `gophmem write` → 401 (local) | No key was issued, or it was issued in a different environment | Issue a key from the local GophDrive UI and re-export |
+| `gophmem write` → 403 | Signed in as a demo account | Switch to your Google account |
+| `AI Memory` folder not found | First-time folder creation failed | Re-run `gophmem list`. As a last resort, delete `~/.cache/gophmem/folders.json` and retry |
