@@ -78,8 +78,24 @@ describe("DatabaseStack", () => {
     });
   });
 
-  test("creates exactly 2 DynamoDB tables", () => {
-    template.resourceCountIs("AWS::DynamoDB::Table", 2);
+  test("creates exactly 3 DynamoDB tables", () => {
+    template.resourceCountIs("AWS::DynamoDB::Table", 3);
+  });
+
+  test("creates APIKeyHashes table with user_id GSI", () => {
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      GlobalSecondaryIndexes: Match.arrayWith([
+        Match.objectLike({
+          IndexName: "user_id-index",
+          KeySchema: [{ AttributeName: "user_id", KeyType: "HASH" }],
+          Projection: { ProjectionType: "KEYS_ONLY" },
+        }),
+      ]),
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true,
+      },
+    });
   });
 
   test("outputs table names", () => {
@@ -87,6 +103,9 @@ describe("DatabaseStack", () => {
       Value: Match.objectLike({ Ref: Match.anyValue() }),
     });
     template.hasOutput("FileStoreTableName", {
+      Value: Match.objectLike({ Ref: Match.anyValue() }),
+    });
+    template.hasOutput("APIKeyHashesTableName", {
       Value: Match.objectLike({ Ref: Match.anyValue() }),
     });
   });
