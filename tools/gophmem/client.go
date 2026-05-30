@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,6 +52,9 @@ type UserProfile struct {
 
 // ErrConflict is returned by UpdateNote when the server responds 412.
 var ErrConflict = errors.New("ETag conflict (412 Precondition Failed)")
+
+// ErrNotFound is returned when the server responds 404.
+var ErrNotFound = errors.New("not found (404)")
 
 // Client is a thin HTTP wrapper around the GophDrive REST API.
 type Client struct {
@@ -144,11 +149,27 @@ func (c *Client) GetNote(id string) (NoteResponse, error) {
 	if err != nil {
 		return NoteResponse{}, err
 	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return NoteResponse{}, ErrNotFound
+	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		return NoteResponse{}, fmt.Errorf("GET /notes/%s: status %d", id, resp.StatusCode)
 	}
 	return readJSON[NoteResponse](resp)
+}
+
+// CacheKey returns a string unique to this (baseURL, apiKey) pair for use as a
+// folder cache key. The API key is hashed so it never appears in the cache file.
+// GET /notes/{id} resolves both files and folders — callers depend on this.
+func (c *Client) CacheKey() string {
+	digest := "anonymous"
+	if c.apiKey != "" {
+		sum := sha256.Sum256([]byte(c.apiKey))
+		digest = hex.EncodeToString(sum[:4]) // 4 bytes → 8 hex chars (32-bit digest)
+	}
+	return c.baseURL + "#" + digest
 }
 
 type createNoteReq struct {

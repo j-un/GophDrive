@@ -113,6 +113,18 @@ func TestClient_UpdateNote_Conflict(t *testing.T) {
 	}
 }
 
+func TestClient_GetNote_NotFound(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer close()
+
+	_, err := client.GetNote("missing-id")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestClient_Search(t *testing.T) {
 	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/search" || r.Method != "GET" {
@@ -201,16 +213,21 @@ func TestResolveAIMemoryFolder_CreateNew(t *testing.T) {
 func TestResolveAIMemoryFolder_Cache(t *testing.T) {
 	t.Setenv("GOPHMEM_CACHE_DIR", t.TempDir())
 
-	// Prime the cache with a sentinel ID.
-	_ = saveFolderCache(folderCache{AIMemoryID: "cached-folder-id"})
-
-	// Server returns a different ID — if the cache is bypassed the assertion fails.
+	// Server handles the Fix-B existence check (GET /notes/{id}) and must not
+	// receive /search or /folders — any such call means the cache was bypassed.
 	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, []FileMetadata{
-			{ID: "server-folder-id", Name: "AI Memory", MIMEType: folderMIMEType},
-		})
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/notes/"):
+			writeJSON(w, 200, NoteResponse{ID: "cached-folder-id"})
+		default:
+			t.Errorf("unexpected request (cache bypassed): %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer close()
+
+	// Prime the cache after creating the client so we have the correct CacheKey.
+	_ = saveFolderCache(folderCache{client.CacheKey(): "cached-folder-id"})
 
 	id, err := ResolveAIMemoryFolder(client)
 	if err != nil {
@@ -245,8 +262,8 @@ func TestResolveAIMemoryFolder_Relocated(t *testing.T) {
 	if id != "relocated-id" {
 		t.Errorf("expected relocated-id, got %s", id)
 	}
-	if c := loadFolderCache(); c.AIMemoryID != "relocated-id" {
-		t.Errorf("cache not warmed after relocation resolve: got %q", c.AIMemoryID)
+	if got := loadFolderCache()[client.CacheKey()]; got != "relocated-id" {
+		t.Errorf("cache not warmed after relocation resolve: got %q", got)
 	}
 }
 
@@ -403,13 +420,14 @@ func TestResolveNoteID_NotFound(t *testing.T) {
 func TestFolderCache_RoundTrip(t *testing.T) {
 	t.Setenv("GOPHMEM_CACHE_DIR", t.TempDir())
 
-	original := folderCache{AIMemoryID: "test-id-123"}
+	original := folderCache{"https://example.com#ab12cd34": "test-id-123"}
 	if err := saveFolderCache(original); err != nil {
 		t.Fatalf("saveFolderCache: %v", err)
 	}
 	loaded := loadFolderCache()
-	if loaded.AIMemoryID != original.AIMemoryID {
-		t.Errorf("cache roundtrip failed: want %s, got %s", original.AIMemoryID, loaded.AIMemoryID)
+	if loaded["https://example.com#ab12cd34"] != original["https://example.com#ab12cd34"] {
+		t.Errorf("cache roundtrip failed: want %s, got %s",
+			original["https://example.com#ab12cd34"], loaded["https://example.com#ab12cd34"])
 	}
 }
 
@@ -419,8 +437,130 @@ func TestFolderCache_MissingFile(t *testing.T) {
 	_ = os.Remove(cachePath())
 
 	c := loadFolderCache()
-	if c.AIMemoryID != "" {
-		t.Errorf("expected empty cache, got %q", c.AIMemoryID)
+	if len(c) != 0 {
+		t.Errorf("expected empty cache, got %v", c)
+	}
+}
+
+// ---- CacheKey tests ----
+
+func TestCacheKey_IsolatedByURLAndKey(t *testing.T) {
+	c1 := NewClient("https://example.com", "key-a")
+	c2 := NewClient("https://example.com", "key-b")
+	c3 := NewClient("https://other.com", "key-a")
+
+	if c1.CacheKey() == c2.CacheKey() {
+		t.Error("different API keys must yield different CacheKeys")
+	}
+	if c1.CacheKey() == c3.CacheKey() {
+		t.Error("different base URLs must yield different CacheKeys")
+	}
+}
+
+func TestCacheKey_AnonymousForEmptyKey(t *testing.T) {
+	c := NewClient("https://example.com", "")
+	if !strings.HasSuffix(c.CacheKey(), "#anonymous") {
+		t.Errorf("empty API key must use anonymous digest, got %s", c.CacheKey())
+	}
+}
+
+func TestResolveAIMemoryFolder_StaleCacheAutoRepair(t *testing.T) {
+	t.Setenv("GOPHMEM_CACHE_DIR", t.TempDir())
+
+	searchCalled := false
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/notes/"):
+			w.WriteHeader(http.StatusNotFound)
+		case r.URL.Path == "/search" && r.Method == "GET":
+			searchCalled = true
+			writeJSON(w, 200, []FileMetadata{
+				{ID: "real-folder-id", Name: "AI Memory", MIMEType: folderMIMEType},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer close()
+
+	_ = saveFolderCache(folderCache{client.CacheKey(): "stale-uuid"})
+
+	id, err := ResolveAIMemoryFolder(client)
+	if err != nil {
+		t.Fatalf("ResolveAIMemoryFolder: %v", err)
+	}
+	if id != "real-folder-id" {
+		t.Errorf("expected real-folder-id after stale repair, got %s", id)
+	}
+	if !searchCalled {
+		t.Error("expected Search to be called after 404 on stale cached ID")
+	}
+	if got := loadFolderCache()[client.CacheKey()]; got != "real-folder-id" {
+		t.Errorf("cache should be updated to real-folder-id after repair, got %q", got)
+	}
+}
+
+func TestResolveAIMemoryFolder_CachedGetServerError(t *testing.T) {
+	// If the existence-check GET returns a non-404 error (e.g. 500), the function
+	// must propagate the error and NOT fall through to Search/Create.
+	t.Setenv("GOPHMEM_CACHE_DIR", t.TempDir())
+
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/notes/"):
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			t.Errorf("unexpected request after 5xx (should abort): %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer close()
+
+	_ = saveFolderCache(folderCache{client.CacheKey(): "cached-id"})
+
+	if _, err := ResolveAIMemoryFolder(client); err == nil {
+		t.Fatal("expected error on 5xx during cache verification, got nil")
+	}
+}
+
+func TestResolveAIMemoryFolder_LegacyJSONFallback(t *testing.T) {
+	// Old cache format was {"ai_memory_id": "..."} (a Go struct). Decoding it into
+	// the new map[string]string succeeds — but the key "ai_memory_id" never matches
+	// any CacheKey() (which is "baseURL#digest"), so the result is a cache miss.
+	// Search/Create runs normally; no stale ID is used and no error is raised.
+	t.Setenv("GOPHMEM_CACHE_DIR", t.TempDir())
+
+	if err := os.WriteFile(cachePath(), []byte(`{"ai_memory_id":"legacy-folder-id"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/search" && r.Method == "GET":
+			writeJSON(w, 200, []FileMetadata{
+				{ID: "fresh-folder-id", Name: "AI Memory", MIMEType: folderMIMEType},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer close()
+
+	// The old JSON decodes into a non-empty map (key "ai_memory_id"), proving
+	// no decode error is raised — the miss is purely due to key mismatch.
+	rawCache := loadFolderCache()
+	if _, hasLegacyKey := rawCache["ai_memory_id"]; !hasLegacyKey {
+		t.Error("expected legacy key 'ai_memory_id' to survive decode (no decode error)")
+	}
+
+	id, err := ResolveAIMemoryFolder(client)
+	if err != nil {
+		t.Fatalf("unexpected error with legacy cache: %v", err)
+	}
+	if id != "fresh-folder-id" {
+		t.Errorf("expected fresh-folder-id (legacy cache miss), got %s", id)
 	}
 }
 
