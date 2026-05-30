@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/golang-jwt/jwt/v5"
@@ -69,6 +70,22 @@ func GetUserID(req events.APIGatewayProxyRequest, jwtSecret string) (string, err
 		return "", err
 	}
 	return c.UserID, nil
+}
+
+// SignSession produces a signed HS256 JWT for the given claims and TTL.
+// Exposed as a package-level function so code outside this package (e.g. app)
+// can mint agent-translation tokens without a full AuthHandler instance.
+func SignSession(c SessionClaims, ttl time.Duration, jwtSecret string) (string, error) {
+	now := time.Now()
+	mc := jwt.MapClaims{
+		"sub":            c.UserID,
+		"email":          c.Email,
+		"name":           c.Name,
+		"base_folder_id": c.BaseFolderID,
+		"iat":            now.Unix(),
+		"exp":            now.Add(ttl).Unix(),
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, mc).SignedString([]byte(jwtSecret))
 }
 
 // GetTokenString extracts the raw JWT string from Authorization header or session_token cookie.
