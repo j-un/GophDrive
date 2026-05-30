@@ -82,7 +82,8 @@ func NewAuthHandler(deps AuthHandlerDeps) *AuthHandler {
 // or the demo flow breaks visibly.
 const demoUserIDPrefix = "demo-user-"
 
-func isDemoUserID(id string) bool {
+// IsDemoUserID reports whether the given user ID belongs to an ephemeral demo session.
+func IsDemoUserID(id string) bool {
 	return strings.HasPrefix(id, demoUserIDPrefix)
 }
 
@@ -107,16 +108,7 @@ func (h *AuthHandler) sessionCookie(token string, maxAge int) string {
 
 // signSession produces a signed JWT for the given session claims.
 func (h *AuthHandler) signSession(c SessionClaims, ttl time.Duration) (string, error) {
-	now := time.Now()
-	mc := jwt.MapClaims{
-		"sub":            c.UserID,
-		"email":          c.Email,
-		"name":           c.Name,
-		"base_folder_id": c.BaseFolderID,
-		"iat":            now.Unix(),
-		"exp":            now.Add(ttl).Unix(),
-	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, mc).SignedString([]byte(h.deps.JWTSecret))
+	return SignSession(c, ttl, h.deps.JWTSecret)
 }
 
 // Login redirects the browser into Google's OAuth consent screen.
@@ -253,7 +245,7 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 	// their data has a 60-minute TTL on DynamoDB. Re-issuing here at
 	// SessionTTL (24h) would let the JWT outlive the data, leaving the user
 	// authenticated against an empty store. Force a fresh demo-login instead.
-	if isDemoUserID(sub) {
+	if IsDemoUserID(sub) {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Demo sessions cannot be refreshed; please log in again"}, nil
 	}
 

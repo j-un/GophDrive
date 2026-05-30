@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/jun/gophdrive/backend/internal/adapter/apikey"
 	"github.com/jun/gophdrive/backend/internal/adapter/dynamo"
 	"github.com/jun/gophdrive/backend/internal/auth"
 	"github.com/jun/gophdrive/backend/internal/handler"
@@ -32,7 +34,10 @@ type App struct {
 	exportHandler    *handler.ExportHandler
 	tagHandler       *handler.TagHandler
 	graphHandler     *handler.GraphHandler
+	apiKeyHandler    *handler.APIKeyHandler
+	apiKeys          apikey.Store
 	apiGatewaySecret string
+	jwtSecret        string
 }
 
 // NewApp initializes the application dependencies.
@@ -86,6 +91,8 @@ func NewApp(ctx context.Context) *App {
 	if err != nil {
 		log.Printf("WARNING: failed to resolve API_GATEWAY_SECRET: %v", err)
 	}
+
+	apiKeyStore := apikey.NewDDBStore(dynamoClient, os.Getenv("API_KEY_HASHES_TABLE"))
 
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 
@@ -148,6 +155,7 @@ func NewApp(ctx context.Context) *App {
 	sessionHandler := handler.NewSessionHandler(lockManager, jwtSecret)
 
 	syncHandler := handler.NewSyncHandler(jwtSecret)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyStore, jwtSecret)
 
 	return &App{
 		authHandler:      authHandler,
@@ -158,7 +166,10 @@ func NewApp(ctx context.Context) *App {
 		exportHandler:    exportHandler,
 		tagHandler:       tagHandler,
 		graphHandler:     graphHandler,
+		apiKeyHandler:    apiKeyHandler,
+		apiKeys:          apiKeyStore,
 		apiGatewaySecret: apiGatewaySecret,
+		jwtSecret:        jwtSecret,
 	}
 }
 
@@ -183,12 +194,35 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		}
 	}
 
-	if strings.HasPrefix(path, "/api") {
+	if strings.HasPrefix(path, "/api/") {
 		path = strings.TrimPrefix(path, "/api")
+	}
+
+	// Translate an API key (Bearer <plaintext>) to a short-lived session JWT so
+	// all downstream handlers can verify it via the normal GetSessionClaims path
+	// without modification. Revocation is immediate — DynamoDB lookup on every request.
+	if newAuth, ok := translateAPIKey(ctx, req.Headers, app.apiKeys, app.jwtSecret); ok {
+		if req.Headers == nil {
+			req.Headers = make(map[string]string)
+		}
+		req.Headers["Authorization"] = newAuth
 	}
 
 	if req.PathParameters == nil {
 		req.PathParameters = make(map[string]string)
+	}
+
+	// /api-keys — API key lifecycle for programmatic access
+	if path == "/api-keys" {
+		if method == "POST" {
+			return corsResponse(must(app.apiKeyHandler.Issue(ctx, req))), nil
+		}
+		if method == "GET" {
+			return corsResponse(must(app.apiKeyHandler.Get(ctx, req))), nil
+		}
+		if method == "DELETE" {
+			return corsResponse(must(app.apiKeyHandler.Delete(ctx, req))), nil
+		}
 	}
 
 	// /auth
@@ -310,6 +344,45 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		StatusCode: http.StatusNotFound,
 		Body:       fmt.Sprintf("Not Found: %s %s", method, path),
 	}), nil
+}
+
+// translateAPIKey checks whether the Authorization header carries a valid API key.
+// On match it mints a 5-minute session JWT for the key owner and returns the
+// replacement "Bearer <jwt>" header value. Returns ok=false when no key is
+// provided, the key is unknown, or signing fails. DynamoDB errors are logged
+// and treated as a miss so human sessions are never affected.
+// The Authorization header name is checked case-insensitively; the Bearer
+// scheme is also accepted in any case (bearer, BEARER, etc.).
+func translateAPIKey(ctx context.Context, headers map[string]string, store apikey.Store, jwtSecret string) (string, bool) {
+	if store == nil {
+		return "", false
+	}
+	authHeader := headers["Authorization"]
+	if authHeader == "" {
+		authHeader = headers["authorization"]
+	}
+	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return "", false
+	}
+	candidate := authHeader[7:] // "bearer " is always 7 bytes after ToLower+HasPrefix normalisation
+	hash := apikey.HashKey(candidate)
+
+	userID, baseFolderID, ok, err := store.Lookup(ctx, hash)
+	if err != nil {
+		log.Printf("WARNING: translateAPIKey: store lookup: %v", err)
+		return "", false
+	}
+	if !ok {
+		return "", false
+	}
+
+	claims := handler.SessionClaims{UserID: userID, BaseFolderID: baseFolderID}
+	tok, err := handler.SignSession(claims, 5*time.Minute, jwtSecret)
+	if err != nil {
+		log.Printf("WARNING: translateAPIKey: SignSession: %v", err)
+		return "", false
+	}
+	return "Bearer " + tok, true
 }
 
 // corsResponse adds CORS headers to an API Gateway response.
