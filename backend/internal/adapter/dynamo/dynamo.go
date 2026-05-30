@@ -207,6 +207,7 @@ type FileItem struct {
 	Content      []byte            `dynamodbav:"content,omitempty"`
 	BodyS3Key    string            `dynamodbav:"body_s3_key,omitempty"`
 	TTL          int64             `dynamodbav:"ttl,omitempty"`
+	CreatedTime  time.Time         `dynamodbav:"created_time,omitempty"`
 }
 
 func NewAdapter(client *dynamodb.Client, userID string, baseFolderID string) *Adapter {
@@ -321,7 +322,8 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 			Tags:         item.Tags,
 			Links:        item.Links,
 		},
-		Content: item.Content,
+		Content:     item.Content,
+		CreatedTime: item.CreatedTime,
 	}, nil
 }
 
@@ -369,6 +371,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Name:         toStoredName(f.Name),
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
+		CreatedTime:  f.CreatedTime,
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
@@ -451,13 +454,15 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		Content: inline,
 	}
 
+	now := f.ModifiedTime
 	item := FileItem{
 		PK:           f.ID,
 		UserID:       m.userID,
 		ID:           f.ID,
 		Name:         toStoredName(f.Name),
 		MIMEType:     f.MIMEType,
-		ModifiedTime: f.ModifiedTime,
+		ModifiedTime: now,
+		CreatedTime:  now,
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
@@ -528,6 +533,7 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 		Name:         f.Name,
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
+		CreatedTime:  f.ModifiedTime,
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
@@ -598,6 +604,7 @@ func (m *Adapter) createRootFolder(ctx context.Context, name string) (string, er
 		Name:         f.Name,
 		MIMEType:     f.MIMEType,
 		ModifiedTime: f.ModifiedTime,
+		CreatedTime:  f.ModifiedTime,
 		Size:         f.Size,
 		ETag:         f.ETag,
 		Parents:      f.Parents,
@@ -697,6 +704,7 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		Name:         newName,
 		MIMEType:     orig.MIMEType,
 		ModifiedTime: now,
+		CreatedTime:  now,
 		Size:         orig.Size,
 		ETag:         uuid.New().String(),
 		Parents:      orig.Parents,
@@ -774,6 +782,7 @@ func (m *Adapter) getFileMap(ctx context.Context, fileID string) (*adapter.File,
 	return &adapter.File{
 		FileMetadata: meta,
 		Content:      f.Content,
+		CreatedTime:  f.CreatedTime,
 	}, nil
 }
 
@@ -802,6 +811,7 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
+	now := time.Now()
 	links, _ := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
 		return m.mapItems(), nil
 	})
@@ -810,14 +820,15 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 			ID:           id,
 			Name:         toStoredName(name),
 			MIMEType:     "text/markdown",
-			ModifiedTime: time.Now(),
+			ModifiedTime: now,
 			Size:         int64(len(content)),
 			ETag:         uuid.New().String(),
 			Parents:      []string{folderID},
 			Tags:         markdown.ExtractTags(content),
 			Links:        links,
 		},
-		Content: content,
+		Content:     content,
+		CreatedTime: now,
 	}
 	m.files[id] = f
 	return &f.FileMetadata, nil
@@ -827,16 +838,18 @@ func (m *Adapter) createFolderMap(ctx context.Context, name string, parents []st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.New().String()
+	now := time.Now()
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
 			Name:         name,
 			MIMEType:     "application/vnd.google-apps.folder",
-			ModifiedTime: time.Now(),
+			ModifiedTime: now,
 			Size:         0,
 			ETag:         uuid.New().String(),
 			Parents:      parents,
 		},
+		CreatedTime: now,
 	}
 	m.files[id] = f
 	return &f.FileMetadata, nil
@@ -861,16 +874,18 @@ func (m *Adapter) ensureRootFolderMap(ctx context.Context, name string) (string,
 	}
 	// Create
 	id := uuid.New().String()
+	now := time.Now()
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
 			Name:         name,
 			MIMEType:     "application/vnd.google-apps.folder",
-			ModifiedTime: time.Now(),
+			ModifiedTime: now,
 			Size:         0,
 			ETag:         uuid.New().String(),
 			Parents:      []string{"root"},
 		},
+		CreatedTime: now,
 	}
 	m.files[id] = f
 	return id, nil
@@ -939,7 +954,8 @@ func (m *Adapter) duplicateFileMap(ctx context.Context, fileID string) (*adapter
 			Parents:      orig.Parents,
 			Tags:         orig.Tags,
 		},
-		Content: newContent,
+		Content:     newContent,
+		CreatedTime: now,
 	}
 	m.files[newID] = f
 	meta := f.FileMetadata
@@ -1787,6 +1803,7 @@ func (m *Adapter) mapItems() []FileItem {
 			Name:         f.Name,
 			MIMEType:     f.MIMEType,
 			ModifiedTime: f.ModifiedTime,
+			CreatedTime:  f.CreatedTime,
 			Tags:         f.Tags,
 			Links:        f.Links,
 		})
