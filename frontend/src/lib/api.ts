@@ -413,6 +413,35 @@ export async function listTags(limit?: number): Promise<TagCount[]> {
   return parseJson(res);
 }
 
+export interface APIKeyStatus {
+  has_key: boolean;
+  key_prefix?: string;
+  created_at?: number;
+  first_issued_at?: number;
+}
+
+export interface IssuedAPIKey {
+  key: string;
+  key_prefix: string;
+}
+
+export async function issueAPIKey(): Promise<IssuedAPIKey> {
+  const res = await apiFetch("/api-keys", { method: "POST" });
+  if (!res.ok) return handleError(res, "Failed to issue API key");
+  return parseJson(res);
+}
+
+export async function getAPIKeyStatus(): Promise<APIKeyStatus> {
+  const res = await apiFetch("/api-keys");
+  if (!res.ok) return handleError(res, "Failed to get API key status");
+  return parseJson(res);
+}
+
+export async function revokeAPIKey(): Promise<void> {
+  const res = await apiFetch("/api-keys", { method: "DELETE" });
+  if (!res.ok) return handleError(res, "Failed to revoke API key");
+}
+
 export async function exportNotes(): Promise<{ blob: Blob; filename: string }> {
   const res = await apiFetch("/export");
   if (!res.ok) return handleError(res, "Failed to export notes");

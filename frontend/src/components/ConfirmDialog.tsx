@@ -7,6 +7,7 @@ interface ConfirmDialogProps {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
 }
 
 export function ConfirmDialog({
@@ -15,6 +16,7 @@ export function ConfirmDialog({
   message,
   onConfirm,
   onCancel,
+  confirmLabel = "Delete",
 }: ConfirmDialogProps) {
   if (!isOpen) return null;
 
@@ -99,7 +101,7 @@ export function ConfirmDialog({
               color: "var(--destructive-foreground)",
             }}
           >
-            Delete
+            {confirmLabel}
           </button>
         </div>
       </div>
