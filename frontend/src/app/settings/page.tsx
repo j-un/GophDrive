@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, exportNotes } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { APIKeysSection } from "./APIKeysSection";
 import { Loader2, ArrowLeft, Download } from "lucide-react";
 
 export default function SettingsPage() {
@@ -191,6 +192,8 @@ export default function SettingsPage() {
           </p>
         )}
       </div>
+
+      <APIKeysSection />
 
       <div
         style={{
