@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Install gophmem CLI + register the gophdrive-memory Skill globally.
+#
+# Result:
+#   ~/.local/bin/gophmem                              (built from this directory)
+#   ~/.claude/skills/gophdrive-memory/SKILL.md  →  symlink into this repo
+#
+# Re-running is safe: rebuilds the binary, refreshes the symlink.
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PLUGIN_SKILL_SRC="$SCRIPT_DIR/plugin/skills/gophdrive-memory/SKILL.md"
+BIN_DIR="$HOME/.local/bin"
+SKILL_DIR="$HOME/.claude/skills/gophdrive-memory"
+SKILL_LINK="$SKILL_DIR/SKILL.md"
+LEGACY_FLAT_SKILL="$HOME/.claude/skills/gophdrive-memory.md"
+
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
+ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
+info() { printf '  %s\n' "$*"; }
+
+if [[ ! -f "$PLUGIN_SKILL_SRC" ]]; then
+  echo "error: SKILL.md source not found at $PLUGIN_SKILL_SRC" >&2
+  exit 1
+fi
+
+# ---- 1. build CLI ----
+bold "Building gophmem ..."
+mkdir -p "$BIN_DIR"
+if ! command -v mise >/dev/null 2>&1; then
+  echo "error: mise is required (see CLAUDE.md → Common Commands). Install via https://mise.jdx.dev/ and re-run." >&2
+  exit 1
+fi
+( cd "$SCRIPT_DIR" && mise x go -- go build -o "$BIN_DIR/gophmem" . )
+ok "Installed $BIN_DIR/gophmem"
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) warn "$BIN_DIR is not in PATH. Add it to your shell rc:"
+     info "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+     ;;
+esac
+
+# ---- 2. symlink Skill ----
+bold "Linking Skill into ~/.claude/skills/ ..."
+mkdir -p "$SKILL_DIR"
+ln -snf "$PLUGIN_SKILL_SRC" "$SKILL_LINK"
+ok "Linked $SKILL_LINK"
+info "    → $(readlink "$SKILL_LINK")"
+
+# ---- 3. legacy flat file detection ----
+# Detect both real files and symlinks at the legacy path — either shadows the
+# new folder-format Skill of the same name.
+if [[ -e "$LEGACY_FLAT_SKILL" || -L "$LEGACY_FLAT_SKILL" ]]; then
+  echo
+  warn "Legacy flat-file Skill detected:"
+  info "  $LEGACY_FLAT_SKILL"
+  info "It may shadow or conflict with the new folder-format Skill. Remove it manually:"
+  info "  rm \"$LEGACY_FLAT_SKILL\""
+fi
+
+# ---- 4. env check ----
+echo
+if [[ -z "${GOPHMEM_API_KEY:-}" ]]; then
+  warn "GOPHMEM_API_KEY is not set."
+  info "Issue a key from GophDrive Web UI → Settings → API Keys → Issue Key,"
+  info "then add to your shell rc (~/.zshrc or ~/.bashrc):"
+  info ""
+  info "  export GOPHMEM_BASE_URL=https://<your-cloudfront-domain>/api   # production only"
+  info "  export GOPHMEM_API_KEY=<the plaintext key you just issued>"
+  info ""
+  info "For local DEV_MODE you can omit GOPHMEM_BASE_URL (defaults to http://localhost:8080)."
+else
+  ok "GOPHMEM_API_KEY is set."
+fi
+
+# ---- 5. next steps ----
+echo
+bold "Next steps"
+info "1. Open a new shell so PATH / env vars are picked up."
+info "2. Run: gophmem --help"
+info "3. Restart Claude Code so the gophdrive-memory Skill is loaded."
