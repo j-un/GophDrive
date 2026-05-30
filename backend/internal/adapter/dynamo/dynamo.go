@@ -2,6 +2,7 @@ package dynamo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -424,6 +425,19 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		return m.createFileMap(ctx, name, content, targetFolderID)
 	}
 
+	if targetFolderID != m.BaseFolderID && targetFolderID != "root" {
+		it, err := m.getFileItem(ctx, targetFolderID)
+		if err != nil {
+			if errors.Is(err, adapter.ErrNotFound) {
+				return nil, fmt.Errorf("parent folder %q: %w", targetFolderID, adapter.ErrNotFound)
+			}
+			return nil, err
+		}
+		if it.UserID != m.userID || it.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, fmt.Errorf("parent folder %q: %w", targetFolderID, adapter.ErrNotFound)
+		}
+	}
+
 	inline, s3Key, err := m.routeBody(ctx, content)
 	if err != nil {
 		return nil, err
@@ -511,6 +525,20 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 
 	if m.client == nil {
 		return m.createFolderMap(ctx, name, targetParents)
+	}
+
+	parentID := targetParents[0]
+	if parentID != m.BaseFolderID && parentID != "root" {
+		it, err := m.getFileItem(ctx, parentID)
+		if err != nil {
+			if errors.Is(err, adapter.ErrNotFound) {
+				return nil, fmt.Errorf("parent folder %q: %w", parentID, adapter.ErrNotFound)
+			}
+			return nil, err
+		}
+		if it.UserID != m.userID || it.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, fmt.Errorf("parent folder %q: %w", parentID, adapter.ErrNotFound)
+		}
 	}
 
 	id := uuid.New().String()
@@ -810,6 +838,12 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, folderID string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if folderID != "root" && folderID != m.BaseFolderID && folderID != "" {
+		f, ok := m.files[folderID]
+		if !ok || f.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, fmt.Errorf("parent folder %q: %w", folderID, adapter.ErrNotFound)
+		}
+	}
 	id := uuid.New().String()
 	now := time.Now()
 	links, _ := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
@@ -834,9 +868,17 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 	return &f.FileMetadata, nil
 }
 
-func (m *Adapter) createFolderMap(ctx context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
+func (m *Adapter) createFolderMap(_ context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// CreateFolder always resolves targetParents to len >= 1 before calling this helper.
+	parentID := parents[0]
+	if parentID != "root" && parentID != m.BaseFolderID {
+		f, ok := m.files[parentID]
+		if !ok || f.MIMEType != "application/vnd.google-apps.folder" {
+			return nil, fmt.Errorf("parent folder %q: %w", parentID, adapter.ErrNotFound)
+		}
+	}
 	id := uuid.New().String()
 	now := time.Now()
 	f := &adapter.File{

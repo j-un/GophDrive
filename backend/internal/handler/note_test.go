@@ -652,3 +652,33 @@ func TestNoteHandler_GetNote_NotFound(t *testing.T) {
 		t.Errorf("Expected 404, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }
+
+func TestNoteHandler_CreateNote_InvalidParent_Returns400(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("POST", "/notes", `{"name":"test.md","content":"hi","parentId":"nonexistent-uuid"}`)
+	resp, err := h.CreateNote(ctx, req)
+	if err != nil {
+		t.Fatalf("CreateNote returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 for invalid parentId, got %d: %s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestNoteHandler_CreateFolder_InvalidParent_Returns400(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("POST", "/folders", `{"name":"Folder","parentId":"nonexistent-uuid"}`)
+	resp, err := h.CreateFolder(ctx, req)
+	if err != nil {
+		t.Fatalf("CreateFolder returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 for invalid parentId, got %d: %s", resp.StatusCode, resp.Body)
+	}
+}
