@@ -99,6 +99,9 @@ func (h *NoteHandler) CreateFolder(ctx context.Context, req events.APIGatewayPro
 		if errors.Is(err, adapter.ErrUnauthorized) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 		}
+		if errors.Is(err, adapter.ErrNotFound) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "parent folder not found"}, nil
+		}
 		fmt.Printf("CreateFolder error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to create folder: %v", err)}, nil
 	}
@@ -205,6 +208,9 @@ func (h *NoteHandler) CreateNote(ctx context.Context, req events.APIGatewayProxy
 	if err != nil {
 		if errors.Is(err, adapter.ErrUnauthorized) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
+		}
+		if errors.Is(err, adapter.ErrNotFound) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "parent folder not found"}, nil
 		}
 		fmt.Printf("CreateFile error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to create note: %v", err)}, nil

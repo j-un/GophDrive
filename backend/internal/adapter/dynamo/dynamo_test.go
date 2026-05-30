@@ -42,7 +42,7 @@ func TestAdapter_GetFile_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := m.GetFile(ctx, "nonexistent-id")
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
 }
@@ -216,13 +216,13 @@ func TestAdapter_MoveFile(t *testing.T) {
 
 	// ErrNotFound for unknown item
 	_, err = m.MoveFile(ctx, "no-such-id", folderA.ID)
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound for unknown item, got %v", err)
 	}
 
 	// ErrNotFound for unknown destination
 	_, err = m.MoveFile(ctx, note.ID, "no-such-dest")
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound for unknown destination, got %v", err)
 	}
 }
@@ -371,19 +371,19 @@ func TestAdapter_DeleteFile_Recursive(t *testing.T) {
 
 	// 5. Verify Parent Gone
 	_, err = m.GetFile(ctx, parent.ID)
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Parent should be deleted, got error: %v", err)
 	}
 
 	// 6. Verify Child Folder Gone
 	_, err = m.GetFile(ctx, childFolder.ID)
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Child Folder should be deleted, got error: %v", err)
 	}
 
 	// 7. Verify Child File Gone
 	_, err = m.GetFile(ctx, childFile.ID)
-	if err != adapter.ErrNotFound {
+	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Child File should be deleted, got error: %v", err)
 	}
 }
@@ -408,5 +408,93 @@ func TestAdapter_ListRecent(t *testing.T) {
 	// Should be ordered by viewed time desc (f2 should be most recent)
 	if recent[0].ID != f2.ID {
 		t.Errorf("Expected most recent file to be %s, got %s (f1=%s, f2=%s)", f2.ID, recent[0].ID, f1.ID, f2.ID)
+	}
+}
+
+func TestAdapter_CreateFile_InvalidParent(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	_, err := m.CreateFile(ctx, "note.md", []byte("content"), "nonexistent-folder-id")
+	if !errors.Is(err, adapter.ErrNotFound) {
+		t.Errorf("Expected ErrNotFound for invalid parentId, got %v", err)
+	}
+}
+
+func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
+	ctx := context.Background()
+
+	// "root" must be accepted without a DB entry
+	m1 := NewAdapter(nil, "user1", "")
+	f1, err := m1.CreateFile(ctx, "note.md", []byte("x"), "root")
+	if err != nil {
+		t.Fatalf("Expected no error for root parentId, got %v", err)
+	}
+	if f1 == nil || f1.ID == "" {
+		t.Error("Expected non-nil file with ID for root parentId")
+	}
+
+	// BaseFolderID must be accepted even though it has no entry in m.files
+	m2 := NewAdapter(nil, "user1", "my-base-folder")
+	f2, err := m2.CreateFile(ctx, "note.md", []byte("x"), "my-base-folder")
+	if err != nil {
+		t.Fatalf("Expected no error for BaseFolderID parentId, got %v", err)
+	}
+	if f2 == nil || f2.ID == "" {
+		t.Error("Expected non-nil file with ID for BaseFolderID parentId")
+	}
+}
+
+func TestAdapter_CreateFolder_InvalidParent(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	_, err := m.CreateFolder(ctx, "NewFolder", []string{"nonexistent-folder-id"})
+	if !errors.Is(err, adapter.ErrNotFound) {
+		t.Errorf("Expected ErrNotFound for invalid parentId, got %v", err)
+	}
+}
+
+func TestAdapter_CreateFolder_SentinelParentsAllowed(t *testing.T) {
+	ctx := context.Background()
+
+	m1 := NewAdapter(nil, "user1", "")
+	f1, err := m1.CreateFolder(ctx, "F", []string{"root"})
+	if err != nil {
+		t.Fatalf("Expected no error for root parentId, got %v", err)
+	}
+	if f1 == nil || f1.ID == "" {
+		t.Error("Expected non-nil folder with ID for root parentId")
+	}
+
+	m2 := NewAdapter(nil, "user1", "base-folder-abc")
+	f2, err := m2.CreateFolder(ctx, "F", []string{"base-folder-abc"})
+	if err != nil {
+		t.Fatalf("Expected no error for BaseFolderID parentId, got %v", err)
+	}
+	if f2 == nil || f2.ID == "" {
+		t.Error("Expected non-nil folder with ID for BaseFolderID parentId")
+	}
+}
+
+func TestAdapter_CreateFile_NonFolderParentRejected(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	note, _ := m.CreateFile(ctx, "note.md", []byte("x"), "root")
+	_, err := m.CreateFile(ctx, "child.md", []byte("x"), note.ID)
+	if !errors.Is(err, adapter.ErrNotFound) {
+		t.Errorf("Expected ErrNotFound when parentId is a file (not folder), got %v", err)
+	}
+}
+
+func TestAdapter_CreateFolder_NonFolderParentRejected(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	note, _ := m.CreateFile(ctx, "note.md", []byte("x"), "root")
+	_, err := m.CreateFolder(ctx, "Sub", []string{note.ID})
+	if !errors.Is(err, adapter.ErrNotFound) {
+		t.Errorf("Expected ErrNotFound when parentId is a file (not folder), got %v", err)
 	}
 }
