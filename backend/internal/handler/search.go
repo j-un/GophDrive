@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -64,7 +65,9 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 
 	limit := searchDefaultLimit
 	if lStr := req.QueryStringParameters["limit"]; lStr != "" {
-		fmt.Sscanf(lStr, "%d", &limit)
+		if n, err := strconv.Atoi(lStr); err == nil {
+			limit = n
+		}
 	}
 	if limit <= 0 || limit > searchMaxLimit {
 		limit = searchDefaultLimit

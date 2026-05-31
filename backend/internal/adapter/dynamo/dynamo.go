@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -646,6 +647,13 @@ func makeSnippet(content []byte, query string, window int) string {
 	end := idx + len(query) + window
 	if end > len(content) {
 		end = len(content)
+	}
+	// Snap to UTF-8 rune boundaries so multibyte characters (e.g. Japanese) are not split.
+	for start > 0 && !utf8.RuneStart(content[start]) {
+		start--
+	}
+	for end < len(content) && !utf8.RuneStart(content[end]) {
+		end++
 	}
 	snippet := strings.ReplaceAll(string(content[start:end]), "\n", " ")
 	// collapse consecutive spaces

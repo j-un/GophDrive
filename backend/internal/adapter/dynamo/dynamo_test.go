@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
@@ -543,6 +544,9 @@ func TestMakeSnippet(t *testing.T) {
 		{"hello world foo", "missing", 5, false, ""},
 		{"", "q", 5, false, ""},
 		{"q", "", 5, false, ""},
+		// UTF-8: Japanese multibyte chars must not be split at window boundaries.
+		{"前文これは日本語テストです後文", "日本語", 3, true, "日本語"},
+		{"前文これは日本語テストです後文", "日本語", 1, true, "日本語"},
 	}
 	for _, c := range cases {
 		got := makeSnippet([]byte(c.content), c.query, c.window)
@@ -554,6 +558,9 @@ func TestMakeSnippet(t *testing.T) {
 		}
 		if c.wantHit && c.wantSubs != "" && !strings.Contains(strings.ToLower(got), strings.ToLower(c.wantSubs)) {
 			t.Errorf("makeSnippet(%q, %q): expected %q in %q", c.content, c.query, c.wantSubs, got)
+		}
+		if c.wantHit && !utf8.ValidString(got) {
+			t.Errorf("makeSnippet(%q, %q): result is not valid UTF-8: %q", c.content, c.query, got)
 		}
 	}
 }
