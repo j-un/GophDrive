@@ -294,3 +294,110 @@ func TestSearch_TitleMatchHasNoSnippet(t *testing.T) {
 		t.Errorf("Expected no snippet for title-only match, got %q", results[0].Snippet)
 	}
 }
+
+func TestSearch_ScopeHeadings(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"h.md","content":"## ScopeTarget\nbody"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"b.md","content":"body has scopetarget but no heading"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "ScopeTarget", "in": "headings"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 heading-match result, got %d", len(results))
+	}
+}
+
+func TestSearch_ScopeTitles(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"titlekw.md","content":"unrelated body"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"other.md","content":"body has titlekw"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "titlekw", "in": "titles"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 title-match result, got %d", len(results))
+	}
+}
+
+func TestSearch_InvalidScopeFallsBackToAll(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"note.md","content":"body has fallbackkw"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "fallbackkw", "in": "invalid-scope"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result with invalid scope (fallback to all), got %d", len(results))
+	}
+}
+
+func TestSearch_ScopeAllExplicit(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"note.md","content":"body has allkw"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "allkw", "in": "all"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result with ?in=all (explicit), got %d", len(results))
+	}
+}
+
+func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"h.md","content":"## CITarget\nbody"}`))
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"b.md","content":"body has citarget but no heading"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "CITarget", "in": "HEADINGS"} // uppercase
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result with ?in=HEADINGS (uppercase), got %d", len(results))
+	}
+}

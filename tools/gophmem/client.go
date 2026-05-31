@@ -232,7 +232,7 @@ func (c *Client) CreateFolder(name string, parents []string) (FileMetadata, erro
 	return readJSON[FileMetadata](resp)
 }
 
-func (c *Client) Search(query string, tags []string, limit int) ([]FileMetadata, error) {
+func (c *Client) Search(query string, tags []string, limit int, scope string) ([]FileMetadata, error) {
 	v := url.Values{}
 	if query != "" {
 		v.Set("q", query)
@@ -242,6 +242,9 @@ func (c *Client) Search(query string, tags []string, limit int) ([]FileMetadata,
 	}
 	if limit > 0 {
 		v.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if scope != "" {
+		v.Set("in", scope)
 	}
 	resp, err := c.do("GET", "/search?"+v.Encode(), nil, nil)
 	if err != nil {

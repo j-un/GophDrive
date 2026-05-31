@@ -16,6 +16,7 @@ type FileMetadata struct {
 	Parents      []string  `json:"parents,omitempty"`
 	Starred      bool      `json:"starred"`
 	Tags         []string  `json:"tags,omitempty"`
+	Headings     []string  `json:"headings,omitempty"`
 	Links        []LinkRef `json:"links,omitempty"`
 	ViewedTime   time.Time `json:"viewedTime,omitempty"`
 	Snippet      string    `json:"snippet,omitempty"`
@@ -26,6 +27,15 @@ type TagCount struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 }
+
+// SearchScope controls which fields are matched against the query text.
+type SearchScope string
+
+const (
+	ScopeAll      SearchScope = ""         // name OR body (default)
+	ScopeTitles   SearchScope = "titles"   // name only
+	ScopeHeadings SearchScope = "headings" // headings only
+)
 
 // LinkRef describes a single [[wiki-link]] within a note.
 //
@@ -133,7 +143,8 @@ type StorageAdapter interface {
 
 	// SearchFilesWithTags searches for files matching the query AND all of the
 	// provided tags (AND semantics). An empty tags slice applies no tag filter.
-	SearchFilesWithTags(ctx context.Context, query string, tags []string) ([]FileMetadata, error)
+	// scope restricts which fields are matched: ScopeAll (default), ScopeTitles, ScopeHeadings.
+	SearchFilesWithTags(ctx context.Context, query string, tags []string, scope SearchScope) ([]FileMetadata, error)
 
 	// ListAllTags returns every distinct tag across the user's notes with counts.
 	ListAllTags(ctx context.Context) ([]TagCount, error)

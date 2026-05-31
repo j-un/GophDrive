@@ -204,6 +204,7 @@ type FileItem struct {
 	Parents      []string          `dynamodbav:"parents"`
 	Starred      bool              `dynamodbav:"starred"`
 	Tags         []string          `dynamodbav:"tags,omitempty"`
+	Headings     []string          `dynamodbav:"headings,omitempty"`
 	Links        []adapter.LinkRef `dynamodbav:"links,omitempty"`
 	Content      []byte            `dynamodbav:"content,omitempty"`
 	BodyS3Key    string            `dynamodbav:"body_s3_key,omitempty"`
@@ -274,6 +275,7 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 				Parents:      item.Parents,
 				Starred:      item.Starred,
 				Tags:         item.Tags,
+				Headings:     item.Headings,
 			})
 		}
 	}
@@ -357,6 +359,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
+	f.Headings = markdown.ExtractHeadings(content)
 
 	f.Links, err = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
 		return m.scanUserItems(ctx)
@@ -378,6 +381,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Parents:      f.Parents,
 		Starred:      f.Starred,
 		Tags:         f.Tags,
+		Headings:     f.Headings,
 		Links:        f.Links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
@@ -445,6 +449,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 
 	id := uuid.New().String()
 	tags := markdown.ExtractTags(content)
+	headings := markdown.ExtractHeadings(content)
 
 	links, err := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
 		return m.scanUserItems(ctx)
@@ -481,6 +486,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		ETag:         f.ETag,
 		Parents:      f.Parents,
 		Tags:         tags,
+		Headings:     headings,
 		Links:        links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
@@ -587,6 +593,38 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 // Helper for case-insensitive check
 func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// matchesScope checks whether a file matches query under the given scope.
+// Returns (hit bool, snippet string). Snippet is non-empty only on a body match in ScopeAll.
+// Must not mutate inputs; callers may pass aliased backing arrays while holding RLock.
+func matchesScope(name string, content []byte, headings []string, query string, scope adapter.SearchScope) (bool, string) {
+	switch scope {
+	case adapter.ScopeTitles:
+		return containsIgnoreCase(name, query), ""
+	case adapter.ScopeHeadings:
+		// Prefer stored headings; fall back to on-the-fly extraction.
+		hs := headings
+		if len(hs) == 0 && len(content) > 0 {
+			hs = markdown.ExtractHeadings(content)
+		}
+		for _, h := range hs {
+			if containsIgnoreCase(h, query) {
+				return true, ""
+			}
+		}
+		return false, ""
+	default: // ScopeAll
+		nameHit := containsIgnoreCase(name, query)
+		bodyHit := containsIgnoreCase(string(content), query)
+		if !nameHit && !bodyHit {
+			return false, ""
+		}
+		if bodyHit && !nameHit {
+			return true, makeSnippet(content, query, 60)
+		}
+		return true, ""
+	}
 }
 
 // makeSnippet extracts a ±window-byte context around the first occurrence of
@@ -864,6 +902,7 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
+	f.Headings = markdown.ExtractHeadings(content)
 	f.Links, _ = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
 		return m.mapItems(), nil
 	})
@@ -894,6 +933,7 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 			ETag:         uuid.New().String(),
 			Parents:      []string{folderID},
 			Tags:         markdown.ExtractTags(content),
+			Headings:     markdown.ExtractHeadings(content),
 			Links:        links,
 		},
 		Content:     content,
@@ -1089,6 +1129,7 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		Parents:      item.Parents,
 		Starred:      item.Starred,
 		Tags:         item.Tags,
+		Headings:     item.Headings,
 	}, nil
 }
 
@@ -1131,6 +1172,7 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		Parents:      item.Parents,
 		Starred:      item.Starred,
 		Tags:         item.Tags,
+		Headings:     item.Headings,
 	}, nil
 }
 
@@ -1263,6 +1305,7 @@ func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID strin
 		Parents:      item.Parents,
 		Starred:      item.Starred,
 		Tags:         item.Tags,
+		Headings:     item.Headings,
 	}, nil
 }
 
@@ -1422,6 +1465,7 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 					Parents:      item.Parents,
 					Starred:      item.Starred,
 					Tags:         item.Tags,
+					Headings:     item.Headings,
 				})
 			}
 		}
@@ -1471,6 +1515,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 			Parents:      item.Parents,
 			Starred:      item.Starred,
 			Tags:         item.Tags,
+			Headings:     item.Headings,
 		})
 	}
 
@@ -1569,19 +1614,20 @@ func (m *Adapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, e
 
 // SearchFiles searches for files matching the query (delegates to SearchFilesWithTags).
 func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
-	return m.SearchFilesWithTags(ctx, query, nil)
+	return m.SearchFilesWithTags(ctx, query, nil, adapter.ScopeAll)
 }
 
 // SearchFilesWithTags searches by text query AND all provided tags (AND semantics).
-// Items with no stored tags are checked via on-the-fly extraction (lazy fallback).
-func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []string) ([]adapter.FileMetadata, error) {
+// scope restricts the text match to title, headings, or all fields.
+// Items with no stored tags/headings are checked via on-the-fly extraction (lazy fallback).
+func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []string, scope adapter.SearchScope) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
 	}
 
 	if m.client == nil {
-		return m.searchFilesWithTagsMap(ctx, query, tags)
+		return m.searchFilesWithTagsMap(ctx, query, tags, scope)
 	}
 
 	items, err := m.scanUserItems(ctx)
@@ -1609,14 +1655,11 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 		// Text match (skip if query is empty)
 		var snippet string
 		if query != "" {
-			nameHit := containsIgnoreCase(item.Name, query)
-			bodyHit := containsIgnoreCase(string(item.Content), query)
-			if !nameHit && !bodyHit {
+			hit, snip := matchesScope(item.Name, item.Content, item.Headings, query, scope)
+			if !hit {
 				continue
 			}
-			if bodyHit && !nameHit {
-				snippet = makeSnippet(item.Content, query, 60)
-			}
+			snippet = snip
 		}
 
 		// Tag filter (AND semantics); lazy fallback for items with no stored tags
@@ -1641,6 +1684,7 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			Parents:      item.Parents,
 			Starred:      item.Starred,
 			Tags:         item.Tags,
+			Headings:     item.Headings,
 			Snippet:      snippet,
 		})
 	}
@@ -1804,7 +1848,7 @@ func folderPathSegments(parents []string, parentOf map[string]string, folderName
 	return rev
 }
 
-func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags []string) ([]adapter.FileMetadata, error) {
+func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags []string, scope adapter.SearchScope) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1831,14 +1875,11 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		}
 		var snippet string
 		if query != "" {
-			nameHit := containsIgnoreCase(f.Name, query)
-			bodyHit := containsIgnoreCase(string(f.Content), query)
-			if !nameHit && !bodyHit {
+			hit, snip := matchesScope(f.Name, f.Content, f.Headings, query, scope)
+			if !hit {
 				continue
 			}
-			if bodyHit && !nameHit {
-				snippet = makeSnippet(f.Content, query, 60)
-			}
+			snippet = snip
 		}
 		if len(tags) > 0 {
 			itemTags := f.Tags

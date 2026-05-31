@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/jun/gophdrive/backend/internal/adapter"
@@ -69,7 +70,20 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 		limit = searchDefaultLimit
 	}
 
-	files, err := storage.SearchFilesWithTags(ctx, query, tags)
+	rawIn := strings.ToLower(req.QueryStringParameters["in"])
+	var scope adapter.SearchScope
+	switch rawIn {
+	case string(adapter.ScopeTitles):
+		scope = adapter.ScopeTitles
+	case string(adapter.ScopeHeadings):
+		scope = adapter.ScopeHeadings
+	case "all", string(adapter.ScopeAll):
+		scope = adapter.ScopeAll
+	default:
+		scope = adapter.ScopeAll
+	}
+
+	files, err := storage.SearchFilesWithTags(ctx, query, tags, scope)
 	if err != nil {
 		if errors.Is(err, adapter.ErrUnauthorized) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil

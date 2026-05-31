@@ -557,3 +557,146 @@ func TestMakeSnippet(t *testing.T) {
 		}
 	}
 }
+
+// ---- Tier 2: headings tests ----
+
+func TestAdapter_Headings_StoredOnWrite(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	fm, err := m.CreateFile(ctx, "h.md", []byte("## Background\ntext\n## Decision\nchoice"), "root")
+	if err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+	if len(fm.Headings) == 0 {
+		t.Error("expected Headings to be populated after create")
+	}
+	found := false
+	for _, h := range fm.Headings {
+		if strings.EqualFold(h, "Decision") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'Decision' in headings, got %v", fm.Headings)
+	}
+}
+
+func TestAdapter_Headings_UpdatedOnSave(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	fm, _ := m.CreateFile(ctx, "h.md", []byte("## Old Heading\ntext"), "root")
+	fm2, err := m.SaveFile(ctx, fm.ID, []byte("## New Heading\ncontent"), fm.ETag)
+	if err != nil {
+		t.Fatalf("SaveFile: %v", err)
+	}
+	found := false
+	for _, h := range fm2.Headings {
+		if strings.EqualFold(h, "New Heading") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'New Heading' after save, got %v", fm2.Headings)
+	}
+}
+
+func TestAdapter_SearchFiles_ScopeHeadings(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "a.md", []byte("## Decision\nsome text"), "root")
+	m.CreateFile(ctx, "b.md", []byte("body says decision but no heading"), "root")
+	m.CreateFile(ctx, "c.md", []byte("## Background\nunrelated"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeHeadings)
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result (heading match only), got %d", len(results))
+	}
+	if results[0].Name != "a" {
+		t.Errorf("expected a, got %s", results[0].Name)
+	}
+}
+
+func TestAdapter_SearchFiles_ScopeTitles(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "decision-note.md", []byte("## Background\ntext"), "root")
+	m.CreateFile(ctx, "other.md", []byte("has word decision in body"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeTitles)
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result (title match only), got %d", len(results))
+	}
+	if results[0].Name != "decision-note" {
+		t.Errorf("expected decision-note, got %s", results[0].Name)
+	}
+}
+
+func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
+	// Simulate a pre-Tier2 note with no stored Headings by directly inserting into map.
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	// Create via normal path and then clear Headings to simulate legacy item.
+	fm, _ := m.CreateFile(ctx, "legacy.md", []byte("## Rejected Alternatives\nold stuff"), "root")
+	m.files[fm.ID].Headings = nil
+
+	results, err := m.SearchFilesWithTags(ctx, "Rejected", nil, adapter.ScopeHeadings)
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected lazy fallback to find 1 result, got %d", len(results))
+	}
+}
+
+func TestMatchesScope_NilHeadingsLazyFallback(t *testing.T) {
+	content := []byte("## Rejected Alternatives\ntext")
+	// Nil headings — lazy extraction should kick in.
+	hit, snippet := matchesScope("note.md", content, nil, "Rejected", adapter.ScopeHeadings)
+	if !hit {
+		t.Error("expected hit via lazy heading extraction with nil headings")
+	}
+	if snippet != "" {
+		t.Errorf("ScopeHeadings must not produce snippet, got %q", snippet)
+	}
+}
+
+func TestMatchesScope_ScopeHeadingsNoSnippet(t *testing.T) {
+	content := []byte("## Decision\nsome body text")
+	headings := []string{"Decision"}
+	hit, snippet := matchesScope("note.md", content, headings, "Decision", adapter.ScopeHeadings)
+	if !hit {
+		t.Error("expected hit on stored headings")
+	}
+	if snippet != "" {
+		t.Errorf("ScopeHeadings must produce empty snippet, got %q", snippet)
+	}
+}
+
+func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "h.md", []byte("## Target Heading\nbody content"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "Target", nil, adapter.ScopeHeadings)
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Snippet != "" {
+		t.Errorf("ScopeHeadings must not produce snippet, got %q", results[0].Snippet)
+	}
+}
