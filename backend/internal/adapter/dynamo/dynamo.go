@@ -589,6 +589,41 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
+// makeSnippet extracts a ±window-byte context around the first occurrence of
+// query in content. Newlines are collapsed to spaces. Returns empty string when
+// query is not found or is empty.
+func makeSnippet(content []byte, query string, window int) string {
+	if len(query) == 0 || len(content) == 0 {
+		return ""
+	}
+	lower := strings.ToLower(string(content))
+	idx := strings.Index(lower, strings.ToLower(query))
+	if idx < 0 {
+		return ""
+	}
+	start := idx - window
+	if start < 0 {
+		start = 0
+	}
+	end := idx + len(query) + window
+	if end > len(content) {
+		end = len(content)
+	}
+	snippet := strings.ReplaceAll(string(content[start:end]), "\n", " ")
+	// collapse consecutive spaces
+	for strings.Contains(snippet, "  ") {
+		snippet = strings.ReplaceAll(snippet, "  ", " ")
+	}
+	snippet = strings.TrimSpace(snippet)
+	if start > 0 {
+		snippet = "…" + snippet
+	}
+	if end < len(content) {
+		snippet = snippet + "…"
+	}
+	return snippet
+}
+
 func (m *Adapter) EnsureRootFolder(ctx context.Context, name string) (string, error) {
 	if m.client == nil {
 		return m.ensureRootFolderMap(ctx, name)
@@ -1572,9 +1607,15 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 		}
 
 		// Text match (skip if query is empty)
+		var snippet string
 		if query != "" {
-			if !containsIgnoreCase(item.Name, query) && !containsIgnoreCase(string(item.Content), query) {
+			nameHit := containsIgnoreCase(item.Name, query)
+			bodyHit := containsIgnoreCase(string(item.Content), query)
+			if !nameHit && !bodyHit {
 				continue
+			}
+			if bodyHit && !nameHit {
+				snippet = makeSnippet(item.Content, query, 60)
 			}
 		}
 
@@ -1600,6 +1641,7 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			Parents:      item.Parents,
 			Starred:      item.Starred,
 			Tags:         item.Tags,
+			Snippet:      snippet,
 		})
 	}
 	return files, nil
@@ -1787,9 +1829,15 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		if !m.isDescendant(f.Parents, targetFolderID, parentMap) {
 			continue
 		}
+		var snippet string
 		if query != "" {
-			if !containsIgnoreCase(f.Name, query) && !containsIgnoreCase(string(f.Content), query) {
+			nameHit := containsIgnoreCase(f.Name, query)
+			bodyHit := containsIgnoreCase(string(f.Content), query)
+			if !nameHit && !bodyHit {
 				continue
+			}
+			if bodyHit && !nameHit {
+				snippet = makeSnippet(f.Content, query, 60)
 			}
 		}
 		if len(tags) > 0 {
@@ -1803,6 +1851,7 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		}
 		meta := f.FileMetadata
 		meta.Name = fromStoredName(meta.Name)
+		meta.Snippet = snippet
 		files = append(files, meta)
 	}
 	return files, nil

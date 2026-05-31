@@ -18,6 +18,7 @@ type FileMetadata struct {
 	Tags         []string  `json:"tags,omitempty"`
 	Links        []LinkRef `json:"links,omitempty"`
 	ViewedTime   time.Time `json:"viewedTime,omitempty"`
+	Snippet      string    `json:"snippet,omitempty"`
 }
 
 // TagCount is a tag name paired with how many notes carry it.

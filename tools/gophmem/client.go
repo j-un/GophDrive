@@ -25,6 +25,7 @@ type FileMetadata struct {
 	Parents      []string  `json:"parents,omitempty"`
 	Starred      bool      `json:"starred"`
 	Tags         []string  `json:"tags,omitempty"`
+	Snippet      string    `json:"snippet,omitempty"`
 }
 
 // NoteResponse is the shape returned by GET /notes/{id}.
@@ -231,13 +232,16 @@ func (c *Client) CreateFolder(name string, parents []string) (FileMetadata, erro
 	return readJSON[FileMetadata](resp)
 }
 
-func (c *Client) Search(query string, tags []string) ([]FileMetadata, error) {
+func (c *Client) Search(query string, tags []string, limit int) ([]FileMetadata, error) {
 	v := url.Values{}
 	if query != "" {
 		v.Set("q", query)
 	}
 	for _, t := range tags {
 		v.Add("tag", t)
+	}
+	if limit > 0 {
+		v.Set("limit", fmt.Sprintf("%d", limit))
 	}
 	resp, err := c.do("GET", "/search?"+v.Encode(), nil, nil)
 	if err != nil {
