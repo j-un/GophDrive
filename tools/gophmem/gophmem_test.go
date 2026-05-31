@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -172,17 +171,8 @@ func TestRunSearch_RendersSnippet(t *testing.T) {
 	}))
 	defer close()
 
-	// Redirect stdout to capture output.
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runSearch(client, []string{"JWT"})
-
-	w.Close()
-	os.Stdout = old
 	var buf strings.Builder
-	io.Copy(&buf, r)
+	err := runSearch(client, []string{"JWT"}, &buf)
 	out := buf.String()
 
 	if err != nil {
@@ -210,7 +200,7 @@ func TestRunSearch_PassesLimitFlag(t *testing.T) {
 	}))
 	defer close()
 
-	_ = runSearch(client, []string{"query", "--limit", "5"})
+	_ = runSearch(client, []string{"query", "--limit", "5"}, &strings.Builder{})
 	if gotLimit != "5" {
 		t.Errorf("expected limit=5 in query, got %q", gotLimit)
 	}
@@ -224,16 +214,8 @@ func TestRunSearch_NoSnippet(t *testing.T) {
 	}))
 	defer close()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	_ = runSearch(client, []string{"query", "--no-snippet"})
-
-	w.Close()
-	os.Stdout = old
 	var buf strings.Builder
-	io.Copy(&buf, r)
+	_ = runSearch(client, []string{"query", "--no-snippet"}, &buf)
 	out := buf.String()
 
 	if strings.Contains(out, "        > ") {
@@ -249,7 +231,7 @@ func TestRunSearch_PassesInFlag(t *testing.T) {
 	}))
 	defer close()
 
-	_ = runSearch(client, []string{"query", "--in", "headings"})
+	_ = runSearch(client, []string{"query", "--in", "headings"}, &strings.Builder{})
 	if gotIn != "headings" {
 		t.Errorf("expected in=headings in query, got %q", gotIn)
 	}
@@ -263,7 +245,7 @@ func TestRunSearch_DefaultInFlagOmitted(t *testing.T) {
 	}))
 	defer close()
 
-	_ = runSearch(client, []string{"query"})
+	_ = runSearch(client, []string{"query"}, &strings.Builder{})
 	if gotIn != "" {
 		t.Errorf("expected in to be absent when not specified, got %q", gotIn)
 	}
@@ -277,7 +259,7 @@ func TestRunSearch_InFlagUppercaseLowercased(t *testing.T) {
 	}))
 	defer close()
 
-	_ = runSearch(client, []string{"query", "--in", "HEADINGS"})
+	_ = runSearch(client, []string{"query", "--in", "HEADINGS"}, &strings.Builder{})
 	if gotIn != "headings" {
 		t.Errorf("expected in=headings (lowercase), got %q", gotIn)
 	}
@@ -337,6 +319,47 @@ func TestExtractSection_NotFound(t *testing.T) {
 	_, found := extractSection(body, "Decision")
 	if found {
 		t.Error("expected not found")
+	}
+}
+
+func TestExtractSection_TildeFence(t *testing.T) {
+	// Heading inside a ~~~ fence must not terminate the section;
+	// the fence content (including the raw heading line) is still part of the output.
+	body := "## Decision\ntext\n~~~\n## Not a heading\n~~~\nafter fence\n## Next\nother\n"
+	got, found := extractSection(body, "Decision")
+	if !found {
+		t.Fatal("section not found")
+	}
+	// "after fence" must be present — shows the fenced heading did not stop extraction.
+	if !strings.Contains(got, "after fence") {
+		t.Errorf("should include content after tilde fence, got: %q", got)
+	}
+	// "other" is under ## Next (same level as ## Decision) and must NOT be present.
+	if strings.Contains(got, "other") {
+		t.Errorf("should stop at same-level heading after fence, got: %q", got)
+	}
+}
+
+func TestRunRead_SectionNotFound(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/notes/") {
+			writeJSON(w, 200, NoteResponse{
+				ID:      "note-1",
+				Name:    "test.md",
+				Content: "## Background\ncontent\n",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer close()
+
+	err := runRead(client, []string{"note-1", "--section", "Decision"}, &strings.Builder{})
+	if err == nil {
+		t.Fatal("expected error for missing section, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

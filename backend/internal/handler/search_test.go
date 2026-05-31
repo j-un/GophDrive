@@ -202,7 +202,7 @@ func TestSearch_Unauthorized(t *testing.T) {
 	}
 }
 
-func TestSearch_LimitTruncates(t *testing.T) {
+func TestSearch_LimitAndSort(t *testing.T) {
 	provider := dynamo.NewProvider(nil)
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
@@ -220,30 +220,12 @@ func TestSearch_LimitTruncates(t *testing.T) {
 		t.Fatalf("Search returned error: %v", err)
 	}
 	var results []adapter.FileMetadata
-	json.Unmarshal([]byte(resp.Body), &results)
+	if err := json.Unmarshal([]byte(resp.Body), &results); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 	if len(results) != 2 {
 		t.Errorf("Expected 2 results with limit=2, got %d", len(results))
 	}
-}
-
-func TestSearch_SortedByModifiedTimeDesc(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
-	noteH := handler.NewNoteHandler(provider, "test-secret")
-	searchH := handler.NewSearchHandler(provider, "test-secret")
-	ctx := context.Background()
-
-	// Create 3 notes; all match "sorttest"
-	for _, name := range []string{"a.md", "b.md", "c.md"} {
-		noteH.CreateNote(ctx, makeRequest("POST", "/notes",
-			`{"name":"`+name+`","content":"sorttest"}`))
-	}
-
-	req := makeRequest("GET", "/search", "")
-	req.QueryStringParameters = map[string]string{"q": "sorttest"}
-	resp, _ := searchH.Search(ctx, req)
-	var results []adapter.FileMetadata
-	json.Unmarshal([]byte(resp.Body), &results)
-
 	for i := 1; i < len(results); i++ {
 		if results[i].ModifiedTime.After(results[i-1].ModifiedTime) {
 			t.Errorf("results not sorted by ModifiedTime DESC at index %d", i)
@@ -264,7 +246,9 @@ func TestSearch_BodyMatchHasSnippet(t *testing.T) {
 	req.QueryStringParameters = map[string]string{"q": "fox"}
 	resp, _ := searchH.Search(ctx, req)
 	var results []adapter.FileMetadata
-	json.Unmarshal([]byte(resp.Body), &results)
+	if err := json.Unmarshal([]byte(resp.Body), &results); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
@@ -286,7 +270,9 @@ func TestSearch_TitleMatchHasNoSnippet(t *testing.T) {
 	req.QueryStringParameters = map[string]string{"q": "fox"}
 	resp, _ := searchH.Search(ctx, req)
 	var results []adapter.FileMetadata
-	json.Unmarshal([]byte(resp.Body), &results)
+	if err := json.Unmarshal([]byte(resp.Body), &results); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}

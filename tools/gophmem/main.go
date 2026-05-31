@@ -31,9 +31,9 @@ func main() {
 	case "append":
 		err = runAppend(client, os.Args[2:])
 	case "read":
-		err = runRead(client, os.Args[2:])
+		err = runRead(client, os.Args[2:], os.Stdout)
 	case "search":
-		err = runSearch(client, os.Args[2:])
+		err = runSearch(client, os.Args[2:], os.Stdout)
 	case "list":
 		err = runList(client, os.Args[2:])
 	case "tags":
@@ -227,35 +227,46 @@ func looksLikeUUID(s string) bool {
 
 // ---- read ----
 
-func runRead(client *Client, args []string) error {
+func runRead(client *Client, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("read", flag.ContinueOnError)
 	sectionFlag := fs.String("section", "", "print only the named section (case-insensitive partial match)")
-	if err := fs.Parse(args); err != nil {
+
+	// Separate the note ID (first non-flag arg) from flag args so that flags
+	// placed after the ID are parsed correctly (same pattern as runWrite).
+	var id string
+	var flagArgs []string
+	for _, a := range args {
+		if id == "" && !strings.HasPrefix(a, "-") {
+			id = a
+		} else {
+			flagArgs = append(flagArgs, a)
+		}
+	}
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	if fs.NArg() < 1 {
+	if id == "" {
 		return fmt.Errorf("usage: gophmem read <id> [--section <heading>]")
 	}
-	note, err := client.GetNote(fs.Arg(0))
+	note, err := client.GetNote(id)
 	if err != nil {
 		return err
 	}
 	if *sectionFlag != "" {
 		body, found := extractSection(note.Content, *sectionFlag)
 		if !found {
-			fmt.Fprintf(os.Stderr, "note %s: section %q not found\n", note.ID, *sectionFlag)
-			os.Exit(1)
+			return fmt.Errorf("note %s: section %q not found", note.ID, *sectionFlag)
 		}
-		fmt.Print(body)
+		fmt.Fprint(out, body)
 		return nil
 	}
-	fmt.Printf("# %s\n", note.Name)
-	fmt.Printf("id: %s | modified: %s | etag: %s\n", note.ID, note.Modified, note.ETag)
+	fmt.Fprintf(out, "# %s\n", note.Name)
+	fmt.Fprintf(out, "id: %s | modified: %s | etag: %s\n", note.ID, note.Modified, note.ETag)
 	if len(note.Tags) > 0 {
-		fmt.Printf("tags: %s\n", strings.Join(note.Tags, ", "))
+		fmt.Fprintf(out, "tags: %s\n", strings.Join(note.Tags, ", "))
 	}
-	fmt.Println()
-	fmt.Print(note.Content)
+	fmt.Fprintln(out)
+	fmt.Fprint(out, note.Content)
 	return nil
 }
 
@@ -272,7 +283,7 @@ func extractSection(body, needle string) (string, bool) {
 	var out []string
 
 	for i, line := range lines {
-		if strings.HasPrefix(line, "```") {
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
 			inFence = !inFence
 		}
 		if inFence {
@@ -317,7 +328,7 @@ func extractSection(body, needle string) (string, bool) {
 
 // ---- search ----
 
-func runSearch(client *Client, args []string) error {
+func runSearch(client *Client, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
 	tagFlag := fs.String("tag", "", "filter by tag")
 	limitFlag := fs.Int("limit", 10, "max results (1-100)")
@@ -361,7 +372,7 @@ func runSearch(client *Client, args []string) error {
 		return err
 	}
 	if len(results) == 0 {
-		fmt.Println("(no results)")
+		fmt.Fprintln(out, "(no results)")
 		return nil
 	}
 	for _, f := range results {
@@ -371,9 +382,9 @@ func runSearch(client *Client, args []string) error {
 		}
 		date := f.ModifiedTime.Format("2006-01-02")
 		name := strings.TrimSuffix(f.Name, ".md")
-		fmt.Printf("%s  %s  %s  %s\n", f.ID, name, tagsStr, date)
+		fmt.Fprintf(out, "%s  %s  %s  %s\n", f.ID, name, tagsStr, date)
 		if !*noSnippetFlag && f.Snippet != "" {
-			fmt.Printf("        > %s\n", f.Snippet)
+			fmt.Fprintf(out, "        > %s\n", f.Snippet)
 		}
 	}
 	return nil
