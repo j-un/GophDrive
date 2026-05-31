@@ -143,7 +143,7 @@ func TestClient_Search(t *testing.T) {
 	}))
 	defer close()
 
-	results, err := client.Search("design decision", nil, 0)
+	results, err := client.Search("design decision", nil, 0, "")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -238,6 +238,48 @@ func TestRunSearch_NoSnippet(t *testing.T) {
 
 	if strings.Contains(out, "        > ") {
 		t.Errorf("expected no snippet line with --no-snippet, got:\n%s", out)
+	}
+}
+
+func TestRunSearch_PassesInFlag(t *testing.T) {
+	var gotIn string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotIn = r.URL.Query().Get("in")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--in", "headings"})
+	if gotIn != "headings" {
+		t.Errorf("expected in=headings in query, got %q", gotIn)
+	}
+}
+
+func TestRunSearch_DefaultInFlagOmitted(t *testing.T) {
+	var gotIn string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotIn = r.URL.Query().Get("in")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query"})
+	if gotIn != "" {
+		t.Errorf("expected in to be absent when not specified, got %q", gotIn)
+	}
+}
+
+func TestRunSearch_InFlagUppercaseLowercased(t *testing.T) {
+	var gotIn string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotIn = r.URL.Query().Get("in")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--in", "HEADINGS"})
+	if gotIn != "headings" {
+		t.Errorf("expected in=headings (lowercase), got %q", gotIn)
 	}
 }
 

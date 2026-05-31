@@ -61,7 +61,7 @@ Usage:
   gophmem write <title> [--tags a,b] [--stdin]              Create note in AI Memory folder
   gophmem append <id|title>                                  Append stdin to an existing note
   gophmem read <id> [--section <heading>]                    Print note content (or one section)
-  gophmem search <query> [--tag t] [--limit N] [--no-snippet]  Search notes (Vault-wide)
+  gophmem search <query> [--tag t] [--limit N] [--no-snippet] [--in titles|headings|all]  Search notes (Vault-wide)
   gophmem list [--folder <id>]                               List notes (default: AI Memory)
   gophmem tags                                               List all tags with counts
   gophmem setup                                              Print sub/base_folder_id for SSM setup
@@ -192,7 +192,7 @@ func resolveNoteID(client *Client, idOrTitle string) (string, error) {
 	if looksLikeUUID(idOrTitle) {
 		return idOrTitle, nil
 	}
-	results, err := client.Search(idOrTitle, nil, 0)
+	results, err := client.Search(idOrTitle, nil, 0, "")
 	if err != nil {
 		return "", fmt.Errorf("search for %q: %w", idOrTitle, err)
 	}
@@ -322,10 +322,11 @@ func runSearch(client *Client, args []string) error {
 	tagFlag := fs.String("tag", "", "filter by tag")
 	limitFlag := fs.Int("limit", 10, "max results (1-100)")
 	noSnippetFlag := fs.Bool("no-snippet", false, "suppress snippet lines")
+	inFlag := fs.String("in", "", "search scope: titles, headings, or all (default: all)")
 
 	// Separate query words from flags so flags may appear anywhere.
-	// Value-taking flags (-tag, -limit) are paired with their next arg.
-	valueTakingFlags := map[string]bool{"tag": true, "limit": true}
+	// Value-taking flags are paired with their next arg.
+	valueTakingFlags := map[string]bool{"tag": true, "limit": true, "in": true}
 	var queryWords, flagArgs []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -348,14 +349,14 @@ func runSearch(client *Client, args []string) error {
 		return err
 	}
 	if len(queryWords) == 0 && *tagFlag == "" {
-		return fmt.Errorf("usage: gophmem search <query> [--tag t] [--limit N] [--no-snippet]")
+		return fmt.Errorf("usage: gophmem search <query> [--tag t] [--limit N] [--no-snippet] [--in titles|headings|all]")
 	}
 	query := strings.Join(queryWords, " ")
 	var tags []string
 	if *tagFlag != "" {
 		tags = []string{*tagFlag}
 	}
-	results, err := client.Search(query, tags, *limitFlag)
+	results, err := client.Search(query, tags, *limitFlag, strings.ToLower(*inFlag))
 	if err != nil {
 		return err
 	}
