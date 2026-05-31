@@ -96,7 +96,7 @@ func ResolveAIMemoryFolder(client *Client) (string, error) {
 	}
 
 	// Search the whole Vault so a folder that was moved still resolves.
-	results, err := client.Search(aiMemoryFolderName, nil)
+	results, err := client.Search(aiMemoryFolderName, nil, 0)
 	if err != nil {
 		return "", fmt.Errorf("search for AI Memory folder: %w", err)
 	}

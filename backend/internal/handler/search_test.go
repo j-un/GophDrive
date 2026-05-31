@@ -201,3 +201,96 @@ func TestSearch_Unauthorized(t *testing.T) {
 		t.Errorf("Expected 401, got %d", resp.StatusCode)
 	}
 }
+
+func TestSearch_LimitTruncates(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+			`{"name":"note.md","content":"match"}`))
+	}
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "match", "limit": "2"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results with limit=2, got %d", len(results))
+	}
+}
+
+func TestSearch_SortedByModifiedTimeDesc(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	// Create 3 notes; all match "sorttest"
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+			`{"name":"`+name+`","content":"sorttest"}`))
+	}
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "sorttest"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+
+	for i := 1; i < len(results); i++ {
+		if results[i].ModifiedTime.After(results[i-1].ModifiedTime) {
+			t.Errorf("results not sorted by ModifiedTime DESC at index %d", i)
+		}
+	}
+}
+
+func TestSearch_BodyMatchHasSnippet(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"other.md","content":"the quick brown fox jumped"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "fox"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+	if results[0].Snippet == "" {
+		t.Error("Expected snippet for body match, got empty")
+	}
+}
+
+func TestSearch_TitleMatchHasNoSnippet(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes",
+		`{"name":"foxnote.md","content":"unrelated body text"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "fox"}
+	resp, _ := searchH.Search(ctx, req)
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+	if results[0].Snippet != "" {
+		t.Errorf("Expected no snippet for title-only match, got %q", results[0].Snippet)
+	}
+}

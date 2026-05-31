@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jun/gophdrive/backend/internal/adapter"
@@ -496,5 +497,63 @@ func TestAdapter_CreateFolder_NonFolderParentRejected(t *testing.T) {
 	_, err := m.CreateFolder(ctx, "Sub", []string{note.ID})
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound when parentId is a file (not folder), got %v", err)
+	}
+}
+
+func TestAdapter_SearchFiles_BodyMatchHasSnippet(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "body.md", []byte("the quick brown fox jumped"), "root")
+	m.CreateFile(ctx, "foxname.md", []byte("unrelated body text"), "root")
+
+	results, err := m.SearchFiles(ctx, "fox")
+	if err != nil {
+		t.Fatalf("SearchFiles failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(results))
+	}
+
+	// Find each result by name
+	for _, r := range results {
+		switch r.Name {
+		case "body.md":
+			if r.Snippet == "" {
+				t.Error("body match: expected non-empty snippet")
+			}
+		case "foxname.md":
+			if r.Snippet != "" {
+				t.Errorf("title-only match: expected empty snippet, got %q", r.Snippet)
+			}
+		}
+	}
+}
+
+func TestMakeSnippet(t *testing.T) {
+	cases := []struct {
+		content  string
+		query    string
+		window   int
+		wantHit  bool
+		wantSubs string // substring expected in snippet when wantHit=true
+	}{
+		{"hello world foo", "world", 5, true, "world"},
+		{"hello world foo", "WORLD", 5, true, "world"}, // case-insensitive
+		{"hello world foo", "missing", 5, false, ""},
+		{"", "q", 5, false, ""},
+		{"q", "", 5, false, ""},
+	}
+	for _, c := range cases {
+		got := makeSnippet([]byte(c.content), c.query, c.window)
+		if c.wantHit && got == "" {
+			t.Errorf("makeSnippet(%q, %q): expected hit, got empty", c.content, c.query)
+		}
+		if !c.wantHit && got != "" {
+			t.Errorf("makeSnippet(%q, %q): expected miss, got %q", c.content, c.query, got)
+		}
+		if c.wantHit && c.wantSubs != "" && !strings.Contains(strings.ToLower(got), strings.ToLower(c.wantSubs)) {
+			t.Errorf("makeSnippet(%q, %q): expected %q in %q", c.content, c.query, c.wantSubs, got)
+		}
 	}
 }

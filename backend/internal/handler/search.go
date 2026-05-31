@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/jun/gophdrive/backend/internal/adapter"
@@ -41,8 +42,12 @@ func (h *SearchHandler) getStorageAdapter(ctx context.Context, req events.APIGat
 	return storage, nil
 }
 
-// Search handles GET /search?q=...&tag=...&tag=...
+const searchDefaultLimit = 20
+const searchMaxLimit = 100
+
+// Search handles GET /search?q=...&tag=...&tag=...&limit=N
 // Both q and tag are optional; at least one must be provided.
+// Results are sorted by ModifiedTime descending and capped at limit (default 20, max 100).
 func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	storage, err := h.getStorageAdapter(ctx, req)
 	if err != nil {
@@ -56,6 +61,14 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "At least one of 'q' or 'tag' is required"}, nil
 	}
 
+	limit := searchDefaultLimit
+	if lStr := req.QueryStringParameters["limit"]; lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+	if limit <= 0 || limit > searchMaxLimit {
+		limit = searchDefaultLimit
+	}
+
 	files, err := storage.SearchFilesWithTags(ctx, query, tags)
 	if err != nil {
 		if errors.Is(err, adapter.ErrUnauthorized) {
@@ -67,6 +80,13 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 
 	if files == nil {
 		files = []adapter.FileMetadata{}
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModifiedTime.After(files[j].ModifiedTime)
+	})
+	if len(files) > limit {
+		files = files[:limit]
 	}
 
 	body, _ := json.Marshal(files)

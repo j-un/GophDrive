@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -57,13 +58,13 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, `gophmem — GophDrive agent memory CLI
 
 Usage:
-  gophmem write <title> [--tags a,b] [--stdin]   Create note in AI Memory folder
-  gophmem append <id|title>                       Append stdin to an existing note
-  gophmem read <id>                               Print note content and metadata
-  gophmem search <query> [--tag t]                Search notes (Vault-wide)
-  gophmem list [--folder <id>]                    List notes (default: AI Memory)
-  gophmem tags                                    List all tags with counts
-  gophmem setup                                   Print sub/base_folder_id for SSM setup
+  gophmem write <title> [--tags a,b] [--stdin]              Create note in AI Memory folder
+  gophmem append <id|title>                                  Append stdin to an existing note
+  gophmem read <id> [--section <heading>]                    Print note content (or one section)
+  gophmem search <query> [--tag t] [--limit N] [--no-snippet]  Search notes (Vault-wide)
+  gophmem list [--folder <id>]                               List notes (default: AI Memory)
+  gophmem tags                                               List all tags with counts
+  gophmem setup                                              Print sub/base_folder_id for SSM setup
 
 Environment:
   GOPHMEM_BASE_URL    API base URL (default: http://localhost:8080; production: https://<domain>/api)
@@ -191,7 +192,7 @@ func resolveNoteID(client *Client, idOrTitle string) (string, error) {
 	if looksLikeUUID(idOrTitle) {
 		return idOrTitle, nil
 	}
-	results, err := client.Search(idOrTitle, nil)
+	results, err := client.Search(idOrTitle, nil, 0)
 	if err != nil {
 		return "", fmt.Errorf("search for %q: %w", idOrTitle, err)
 	}
@@ -228,15 +229,25 @@ func looksLikeUUID(s string) bool {
 
 func runRead(client *Client, args []string) error {
 	fs := flag.NewFlagSet("read", flag.ContinueOnError)
+	sectionFlag := fs.String("section", "", "print only the named section (case-insensitive partial match)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: gophmem read <id>")
+		return fmt.Errorf("usage: gophmem read <id> [--section <heading>]")
 	}
 	note, err := client.GetNote(fs.Arg(0))
 	if err != nil {
 		return err
+	}
+	if *sectionFlag != "" {
+		body, found := extractSection(note.Content, *sectionFlag)
+		if !found {
+			fmt.Fprintf(os.Stderr, "note %s: section %q not found\n", note.ID, *sectionFlag)
+			os.Exit(1)
+		}
+		fmt.Print(body)
+		return nil
 	}
 	fmt.Printf("# %s\n", note.Name)
 	fmt.Printf("id: %s | modified: %s | etag: %s\n", note.ID, note.Modified, note.ETag)
@@ -248,23 +259,103 @@ func runRead(client *Client, args []string) error {
 	return nil
 }
 
+var headingRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+
+// extractSection returns the content of the first heading whose text
+// case-insensitively contains needle, up to (but not including) the next
+// heading at the same or shallower level. Code fences are skipped.
+func extractSection(body, needle string) (string, bool) {
+	lines := strings.Split(body, "\n")
+	inFence := false
+	startLine := -1
+	startLevel := 0
+	var out []string
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		}
+		if inFence {
+			if startLine >= 0 {
+				out = append(out, line)
+			}
+			continue
+		}
+
+		m := headingRe.FindStringSubmatch(line)
+		if m == nil {
+			if startLine >= 0 {
+				out = append(out, line)
+			}
+			continue
+		}
+
+		level := len(m[1])
+		text := m[2]
+
+		if startLine < 0 {
+			// Not yet found target heading
+			if strings.Contains(strings.ToLower(text), strings.ToLower(needle)) {
+				startLine = i
+				startLevel = level
+				out = append(out, line)
+			}
+		} else {
+			// Inside target section — stop when we hit same or shallower level
+			if level <= startLevel {
+				break
+			}
+			out = append(out, line)
+		}
+	}
+
+	if startLine < 0 {
+		return "", false
+	}
+	return strings.Join(out, "\n") + "\n", true
+}
+
 // ---- search ----
 
 func runSearch(client *Client, args []string) error {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
 	tagFlag := fs.String("tag", "", "filter by tag")
-	if err := fs.Parse(args); err != nil {
+	limitFlag := fs.Int("limit", 10, "max results (1-100)")
+	noSnippetFlag := fs.Bool("no-snippet", false, "suppress snippet lines")
+
+	// Separate query words from flags so flags may appear anywhere.
+	// Value-taking flags (-tag, -limit) are paired with their next arg.
+	valueTakingFlags := map[string]bool{"tag": true, "limit": true}
+	var queryWords, flagArgs []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			queryWords = append(queryWords, a)
+			continue
+		}
+		flagArgs = append(flagArgs, a)
+		// Peek at next arg: if this flag takes a value, grab it.
+		if strings.Contains(a, "=") {
+			continue // -flag=value form; value already embedded
+		}
+		name := strings.TrimLeft(a, "-")
+		if valueTakingFlags[name] && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			i++
+			flagArgs = append(flagArgs, args[i])
+		}
+	}
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	if fs.NArg() < 1 && *tagFlag == "" {
-		return fmt.Errorf("usage: gophmem search <query> [--tag t]")
+	if len(queryWords) == 0 && *tagFlag == "" {
+		return fmt.Errorf("usage: gophmem search <query> [--tag t] [--limit N] [--no-snippet]")
 	}
-	query := strings.Join(fs.Args(), " ")
+	query := strings.Join(queryWords, " ")
 	var tags []string
 	if *tagFlag != "" {
 		tags = []string{*tagFlag}
 	}
-	results, err := client.Search(query, tags)
+	results, err := client.Search(query, tags, *limitFlag)
 	if err != nil {
 		return err
 	}
@@ -273,7 +364,16 @@ func runSearch(client *Client, args []string) error {
 		return nil
 	}
 	for _, f := range results {
-		fmt.Printf("%s\t%s\n", f.ID, f.Name)
+		tagsStr := "[-]"
+		if len(f.Tags) > 0 {
+			tagsStr = "[" + strings.Join(f.Tags, ",") + "]"
+		}
+		date := f.ModifiedTime.Format("2006-01-02")
+		name := strings.TrimSuffix(f.Name, ".md")
+		fmt.Printf("%s  %s  %s  %s\n", f.ID, name, tagsStr, date)
+		if !*noSnippetFlag && f.Snippet != "" {
+			fmt.Printf("        > %s\n", f.Snippet)
+		}
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -142,12 +143,158 @@ func TestClient_Search(t *testing.T) {
 	}))
 	defer close()
 
-	results, err := client.Search("design decision", nil)
+	results, err := client.Search("design decision", nil, 0)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(results))
+	}
+}
+
+// ---- new Tier 1 tests ----
+
+func TestRunSearch_RendersSnippet(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, 200, []FileMetadata{
+			{
+				ID:           "note-s1",
+				Name:         "decision: auth.md",
+				Tags:         []string{"decision", "auth"},
+				ModifiedTime: time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC),
+				Snippet:      "…JWT を採用した理由は X…",
+			},
+		})
+	}))
+	defer close()
+
+	// Redirect stdout to capture output.
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runSearch(client, []string{"JWT"})
+
+	w.Close()
+	os.Stdout = old
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	out := buf.String()
+
+	if err != nil {
+		t.Fatalf("runSearch: %v", err)
+	}
+	if !strings.Contains(out, "decision: auth") {
+		t.Errorf("expected title in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[decision,auth]") {
+		t.Errorf("expected tags in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "2026-05-28") {
+		t.Errorf("expected date in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "        > …JWT を採用した理由は X…") {
+		t.Errorf("expected snippet line in output, got:\n%s", out)
+	}
+}
+
+func TestRunSearch_PassesLimitFlag(t *testing.T) {
+	var gotLimit string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLimit = r.URL.Query().Get("limit")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--limit", "5"})
+	if gotLimit != "5" {
+		t.Errorf("expected limit=5 in query, got %q", gotLimit)
+	}
+}
+
+func TestRunSearch_NoSnippet(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, []FileMetadata{
+			{ID: "n1", Name: "note.md", ModifiedTime: time.Now(), Snippet: "some snippet"},
+		})
+	}))
+	defer close()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_ = runSearch(client, []string{"query", "--no-snippet"})
+
+	w.Close()
+	os.Stdout = old
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	out := buf.String()
+
+	if strings.Contains(out, "        > ") {
+		t.Errorf("expected no snippet line with --no-snippet, got:\n%s", out)
+	}
+}
+
+// ---- extractSection tests ----
+
+func TestExtractSection_Basic(t *testing.T) {
+	body := "## Background\nsome background\n## Decision\nJWT chosen\n## Rejected alternatives\nnope\n"
+	got, found := extractSection(body, "Decision")
+	if !found {
+		t.Fatal("section not found")
+	}
+	if !strings.Contains(got, "JWT chosen") {
+		t.Errorf("expected Decision body, got: %q", got)
+	}
+	if strings.Contains(got, "nope") {
+		t.Errorf("should not include next section, got: %q", got)
+	}
+}
+
+func TestExtractSection_CaseInsensitive(t *testing.T) {
+	body := "## Rejected Alternatives\nalt1\nalt2\n"
+	_, found := extractSection(body, "rejected")
+	if !found {
+		t.Error("case-insensitive match failed")
+	}
+}
+
+func TestExtractSection_IncludesSubheadings(t *testing.T) {
+	body := "## Decision\ntop\n### Sub\nsub content\n## Next\nother\n"
+	got, found := extractSection(body, "Decision")
+	if !found {
+		t.Fatal("section not found")
+	}
+	if !strings.Contains(got, "sub content") {
+		t.Errorf("should include H3 sub-section, got: %q", got)
+	}
+	if strings.Contains(got, "other") {
+		t.Errorf("should not include next H2, got: %q", got)
+	}
+}
+
+func TestExtractSection_SkipsCodeFence(t *testing.T) {
+	body := "## Decision\ntext\n```\n## Not a heading\n```\nafter fence\n"
+	got, found := extractSection(body, "Decision")
+	if !found {
+		t.Fatal("section not found")
+	}
+	if !strings.Contains(got, "after fence") {
+		t.Errorf("should include content after fence, got: %q", got)
+	}
+}
+
+func TestExtractSection_NotFound(t *testing.T) {
+	body := "## Background\ntext\n"
+	_, found := extractSection(body, "Decision")
+	if found {
+		t.Error("expected not found")
 	}
 }
 
