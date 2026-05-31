@@ -112,3 +112,30 @@ A **new Claude Code session** is required for the skill to be picked up. The rep
 | `gophmem write` → 401 (local) | No key was issued, or it was issued in a different environment | Issue a key from the local GophDrive UI and re-export |
 | `gophmem write` → 403 | Signed in as a demo account | Switch to your Google account |
 | `AI Memory` folder not found | First-time folder creation failed | Re-run `gophmem list`. As a last resort, delete `~/.cache/gophmem/folders.json` and retry |
+| Note invisible in the Web UI | Parent folder ID no longer exists → `ListFiles` skips it (orphan) | See **Orphan notes** below |
+
+### Orphan notes
+
+A note whose parent folder ID no longer exists is skipped by `ListFiles` and becomes invisible in the UI. The note itself is intact and reachable by ID.
+
+**Confirm**: if you know the note ID, `GET /api/notes/<id>` returns it directly.
+
+**Recover (re-attach to a valid parent)**:
+
+```bash
+curl -X PATCH \
+  -H "Authorization: Bearer $GOPHMEM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"parentId": "<valid folder id>"}' \
+  "$GOPHMEM_BASE_URL/notes/<note id>"
+```
+
+**Or delete it**:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $GOPHMEM_API_KEY" \
+  "$GOPHMEM_BASE_URL/notes/<note id>"
+```
+
+The root folder ID (`base_folder_id`) can be read from the JWT's `base_folder_id` claim.
