@@ -10,7 +10,7 @@ By accessing or using [Your Service Name] ("the Service"), you agree to be bound
 
 ## Description of Service
 
-The Service is a self-hosted instance of [GophDrive](https://github.com/j-un/GophDrive), an open-source serverless Markdown note-taking application. It allows you to create, edit, and manage Markdown notes stored in your own Google Drive.
+The Service is a self-hosted instance of [GophDrive](https://github.com/j-un/GophDrive), an open-source serverless Markdown note-taking application. It allows you to create, edit, and manage Markdown notes stored server-side in Amazon DynamoDB within the operator's AWS account. Google is used solely as a sign-in provider.
 
 ## Account and Authentication
 
@@ -28,9 +28,9 @@ You agree not to:
 
 ## Data and Storage
 
-- Your notes are stored in your own Google Drive account
-- You are responsible for backing up your data
-- The Service operator is not responsible for data loss resulting from Google Drive issues, service interruptions, or your actions
+- Your notes are stored in Amazon DynamoDB within the operator's AWS account
+- You are responsible for maintaining your own backups; use the ZIP export feature in Settings to download all your notes at any time
+- The Service operator is not responsible for data loss resulting from AWS service disruptions, service interruptions, or your actions
 
 ## Intellectual Property
 
@@ -54,7 +54,8 @@ TO THE FULLEST EXTENT PERMITTED BY LAW, THE SERVICE OPERATOR SHALL NOT BE LIABLE
 ## Termination
 
 - The Service operator may terminate or suspend your access at any time, for any reason
-- You may stop using the Service at any time by revoking the app's access from your [Google Account permissions](https://myaccount.google.com/permissions)
+- You may stop using the Service at any time; to remove your sign-in connection, revoke the app from your [Google Account permissions](https://myaccount.google.com/permissions)
+- To delete your stored notes and account data, use the in-app delete features or contact [your contact information]
 
 ## Changes to These Terms
 

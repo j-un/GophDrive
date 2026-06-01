@@ -127,7 +127,7 @@ GophDrive includes an automated script for deploying the entire stack to your AW
 Before deploying, create a Google Cloud Project and configure OAuth 2.0 credentials:
 - Go to the [Google Cloud Console](https://console.cloud.google.com).
 - Create a project and navigate to **APIs & Services > Credentials**.
-- Create an **OAuth client ID** (Web application). Required scopes: `openid`, `email`, `profile` only — no Drive scope is needed.
+- Create an **OAuth client ID** (Web application). Required scopes: `openid`, `email`, `profile` only — GophDrive uses Google purely for sign-in and never accesses any Google Drive or other file data.
 - Set the Authorized Redirect URI to your intended domain's `/api/auth/callback` path (e.g., `https://gophdrive.example.com/api/auth/callback` or the CloudFront URL after deployment).
 - For an equivalent setup against `localhost`, see [`docs/local-google-oauth.md`](docs/local-google-oauth.md).
 
