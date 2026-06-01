@@ -20,8 +20,8 @@ redirect to `http://localhost:8080/auth/callback`.
 2. **OAuth consent screen** → User type: *External*, Publishing status:
    *Testing*. Add your own Google account under **Test users**. Scopes
    needed: `openid`, `.../auth/userinfo.email`,
-   `.../auth/userinfo.profile`. (No Drive scope — it was removed when
-   storage moved to DynamoDB.)
+   `.../auth/userinfo.profile`. (Sign-in only — no Drive or file-access
+   scope.)
 3. **Credentials** → *Create credentials* → *OAuth client ID* →
    Application type: *Web application*.
    - **Authorized redirect URIs**: add exactly
