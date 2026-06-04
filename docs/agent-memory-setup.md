@@ -44,13 +44,34 @@ Re-run the script after `git pull` updates `tools/gophmem/`. Only the binary is 
 
 ---
 
-## 3. Set environment variables
+## 3. Set credentials
+
+**Recommended — save to config file (0600 permissions):**
+
+```bash
+gophmem config set --base-url https://<your-cloudfront-domain>/api
+gophmem config set --api-key <the plaintext key from step 2>
+```
+
+This writes `~/.config/gophmem/config` (dotenv format, permissions 0600).
+Verify with:
+
+```bash
+gophmem config show   # API key is masked; shows source: file / env / default
+```
+
+**Alternative — export in shell rc:**
 
 ```bash
 # Append to ~/.zshrc or ~/.bashrc
 export GOPHMEM_BASE_URL=https://<your-cloudfront-domain>/api
 export GOPHMEM_API_KEY=<the plaintext key from step 2>
 ```
+
+> **Priority**: environment variables always override the config file.
+> If you migrated to the config file but still have `export GOPHMEM_API_KEY=…` in your rc,
+> remove those lines — otherwise the rc value silently wins.
+> `gophmem config show` prints `[env]` vs `[file]` vs `[default]` so you can tell at a glance.
 
 ---
 
@@ -111,6 +132,7 @@ A **new Claude Code session** is required for the skill to be picked up. The rep
 | `gophmem write` → 401 | `GOPHMEM_API_KEY` is wrong | Settings → API Keys → Regenerate, re-copy the plaintext |
 | `gophmem write` → 401 (local) | No key was issued, or it was issued in a different environment | Issue a key from the local GophDrive UI and re-export |
 | `gophmem write` → 403 | Signed in as a demo account | Switch to your Google account |
+| Config file ignored | `GOPHMEM_API_KEY` still exported in shell rc | Run `gophmem config show` to confirm source is `[env]`, then remove the export from `~/.zshrc` / `~/.bashrc` |
 | `AI Memory` folder not found | First-time folder creation failed | Re-run `gophmem list`. As a last resort, delete `~/.cache/gophmem/folders.json` and retry |
 | Note invisible in the Web UI | Parent folder ID no longer exists → `ListFiles` skips it (orphan) | See **Orphan notes** below |
 
