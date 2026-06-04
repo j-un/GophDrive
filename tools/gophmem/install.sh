@@ -65,13 +65,18 @@ fi
 echo
 if [[ -z "${GOPHMEM_API_KEY:-}" ]]; then
   warn "GOPHMEM_API_KEY is not set."
-  info "Issue a key from GophDrive Web UI → Settings → API Keys → Issue Key,"
-  info "then add to your shell rc (~/.zshrc or ~/.bashrc):"
+  info "Issue a key from GophDrive Web UI → Settings → API Keys → Issue Key, then:"
   info ""
-  info "  export GOPHMEM_BASE_URL=https://<your-cloudfront-domain>/api   # production only"
-  info "  export GOPHMEM_API_KEY=<the plaintext key you just issued>"
+  info "  Option A — save to config file (recommended, 0600 permissions):"
+  info "    gophmem config set --base-url https://<your-cloudfront-domain>/api   # production only"
+  info "    gophmem config set --api-key <the plaintext key you just issued>"
+  info ""
+  info "  Option B — export in shell rc (~/.zshrc or ~/.bashrc):"
+  info "    export GOPHMEM_BASE_URL=https://<your-cloudfront-domain>/api   # production only"
+  info "    export GOPHMEM_API_KEY=<the plaintext key you just issued>"
   info ""
   info "For local DEV_MODE you can omit GOPHMEM_BASE_URL (defaults to http://localhost:8080)."
+  info "Run 'gophmem config show' to verify the resolved values and their source."
 else
   ok "GOPHMEM_API_KEY is set."
 fi

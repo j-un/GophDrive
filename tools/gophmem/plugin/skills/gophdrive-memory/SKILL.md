@@ -25,7 +25,7 @@ gophmem list                                    # List the AI Memory folder
 gophmem tags                                    # List all tags with counts
 ```
 
-Setup, env vars (`GOPHMEM_BASE_URL`, `GOPHMEM_API_KEY`), and troubleshooting (401/403, missing key, AI Memory folder issues): `docs/agent-memory-setup.md` in the GophDrive repository.
+Setup, env vars (`GOPHMEM_BASE_URL`, `GOPHMEM_API_KEY`), and troubleshooting (401/403, missing key, AI Memory folder issues): `docs/agent-memory-setup.md` in the GophDrive repository. Credentials can also be stored in `~/.config/gophmem/config` via `gophmem config set` (0600, env vars take priority).
 
 ### Examples
 

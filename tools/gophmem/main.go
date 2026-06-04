@@ -16,11 +16,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	baseURL := os.Getenv("GOPHMEM_BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080" // local dev: direct backend (Next.js is a static export, no proxy)
-	}
-	apiKey := os.Getenv("GOPHMEM_API_KEY")
+	baseURL := resolveSetting("GOPHMEM_BASE_URL", "http://localhost:8080")
+	apiKey := resolveSetting("GOPHMEM_API_KEY", "")
 
 	client := NewClient(baseURL, apiKey)
 
@@ -40,6 +37,8 @@ func main() {
 		err = runTags(client, os.Args[2:])
 	case "setup":
 		err = runSetup(client, os.Args[2:])
+	case "config":
+		err = runConfig(os.Args[2:], os.Stdout)
 	case "-h", "--help", "help":
 		printUsage(os.Stdout)
 		return
@@ -65,10 +64,13 @@ Usage:
   gophmem list [--folder <id>]                               List notes (default: AI Memory)
   gophmem tags                                               List all tags with counts
   gophmem setup                                              Print sub/base_folder_id for SSM setup
+  gophmem config set [--base-url URL] [--api-key KEY]        Save settings to config file (0600)
+  gophmem config show                                        Show resolved settings and their source
 
-Environment:
+Configuration (priority: env > config file > default):
   GOPHMEM_BASE_URL    API base URL (default: http://localhost:8080; production: https://<domain>/api)
-  GOPHMEM_API_KEY     Agent API key`)
+  GOPHMEM_API_KEY     Agent API key
+  Config file:        ~/.config/gophmem/config  (override: GOPHMEM_CONFIG_DIR)`)
 }
 
 // ---- write ----
@@ -434,6 +436,73 @@ func runTags(client *Client, _ []string) error {
 	for _, t := range tags {
 		fmt.Printf("%s\t%d\n", t.Name, t.Count)
 	}
+	return nil
+}
+
+// ---- config ----
+
+func runConfig(args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage:")
+		fmt.Fprintln(out, "  gophmem config set [--base-url URL] [--api-key KEY]")
+		fmt.Fprintln(out, "  gophmem config show")
+		return nil
+	}
+	switch args[0] {
+	case "set":
+		return runConfigSet(args[1:], out)
+	case "show":
+		return runConfigShow(out)
+	default:
+		return fmt.Errorf("unknown config subcommand: %s", args[0])
+	}
+}
+
+func runConfigSet(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("config set", flag.ContinueOnError)
+	baseURLFlag := fs.String("base-url", "", "API base URL")
+	apiKeyFlag := fs.String("api-key", "", "Agent API key")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *baseURLFlag == "" && *apiKeyFlag == "" {
+		return fmt.Errorf("usage: gophmem config set [--base-url URL] [--api-key KEY]")
+	}
+	updates := map[string]string{}
+	if *baseURLFlag != "" {
+		updates["GOPHMEM_BASE_URL"] = *baseURLFlag
+	}
+	if *apiKeyFlag != "" {
+		updates["GOPHMEM_API_KEY"] = *apiKeyFlag
+	}
+	if err := saveConfig(updates); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	fmt.Fprintf(out, "saved to: %s\n", configPath())
+	return nil
+}
+
+func runConfigShow(out io.Writer) error {
+	type entry struct {
+		key string
+		def string
+	}
+	entries := []entry{
+		{"GOPHMEM_BASE_URL", "http://localhost:8080"},
+		{"GOPHMEM_API_KEY", ""},
+	}
+	for _, e := range entries {
+		val, source := resolveSettingWithSource(e.key, e.def)
+		display := val
+		if display == "" {
+			display = "(not set)"
+		}
+		if e.key == "GOPHMEM_API_KEY" && source != "none" {
+			display = maskAPIKey(val)
+		}
+		fmt.Fprintf(out, "%-20s %s  [%s]\n", e.key, display, source)
+	}
+	fmt.Fprintf(out, "%-20s %s\n", "config file:", configPath())
 	return nil
 }
 
