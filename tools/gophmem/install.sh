@@ -61,9 +61,15 @@ if [[ -e "$LEGACY_FLAT_SKILL" || -L "$LEGACY_FLAT_SKILL" ]]; then
   info "  rm \"$LEGACY_FLAT_SKILL\""
 fi
 
-# ---- 4. env check ----
+# ---- 4. env / config check ----
+# Check both the env var and the config file (env takes priority, then file).
 echo
-if [[ -z "${GOPHMEM_API_KEY:-}" ]]; then
+_config_file="${GOPHMEM_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}}/gophmem/config"
+if [[ -n "${GOPHMEM_API_KEY:-}" ]]; then
+  ok "GOPHMEM_API_KEY is set (env)."
+elif [[ -f "$_config_file" ]] && grep -q "^GOPHMEM_API_KEY=." "$_config_file"; then
+  ok "GOPHMEM_API_KEY is set (config file: $_config_file)."
+else
   warn "GOPHMEM_API_KEY is not set."
   info "Issue a key from GophDrive Web UI → Settings → API Keys → Issue Key, then:"
   info ""
@@ -77,8 +83,6 @@ if [[ -z "${GOPHMEM_API_KEY:-}" ]]; then
   info ""
   info "For local DEV_MODE you can omit GOPHMEM_BASE_URL (defaults to http://localhost:8080)."
   info "Run 'gophmem config show' to verify the resolved values and their source."
-else
-  ok "GOPHMEM_API_KEY is set."
 fi
 
 # ---- 5. next steps ----
