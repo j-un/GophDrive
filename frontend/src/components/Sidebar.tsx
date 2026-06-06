@@ -78,6 +78,26 @@ export function Sidebar({
     loadFolders();
   }, [refreshTrigger]);
 
+  // Keep RECENT/Starred fresh when the user returns to the tab (e.g. after
+  // opening notes or editing on another device). In-app navigation back to
+  // /drive already refetches via the mount effect above; this covers the
+  // tab-focus / visibility case where the sidebar stays mounted.
+  const loadFoldersRef = useRef(loadFolders);
+  useEffect(() => {
+    loadFoldersRef.current = loadFolders;
+  });
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadFoldersRef.current();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
   return (
     <>
       <div

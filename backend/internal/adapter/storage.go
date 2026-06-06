@@ -100,6 +100,11 @@ type StorageAdapter interface {
 	// GetFile retrieves a file's content and metadata by its ID.
 	GetFile(ctx context.Context, fileID string) (*File, error)
 
+	// TouchViewed records that a file was opened (viewed) so ListRecent can
+	// order by recency-of-access. Implementations must not alter content,
+	// ETag or modified time. A missing file is a no-op, not an error.
+	TouchViewed(ctx context.Context, fileID string) error
+
 	// SaveFile updates an existing file's content.
 	// It should verify the ETag to prevent overwriting changes (optimistic locking).
 	// If etag is empty, it forces an overwrite.

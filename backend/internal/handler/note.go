@@ -140,6 +140,12 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to get note: %v", err)}, nil
 	}
 
+	// Record the open for recency ordering. Best-effort: a failure here must
+	// never break reading the note.
+	if err := storage.TouchViewed(ctx, file.ID); err != nil {
+		fmt.Printf("TouchViewed error (noteID=%s): %v\n", file.ID, err)
+	}
+
 	type NoteResponse struct {
 		ID        string                  `json:"id"`
 		Name      string                  `json:"name"`
