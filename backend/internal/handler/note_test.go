@@ -126,6 +126,47 @@ func TestNoteHandler_GetNote(t *testing.T) {
 	}
 }
 
+// Opening a note via GET /notes/{id} must record a view so the note jumps to
+// the front of RECENT — the recency contract wired through the handler layer.
+func TestNoteHandler_GetNote_RecordsView(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	createA, _ := h.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"a.md","content":"# A"}`))
+	var a adapter.FileMetadata
+	json.Unmarshal([]byte(createA.Body), &a)
+	time.Sleep(2 * time.Millisecond)
+	createB, _ := h.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"b.md","content":"# B"}`))
+	var b adapter.FileMetadata
+	json.Unmarshal([]byte(createB.Body), &b)
+
+	// B was created last, so it leads RECENT until A is opened.
+	time.Sleep(2 * time.Millisecond)
+	getReq := makeRequest("GET", "/notes/"+a.ID, "")
+	getReq.PathParameters["id"] = a.ID
+	getResp, err := h.GetNote(ctx, getReq)
+	if err != nil || getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GetNote A: err=%v status=%d", err, getResp.StatusCode)
+	}
+
+	recentResp, err := h.ListRecentNotes(ctx, makeRequest("GET", "/recent", ""))
+	if err != nil || recentResp.StatusCode != http.StatusOK {
+		t.Fatalf("ListRecentNotes: err=%v status=%d", err, recentResp.StatusCode)
+	}
+	var recent []adapter.FileMetadata
+	if err := json.Unmarshal([]byte(recentResp.Body), &recent); err != nil {
+		t.Fatalf("unmarshal recent: %v", err)
+	}
+	if len(recent) < 2 {
+		t.Fatalf("expected at least 2 recent notes, got %d", len(recent))
+	}
+	if recent[0].ID != a.ID {
+		t.Fatalf("after opening A, recent[0]=%s (name=%s), want A=%s", recent[0].ID, recent[0].Name, a.ID)
+	}
+	_ = b
+}
+
 func TestNoteHandler_UpdateNote(t *testing.T) {
 	provider := dynamo.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")

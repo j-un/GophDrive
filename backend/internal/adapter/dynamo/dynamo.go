@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -324,6 +325,7 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 			Name:         fromStoredName(item.Name),
 			MIMEType:     item.MIMEType,
 			ModifiedTime: item.ModifiedTime,
+			ViewedTime:   item.ViewedTime,
 			Size:         item.Size,
 			ETag:         item.ETag,
 			Parents:      item.Parents,
@@ -351,14 +353,26 @@ func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 	if err != nil {
 		return err
 	}
+	updateExpr := "SET viewed_time = :v"
+	values := map[string]types.AttributeValue{":v": nowAV}
+	var names map[string]string
+	// For demo users, viewing a note also refreshes its 60-minute TTL so an
+	// active read-only session doesn't lose notes mid-use. Real users have no
+	// ttl attribute (itemTTL returns 0) and must never get one written here.
+	if ttl := m.itemTTL(); ttl != 0 {
+		updateExpr += ", #ttl = :t"
+		values[":t"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(ttl, 10)}
+		names = map[string]string{"#ttl": "ttl"}
+	}
 	_, err = m.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: getTableName(),
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: fileID},
 		},
-		UpdateExpression:          aws.String("SET viewed_time = :v"),
+		UpdateExpression:          aws.String(updateExpr),
 		ConditionExpression:       aws.String("attribute_exists(pk)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{":v": nowAV},
+		ExpressionAttributeValues: values,
+		ExpressionAttributeNames:  names,
 	})
 	if err != nil {
 		var notFound *types.ConditionalCheckFailedException
@@ -1533,7 +1547,20 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 	return files, nil
 }
 
-// ListRecent lists recently modified files (proxy for viewed files in demo mode).
+// sortByViewedTimeDesc orders newest-viewed first, breaking ties on ID so the
+// result is fully deterministic even when several notes share a timestamp
+// (common for legacy rows whose viewed_time falls back to modified_time).
+func sortByViewedTimeDesc(files []adapter.FileMetadata) {
+	sort.SliceStable(files, func(i, j int) bool {
+		if !files[i].ViewedTime.Equal(files[j].ViewedTime) {
+			return files[i].ViewedTime.After(files[j].ViewedTime)
+		}
+		return files[i].ID < files[j].ID
+	})
+}
+
+// ListRecent lists recently viewed files, falling back to modified time for
+// notes not opened since viewed_time was introduced.
 func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
@@ -1583,14 +1610,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 		})
 	}
 
-	// Sort by ViewedTime desc
-	for i := 0; i < len(files); i++ {
-		for j := i + 1; j < len(files); j++ {
-			if files[i].ViewedTime.Before(files[j].ViewedTime) {
-				files[i], files[j] = files[j], files[i]
-			}
-		}
-	}
+	sortByViewedTimeDesc(files)
 
 	if len(files) > limit {
 		files = files[:limit]
@@ -1629,14 +1649,7 @@ func (m *Adapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileM
 		files = append(files, meta)
 	}
 
-	// Sort desc
-	for i := 0; i < len(files); i++ {
-		for j := i + 1; j < len(files); j++ {
-			if files[i].ViewedTime.Before(files[j].ViewedTime) {
-				files[i], files[j] = files[j], files[i]
-			}
-		}
-	}
+	sortByViewedTimeDesc(files)
 
 	if len(files) > limit {
 		files = files[:limit]

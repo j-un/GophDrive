@@ -81,7 +81,9 @@ export function Sidebar({
   // Keep RECENT/Starred fresh when the user returns to the tab (e.g. after
   // opening notes or editing on another device). In-app navigation back to
   // /drive already refetches via the mount effect above; this covers the
-  // tab-focus / visibility case where the sidebar stays mounted.
+  // case where the sidebar stays mounted and the tab regains visibility.
+  // (visibilitychange only — pairing it with `focus` double-fires on tab
+  // switch. The ref is updated in an effect to stay React Compiler-safe.)
   const loadFoldersRef = useRef(loadFolders);
   useEffect(() => {
     loadFoldersRef.current = loadFolders;
@@ -90,12 +92,8 @@ export function Sidebar({
     const refresh = () => {
       if (document.visibilityState === "visible") loadFoldersRef.current();
     };
-    window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
+    return () => document.removeEventListener("visibilitychange", refresh);
   }, []);
 
   return (
