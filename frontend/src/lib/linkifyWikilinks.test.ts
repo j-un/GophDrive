@@ -27,7 +27,7 @@ describe("linkifyWikilinks", () => {
     const links = [resolved("Auth Design", "uuid-1")];
     const result = linkifyWikilinks("<p>[[Auth Design]]</p>", links);
     expect(result).toContain('data-note-id="uuid-1"');
-    expect(result).toContain('href="/note?id=uuid-1"');
+    expect(result).toContain('href="/note/?id=uuid-1"');
     expect(result).toContain('class="wikilink"');
     expect(result).toContain(">Auth Design</a>");
   });

@@ -45,7 +45,7 @@ function NotesContent() {
     if (!isValidNoteId(id)) {
       setCurrentFolderId(undefined);
       setBreadcrumbs([{ id: "", name: "Home" }]);
-      router.replace("/drive");
+      router.replace("/drive/");
       return;
     }
     try {
@@ -59,9 +59,9 @@ function NotesContent() {
 
   const handleNavigate = (folderId?: string) => {
     if (folderId) {
-      router.push(`/drive?folderId=${folderId}`);
+      router.push(`/drive/?folderId=${folderId}`);
     } else {
-      router.push("/drive");
+      router.push("/drive/");
     }
     setCurrentFolderId(folderId);
   };

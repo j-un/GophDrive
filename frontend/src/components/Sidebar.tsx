@@ -186,7 +186,7 @@ export function Sidebar({
                     if (isFolder) {
                       handleNavigate(item.id);
                     } else {
-                      router.push(`/note?id=${item.id}`);
+                      router.push(`/note/?id=${item.id}`);
                       onClose?.();
                     }
                   };
@@ -360,7 +360,7 @@ export function Sidebar({
                     <div
                       key={`recent-${file.id}`}
                       onClick={() => {
-                        router.push(`/note?id=${file.id}`);
+                        router.push(`/note/?id=${file.id}`);
                         onClose?.();
                       }}
                       style={{
@@ -430,7 +430,7 @@ export function Sidebar({
                 {tags.map((tag) => (
                   <a
                     key={tag.name}
-                    href={`/drive?tag=${encodeURIComponent(tag.name)}`}
+                    href={`/drive/?tag=${encodeURIComponent(tag.name)}`}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -466,7 +466,7 @@ export function Sidebar({
           style={{ padding: "0.75rem", borderTop: "1px solid var(--border)" }}
         >
           <button
-            onClick={() => router.push("/settings")}
+            onClick={() => router.push("/settings/")}
             style={{
               display: "flex",
               alignItems: "center",

@@ -172,7 +172,7 @@ describe("Sidebar Starred section", () => {
     render(<Sidebar onNavigate={() => {}} onClose={onClose} />);
     await screen.findByText("StarredNote");
     fireEvent.click(screen.getByText("StarredNote"));
-    expect(mockPush).toHaveBeenCalledWith("/note?id=note-1");
+    expect(mockPush).toHaveBeenCalledWith("/note/?id=note-1");
     expect(onClose).toHaveBeenCalled();
   });
 

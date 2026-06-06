@@ -5,47 +5,47 @@ describe("linkifyTags", () => {
   it("linkifies a basic inline tag", () => {
     const result = linkifyTags("<p>hello #dev world</p>");
     expect(result).toContain(
-      '<a href="/drive?tag=dev" class="tag-link">#dev</a>',
+      '<a href="/drive/?tag=dev" class="tag-link">#dev</a>',
     );
   });
 
   it("linkifies a tag at the start of an HTML element content", () => {
     const result = linkifyTags("<p>#feature is ready</p>");
     expect(result).toContain(
-      '<a href="/drive?tag=feature" class="tag-link">#feature</a>',
+      '<a href="/drive/?tag=feature" class="tag-link">#feature</a>',
     );
   });
 
   it("escapes hierarchical tags in the href", () => {
     const result = linkifyTags("<p>See #work/q3 for info</p>");
-    expect(result).toContain('href="/drive?tag=work%2Fq3"');
+    expect(result).toContain('href="/drive/?tag=work%2Fq3"');
     expect(result).toContain(">#work/q3</a>");
   });
 
   it("linkifies hyphenated tags", () => {
     const result = linkifyTags("<p>Status: #in-progress</p>");
-    expect(result).toContain('href="/drive?tag=in-progress"');
+    expect(result).toContain('href="/drive/?tag=in-progress"');
   });
 
   it("linkifies CJK tags", () => {
     const result = linkifyTags("<p>今日の作業 #開発 完了</p>");
-    expect(result).toContain('href="/drive?tag=%E9%96%8B%E7%99%BA"');
+    expect(result).toContain('href="/drive/?tag=%E9%96%8B%E7%99%BA"');
   });
 
   it("skips content inside <code> blocks", () => {
     const result = linkifyTags(
       "<p>Use <code>#notag</code> but <span> #realtag</span></p>",
     );
-    expect(result).not.toContain('href="/drive?tag=notag"');
-    expect(result).toContain('href="/drive?tag=realtag"');
+    expect(result).not.toContain("tag=notag");
+    expect(result).toContain('href="/drive/?tag=realtag"');
   });
 
   it("skips content inside <pre> blocks", () => {
     const result = linkifyTags(
       "<pre>#inside code block</pre>\n<p> #outside</p>",
     );
-    expect(result).not.toContain('href="/drive?tag=inside"');
-    expect(result).toContain('href="/drive?tag=outside"');
+    expect(result).not.toContain("tag=inside");
+    expect(result).toContain('href="/drive/?tag=outside"');
   });
 
   it("does not linkify digit-only sequences", () => {
@@ -60,7 +60,7 @@ describe("linkifyTags", () => {
 
   it("trims trailing slashes from tag name", () => {
     const result = linkifyTags("<p>See #work/ for info</p>");
-    expect(result).toContain('href="/drive?tag=work"');
+    expect(result).toContain('href="/drive/?tag=work"');
     expect(result).not.toContain("tag=work%2F");
   });
 
@@ -74,7 +74,7 @@ describe("linkifyTags", () => {
   it("tag after Japanese punctuation", () => {
     const result = linkifyTags("<p>タグ。#開発する</p>");
     expect(result).toContain(
-      'href="/drive?tag=%E9%96%8B%E7%99%BA%E3%81%99%E3%82%8B"',
+      'href="/drive/?tag=%E9%96%8B%E7%99%BA%E3%81%99%E3%82%8B"',
     );
   });
 

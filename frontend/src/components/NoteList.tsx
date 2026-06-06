@@ -161,9 +161,9 @@ export default function NoteList({
 
   const navigateToFolder = (id: string | null) => {
     if (id) {
-      router.push(`/drive?folderId=${id}`);
+      router.push(`/drive/?folderId=${id}`);
     } else {
-      router.push("/drive");
+      router.push("/drive/");
     }
   };
 
@@ -172,7 +172,7 @@ export default function NoteList({
     setIsSubmitting(true);
     try {
       const note = await apiCreateNote(name, "# " + name, folderId);
-      router.push(`/note?id=${note.id}`);
+      router.push(`/note/?id=${note.id}`);
     } catch (error) {
       const err = error as Error;
       console.error("Failed to create note:", err);
@@ -580,7 +580,7 @@ export default function NoteList({
               {notes.map((note) => (
                 <div key={note.id} style={{ position: "relative" }}>
                   <Link
-                    href={`/note?id=${note.id}`}
+                    href={`/note/?id=${note.id}`}
                     className="glass group"
                     style={{
                       padding: "1rem",
@@ -1046,7 +1046,7 @@ export default function NoteList({
                 notes.map((note) => (
                   <div key={note.id} style={{ position: "relative" }}>
                     <Link
-                      href={`/note?id=${note.id}`}
+                      href={`/note/?id=${note.id}`}
                       className="glass"
                       style={{
                         ...cardStyle,
