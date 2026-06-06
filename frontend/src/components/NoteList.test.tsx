@@ -92,7 +92,7 @@ describe("NoteList folder display", () => {
     expect(screen.getByText("Notes")).toBeTruthy();
   });
 
-  it("navigates to /drive?folderId=... when a folder card is clicked", async () => {
+  it("navigates to /drive/?folderId=... when a folder card is clicked", async () => {
     mockListFiles.mockResolvedValueOnce([
       {
         id: "folder-1",
@@ -107,7 +107,7 @@ describe("NoteList folder display", () => {
 
     fireEvent.click(await screen.findByText("My Folder"));
 
-    expect(mockPush).toHaveBeenCalledWith("/drive?folderId=folder-1");
+    expect(mockPush).toHaveBeenCalledWith("/drive/?folderId=folder-1");
   });
 });
 

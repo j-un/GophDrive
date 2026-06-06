@@ -40,7 +40,7 @@ export function linkifyWikilinks(html: string, links: WikiLinkRef[]): string {
 
     if (ref && ref.resolved && ref.targetId) {
       const label = escapeHtml(ref.currentTitle || title);
-      return `<a class="wikilink" data-note-id="${escapeHtml(ref.targetId)}" href="/note?id=${escapeHtml(ref.targetId)}">${label}</a>`;
+      return `<a class="wikilink" data-note-id="${escapeHtml(ref.targetId)}" href="/note/?id=${escapeHtml(ref.targetId)}">${label}</a>`;
     }
 
     const label = escapeHtml(title);

@@ -41,7 +41,7 @@ export function Preview({ markdown, links, className }: PreviewProps) {
       if (anchor) {
         e.preventDefault();
         const noteId = anchor.getAttribute("data-note-id");
-        if (noteId) router.push(`/note?id=${noteId}`);
+        if (noteId) router.push(`/note/?id=${noteId}`);
       }
     },
     [router],

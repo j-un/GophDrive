@@ -446,7 +446,7 @@ function NoteContent() {
     setIsMenuOpen(false);
     try {
       const newNote = await duplicateNote(id);
-      router.push(`/note?id=${newNote.id}`);
+      router.push(`/note/?id=${newNote.id}`);
     } catch (error) {
       const e = error as Error;
       console.error("Duplicate failed", e);
@@ -469,7 +469,7 @@ function NoteContent() {
         // Also remove from local
         await deleteNoteLocal(id);
       }
-      router.push("/drive");
+      router.push("/drive/");
     } catch (error) {
       const e = error as Error;
       console.error("Delete failed", e);
@@ -566,7 +566,7 @@ function NoteContent() {
                   </span>
                 )}
                 <Link
-                  href={bc.id ? `/drive?folderId=${bc.id}` : "/drive"}
+                  href={bc.id ? `/drive/?folderId=${bc.id}` : "/drive/"}
                   className="hover:underline"
                   style={{
                     display: "flex",
@@ -772,7 +772,7 @@ function NoteContent() {
             title={shareCopied ? "Copied!" : "Share (Copy Markdown link)"}
             onClick={() => {
               if (!id) return;
-              const url = `${window.location.origin}/note?id=${id}`;
+              const url = `${window.location.origin}/note/?id=${id}`;
               navigator.clipboard.writeText(buildShareLink(title, url));
               setShareCopied(true);
               if (copyTimerRef.current)
@@ -943,7 +943,7 @@ function NoteContent() {
                     {noteBacklinks.map((bl) => (
                       <li key={bl.id}>
                         <Link
-                          href={`/note?id=${bl.id}`}
+                          href={`/note/?id=${bl.id}`}
                           style={{
                             fontSize: "0.875rem",
                             padding: "0.125rem 0.5rem",
