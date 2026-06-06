@@ -211,6 +211,11 @@ type FileItem struct {
 	BodyS3Key    string            `dynamodbav:"body_s3_key,omitempty"`
 	TTL          int64             `dynamodbav:"ttl,omitempty"`
 	CreatedTime  time.Time         `dynamodbav:"created_time,omitempty"`
+	// ViewedTime records when the note was last opened (read). ListRecent orders
+	// by this; it falls back to ModifiedTime when absent (notes never opened
+	// since this field was introduced). Updated by TouchViewed without touching
+	// ETag or ModifiedTime, so it never affects optimistic concurrency.
+	ViewedTime time.Time `dynamodbav:"viewed_time,omitempty"`
 }
 
 func NewAdapter(client *dynamodb.Client, userID string, baseFolderID string) *Adapter {
@@ -331,6 +336,49 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 	}, nil
 }
 
+// TouchViewed records that a note was opened (viewed), updating only its
+// viewed_time so ListRecent can order by recency-of-access. It deliberately
+// leaves content, etag and modified_time untouched, so it never triggers a
+// conflict on the optimistic-concurrency save path. A missing row (note
+// deleted between read and touch) is treated as a no-op rather than an error.
+func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
+	now := time.Now()
+	if m.client == nil {
+		return m.touchViewedMap(fileID, now)
+	}
+
+	nowAV, err := attributevalue.Marshal(now)
+	if err != nil {
+		return err
+	}
+	_, err = m.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: getTableName(),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: fileID},
+		},
+		UpdateExpression:          aws.String("SET viewed_time = :v"),
+		ConditionExpression:       aws.String("attribute_exists(pk)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":v": nowAV},
+	})
+	if err != nil {
+		var notFound *types.ConditionalCheckFailedException
+		if errors.As(err, &notFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (m *Adapter) touchViewedMap(fileID string, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.files[fileID]; ok {
+		f.ViewedTime = now
+	}
+	return nil
+}
+
 func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, etag string) (*adapter.FileMetadata, error) {
 	if len(content) > maxContentSize {
 		return nil, fmt.Errorf("content too large (max %d bytes)", maxContentSize)
@@ -387,6 +435,9 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
+		// Editing a note also counts as viewing it; keep it at the top of
+		// recents and avoid the full-item PutItem wiping a prior viewed_time.
+		ViewedTime: f.ModifiedTime,
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -907,6 +958,7 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 	}
 	f.Content = content
 	f.ModifiedTime = time.Now()
+	f.ViewedTime = f.ModifiedTime
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
@@ -1512,12 +1564,16 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 		if !m.isDescendant(item.Parents, targetFolderID, parentMap) {
 			continue
 		}
+		viewedTime := item.ViewedTime
+		if viewedTime.IsZero() {
+			viewedTime = item.ModifiedTime // fallback: never opened since viewed_time was introduced
+		}
 		files = append(files, adapter.FileMetadata{
 			ID:           item.ID,
 			Name:         fromStoredName(item.Name),
 			MIMEType:     item.MIMEType,
 			ModifiedTime: item.ModifiedTime,
-			ViewedTime:   item.ModifiedTime, // Use modifiedTime as proxy
+			ViewedTime:   viewedTime,
 			Size:         item.Size,
 			ETag:         item.ETag,
 			Parents:      item.Parents,
@@ -1567,7 +1623,9 @@ func (m *Adapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileM
 		}
 		meta := f.FileMetadata
 		meta.Name = fromStoredName(meta.Name)
-		meta.ViewedTime = f.ModifiedTime // Proxy
+		if meta.ViewedTime.IsZero() {
+			meta.ViewedTime = f.ModifiedTime // fallback: never opened
+		}
 		files = append(files, meta)
 	}
 
