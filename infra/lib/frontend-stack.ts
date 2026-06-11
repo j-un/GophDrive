@@ -86,6 +86,56 @@ function handler(event) {
       domainNames = [customDomainName];
     }
 
+    // Security response headers for the frontend (no CSP yet — strict CSP requires Vite migration Phase 2)
+    const securityHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
+      this,
+      "SecurityHeadersPolicy",
+      {
+        securityHeadersBehavior: {
+          frameOptions: {
+            frameOption: cloudfront.HeadersFrameOption.DENY,
+            override: true,
+          },
+          contentTypeOptions: { override: true },
+          referrerPolicy: {
+            referrerPolicy:
+              cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+            override: true,
+          },
+          strictTransportSecurity: {
+            accessControlMaxAge: cdk.Duration.days(730),
+            includeSubdomains: true,
+            // preload registers the domain in browser preload lists — a one-way
+            // commitment; removal takes 6–12 months. Only effective when a custom
+            // domain (customDomainName) is configured; the *.cloudfront.net default
+            // domain is not eligible for preload list submission.
+            preload: true,
+            override: true,
+          },
+        },
+        customHeadersBehavior: {
+          customHeaders: [
+            {
+              header: "Permissions-Policy",
+              value:
+                "camera=(), microphone=(), geolocation=(), browsing-topics=(), attribution-reporting=()",
+              override: true,
+            },
+            {
+              header: "Cross-Origin-Opener-Policy",
+              value: "same-origin",
+              override: true,
+            },
+            {
+              header: "Cross-Origin-Resource-Policy",
+              value: "same-origin",
+              override: true,
+            },
+          ],
+        },
+      },
+    );
+
     // CloudFront Distribution
     this.distribution = new cloudfront.Distribution(
       this,
@@ -100,6 +150,7 @@ function handler(event) {
           origin: origins.S3BucketOrigin.withBucketDefaults(bucket),
           viewerProtocolPolicy:
             cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          responseHeadersPolicy: securityHeadersPolicy,
           functionAssociations: [
             {
               function: rewriteFunction,

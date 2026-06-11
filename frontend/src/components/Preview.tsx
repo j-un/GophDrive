@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWasm } from "@/hooks/useWasm";
 import { linkifyTags } from "@/lib/linkifyTags";
 import { linkifyWikilinks, WikiLinkRef } from "@/lib/linkifyWikilinks";
+import { sanitizeRenderedMarkdown } from "@/lib/sanitize";
 import styles from "./markdown.module.css";
 
 interface PreviewProps {
@@ -15,20 +16,22 @@ interface PreviewProps {
 
 export function Preview({ markdown, links, className }: PreviewProps) {
   const { isReady } = useWasm();
-  const [html, setHtml] = useState<string>("");
   const router = useRouter();
 
-  useEffect(() => {
-    if (isReady && window.renderMarkdown) {
-      try {
-        const raw = window.renderMarkdown(markdown);
-        const withTags = linkifyTags(raw);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setHtml(linkifyWikilinks(withTags, links ?? []));
-      } catch (e) {
-        console.error("Render error", e);
-        setHtml('<p style="color:red">Error rendering markdown</p>');
-      }
+  // isReady gates window access — safe in SSR/static-generation contexts where
+  // isReady stays false and window is undefined.
+  // TODO: client-side sanitize is the sole XSS defense today; remove
+  // html.WithUnsafe() from core/markdown/renderer.go for defense in depth.
+  const html = useMemo(() => {
+    if (!isReady || !window.renderMarkdown) return "";
+    try {
+      const raw = window.renderMarkdown(markdown);
+      const withTags = linkifyTags(raw);
+      const linked = linkifyWikilinks(withTags, links ?? []);
+      return sanitizeRenderedMarkdown(linked);
+    } catch (e) {
+      console.error("Render error", e);
+      return '<p style="color:red">Error rendering markdown</p>';
     }
   }, [markdown, isReady, links]);
 

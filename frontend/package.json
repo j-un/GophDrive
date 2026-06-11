@@ -19,6 +19,7 @@
     "@codemirror/view": "^6.39.14",
     "@uiw/react-codemirror": "^4.25.4",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.9",
     "framer-motion": "^12.34.0",
     "lucide-react": "^1.0.0",
     "next": "16.2.7",
