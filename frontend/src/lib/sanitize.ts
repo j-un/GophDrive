@@ -1,15 +1,20 @@
 import DOMPurify from "dompurify";
 
-// Add rel="noopener noreferrer" to any target="_blank" link surviving sanitization.
-// The Go renderer uses html.WithUnsafe(), so user-authored <a target="_blank"> would
-// otherwise expose the app to reverse-tabnabbing.
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (node.tagName === "A" && node.getAttribute("target") === "_blank") {
-    node.setAttribute("rel", "noopener noreferrer");
-  }
-});
+let hookRegistered = false;
 
 export function sanitizeRenderedMarkdown(html: string): string {
+  if (typeof window === "undefined") return "";
+  if (!hookRegistered) {
+    // Enforce rel="noopener noreferrer" on any target="_blank" link surviving
+    // sanitization. The Go renderer uses html.WithUnsafe(), so user-authored
+    // <a target="_blank"> would otherwise expose the app to reverse-tabnabbing.
+    DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+      if (node.tagName === "A" && node.getAttribute("target") === "_blank") {
+        node.setAttribute("rel", "noopener noreferrer");
+      }
+    });
+    hookRegistered = true;
+  }
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     // data-note-id: wikilink click handler reads this attribute.
