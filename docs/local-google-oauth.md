@@ -26,7 +26,7 @@ redirect to `http://localhost:8080/auth/callback`.
    Application type: *Web application*.
    - **Authorized redirect URIs**: add exactly
      `http://localhost:8080/auth/callback` (no trailing slash, http not https).
-   - **Authorized JavaScript origins**: `http://localhost:3000`.
+   - **Authorized JavaScript origins**: `http://localhost:5173`.
 4. Copy the **Client ID** and **Client secret** that the console shows
    you after creation.
 
@@ -55,11 +55,11 @@ overmind restart backend       # from another shell
 
 ## Verifying
 
-1. Open `http://localhost:3000`.
+1. Open `http://localhost:5173`.
 2. Click **Login with Google** (not the demo button).
 3. You should be redirected to Google → consent screen → back to
    `localhost:8080/auth/callback` → finally to
-   `localhost:3000/?success=true`. A `session_token` cookie should be
+   `localhost:5173/?success=true`. A `session_token` cookie should be
    present (DevTools → Application → Cookies).
 4. The note list should show the auto-minted `GophDrive` root folder
    for your real Google subject ID.

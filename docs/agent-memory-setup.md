@@ -100,7 +100,7 @@ Add the following to your `.env` (see `.env.example`):
 API_KEY_HASHES_TABLE=APIKeyHashes
 ```
 
-For local dev, `gophmem`'s default URL is `http://localhost:8080`, so `GOPHMEM_BASE_URL` can be omitted. (Next.js is a static export, so port `:3000` has no API proxy — `gophmem` talks to the backend on `:8080` directly.)
+For local dev, `gophmem`'s default URL is `http://localhost:8080`, so `GOPHMEM_BASE_URL` can be omitted. (The frontend is a Vite CSR SPA on `:5173` with no API proxy — `gophmem` talks to the backend on `:8080` directly.)
 
 Issue the API key from the local GophDrive UI the same way as step 2.
 
