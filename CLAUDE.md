@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-GophDrive is a serverless Markdown notes app: Next.js SPA on S3+CloudFront, single Go Lambda behind API Gateway, notes stored in DynamoDB (`FileStore` table). Google is used purely as an OIDC identity provider — no Drive scope, no stored OAuth refresh tokens.
+GophDrive is a serverless Markdown notes app: Vite + React SPA on S3+CloudFront, single Go Lambda behind API Gateway, notes stored in DynamoDB (`FileStore` table). Google is used purely as an OIDC identity provider — no Drive scope, no stored OAuth refresh tokens.
 
 ## Mandatory Post-Change Checklist
 
 1. **Run `./scripts/check.sh`** (fmt + vet + test + prettier + tsc + eslint + vitest across all stacks) and ensure it passes. Runs entirely on the host via `mise x` — no DynamoDB Local / overmind required.
 2. **If `core/` changed** → `core.wasm` is rebuilt automatically by the `wasm` overmind process (`dev.sh` / `overmind start`) and by `npm run dev`/`build` via the `predev`/`prebuild` hooks. For builds outside those paths run `./scripts/internal/build-wasm.sh` manually. (`core.wasm` and `wasm_exec.js` are gitignored build artifacts — do not commit them.)
-3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → bump `CACHE_NAME` in `frontend/public/sw.js` to `gophdrive-YYYYMMDD-NN`. The PWA service worker is only re-evaluated when `sw.js` changes by ≥1 byte; skipping this leaves users on stale code or a JS↔Wasm signature mismatch. Mention the bump in the commit message (e.g. `feat: ... and PWA cache v20260508-01`).
+3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → the PWA service worker (`sw.js`) and its precache manifest are regenerated automatically by `vite-plugin-pwa` (Workbox) on every `npm run build`. No manual `CACHE_NAME` bump is required.
 
 ## Common Commands
 
@@ -46,7 +46,7 @@ mise x node -- bash -c 'cd infra    && npx vitest run test/compute-stack.test.ts
 | ----------- | ----------------------------------- | ---------------------------------------------------- |
 | `backend/`  | `github.com/jun/gophdrive/backend`  | Linux ARM64 `bootstrap` for `provided.al2023` Lambda |
 | `core/`     | `github.com/jun/gophdrive/core`     | `frontend/public/core.wasm` (`GOOS=js GOARCH=wasm`)  |
-| `frontend/` | `gophdrive-frontend` (Next.js)      | Static export to `frontend/out/`                     |
+| `frontend/` | `gophdrive-frontend` (Vite + React) | Production build to `frontend/out/`                  |
 | `infra/`    | `gophdrive-infra` (AWS CDK v2 / TS) | CloudFormation stacks                                |
 
 `core/` is consumed by the frontend as Wasm and from the backend as a regular Go package for markdown utilities (e.g. `core/markdown.ExtractTags`). Only `core/bridge/main_wasm.go` carries `//go:build js && wasm`; all other packages are pure Go with no build constraints. `core/bridge/main_wasm.go` registers `renderMarkdown`, `checkConflict`, `createOfflineChange` on `window`. `wasm_exec.js` is copied from the active Go SDK's `GOROOT` by `build-wasm.sh`, so re-run it after a Go version change.

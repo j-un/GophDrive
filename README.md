@@ -29,7 +29,7 @@ You can experience GophDrive's interface and functionality using the demo mode a
 
 ## Tech Stack
 
-- **Frontend**: Next.js (App Router), React, TypeScript, CSS Modules
+- **Frontend**: Vite + React (react-router v7), TypeScript, CSS Modules
 - **Backend (API)**: Go (standard library/AWS Lambda Go), compiled for `provided.al2023` ARM64 Lambda
 - **Shared Core**: Go (compiled to WebAssembly)
 - **Infrastructure**: AWS CDK (TypeScript). Local dev runs natively on the host with DynamoDB Local in Docker
@@ -72,7 +72,7 @@ flowchart LR
 GophDrive/
 ├── backend/            # Go Backend API (AWS Lambda handlers & business logic)
 ├── core/               # Shared Go logic (compiled to Wasm for the frontend)
-├── frontend/           # Next.js SPA Frontend
+├── frontend/           # Vite + React SPA Frontend
 ├── infra/              # Infrastructure as Code (AWS CDK definitions)
 ├── scripts/            # Automation scripts for local dev and AWS deployment
 ├── Procfile            # overmind process map (backend / frontend / wasm watcher)
@@ -103,10 +103,10 @@ GophDrive/
    ```
    `overmind` runs three processes from the root `Procfile`:
    - `backend`  — Go API on `:8080` (Air hot reload, `cmd/server/main.go` HTTP wrapper)
-   - `frontend` — Next.js on `:3000` (`npm run dev`, native FS watch)
+   - `frontend` — Vite on `:5173` (`npm run dev`, native FS watch)
    - `wasm`     — Air watcher recompiling `core/` to `frontend/public/core.wasm` on change
 
-3. **Access the Application**: [http://localhost:3000](http://localhost:3000)
+3. **Access the Application**: [http://localhost:5173](http://localhost:5173)
 
 Useful overmind commands:
 
@@ -162,7 +162,7 @@ The script will automatically:
 2. Build the Go Lambda backend.
 3. Deploy the backend and database infrastructure via AWS CDK.
 4. Extract the generated `FRONTEND_URL`.
-5. Build the Next.js static frontend using the correct URL context.
+5. Build the Vite frontend using the correct URL context.
 6. Deploy the frontend assets to the S3 Bucket and invalidate the CloudFront cache.
 
 ### 4. Privacy Policy & Terms of Service

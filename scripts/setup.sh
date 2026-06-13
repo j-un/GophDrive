@@ -135,6 +135,6 @@ echo
 echo -e "${GREEN}Setup complete.${NC}"
 echo
 echo "Next steps:"
-echo -e "  ${BLUE}./scripts/dev.sh${NC}            # boots backend(:8080) + frontend(:3000) + wasm watcher"
+echo -e "  ${BLUE}./scripts/dev.sh${NC}            # boots backend(:8080) + frontend(:5173) + wasm watcher"
 echo -e "  ${BLUE}overmind connect backend${NC}    # attach to one process (run in another shell)"
 echo -e "  ${BLUE}./scripts/check.sh${NC}          # required after any change"
