@@ -71,7 +71,7 @@ func NewAuthHandler(deps AuthHandlerDeps) *AuthHandler {
 		deps.RootFolderName = "GophDrive"
 	}
 	if deps.FrontendURL == "" {
-		deps.FrontendURL = "http://localhost:3000"
+		deps.FrontendURL = "http://localhost:5173"
 	}
 	return &AuthHandler{deps: deps}
 }

@@ -99,7 +99,7 @@ func NewApp(ctx context.Context) *App {
 	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:3000"
+		frontendURL = "http://localhost:5173"
 	}
 	if redirectURL == "" {
 		if devMode {
@@ -392,7 +392,7 @@ func corsResponse(resp events.APIGatewayProxyResponse) events.APIGatewayProxyRes
 	}
 	resp.Headers["Access-Control-Allow-Origin"] = os.Getenv("FRONTEND_URL")
 	if resp.Headers["Access-Control-Allow-Origin"] == "" {
-		resp.Headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+		resp.Headers["Access-Control-Allow-Origin"] = "http://localhost:5173"
 	}
 	resp.Headers["Access-Control-Allow-Credentials"] = "true"
 	resp.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS,PATCH"
