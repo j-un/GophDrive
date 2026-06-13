@@ -1,21 +1,15 @@
-"use client";
-
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import NoteList from "@/components/NoteList";
 import { Sidebar } from "@/components/Sidebar";
 import { ChevronRight, Home, Menu } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useNavigate, useSearchParams } from "react-router";
 import { getBreadcrumbs, isValidNoteId, BreadcrumbItem } from "@/lib/api";
 
 function NotesContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  // folderId from URL, or undefined if not present
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const folderIdParam = searchParams.get("folderId") || undefined;
 
-  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(
-    folderIdParam,
-  );
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
     { id: "", name: "Home" },
   ]);
@@ -23,29 +17,17 @@ function NotesContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
-  // Stable reference — only changes when actual tag values change
+  const searchParamsStr = searchParams.toString();
   const tagFilter = useMemo(
     () => searchParams.getAll("tag").filter(Boolean),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams.toString()],
+    [searchParamsStr],
   );
-
-  // Sync state with URL param
-  useEffect(() => {
-    setCurrentFolderId(folderIdParam);
-    if (folderIdParam) {
-      fetchFolderInfo(folderIdParam);
-    } else {
-      setBreadcrumbs([{ id: "", name: "Home" }]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folderIdParam]);
 
   const fetchFolderInfo = async (id: string) => {
     if (!isValidNoteId(id)) {
-      setCurrentFolderId(undefined);
       setBreadcrumbs([{ id: "", name: "Home" }]);
-      router.replace("/drive/");
+      navigate("/drive/", { replace: true });
       return;
     }
     try {
@@ -57,13 +39,26 @@ function NotesContent() {
     }
   };
 
+  const fetchFolderInfoRef = useRef(fetchFolderInfo);
+  useEffect(() => {
+    fetchFolderInfoRef.current = fetchFolderInfo;
+  });
+
+  useEffect(() => {
+    if (folderIdParam) {
+      fetchFolderInfoRef.current(folderIdParam);
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBreadcrumbs([{ id: "", name: "Home" }]);
+    }
+  }, [folderIdParam]);
+
   const handleNavigate = (folderId?: string) => {
     if (folderId) {
-      router.push(`/drive/?folderId=${folderId}`);
+      navigate(`/drive/?folderId=${folderId}`);
     } else {
-      router.push("/drive/");
+      navigate("/drive/");
     }
-    setCurrentFolderId(folderId);
   };
 
   return (
@@ -90,7 +85,6 @@ function NotesContent() {
           height: "100%",
         }}
       >
-        {/* Header with Breadcrumbs */}
         <div
           style={{
             padding: "1rem",
@@ -141,9 +135,8 @@ function NotesContent() {
           </div>
         </div>
 
-        {/* Main Content */}
         <NoteList
-          folderId={currentFolderId}
+          folderId={folderIdParam}
           searchQuery={searchParams.get("q") || undefined}
           tagFilter={tagFilter}
           onAfterMutation={() => setSidebarRefreshKey((k) => k + 1)}
@@ -153,9 +146,9 @@ function NotesContent() {
   );
 }
 
-export default function NotesPage() {
+export default function DrivePage() {
   return (
-    <React.Suspense
+    <Suspense
       fallback={
         <div
           style={{
@@ -170,6 +163,6 @@ export default function NotesPage() {
       }
     >
       <NotesContent />
-    </React.Suspense>
+    </Suspense>
   );
 }

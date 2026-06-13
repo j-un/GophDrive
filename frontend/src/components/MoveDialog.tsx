@@ -29,12 +29,14 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPickerFolderId("");
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
     const fetchContents = async () => {

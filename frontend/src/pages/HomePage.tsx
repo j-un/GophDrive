@@ -1,5 +1,3 @@
-"use client";
-
 import { Suspense } from "react";
 import { useWasm } from "@/hooks/useWasm";
 import {
@@ -10,34 +8,31 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import styles from "./page.module.css";
-
+import { useNavigate } from "react-router";
 import { useAuth } from "@/context/AuthContext";
 import Footer from "@/components/Footer";
+import styles from "./home.module.css";
 
 const GITHUB_URL = "https://github.com/j-un/GophDrive";
 
 function HomeContent() {
   const { isReady, error } = useWasm();
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace("/drive/");
+      navigate("/drive/", { replace: true });
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, navigate]);
 
-  // Show login/actions regardless of Wasm status
   const renderActions = () => {
     if (authLoading) {
       return <div className={styles.spinner}></div>;
     }
 
     if (user) {
-      return <div className={styles.spinner}></div>; // Show spinner while redirecting
+      return <div className={styles.spinner}></div>;
     }
 
     return (
@@ -50,7 +45,7 @@ function HomeContent() {
         }}
       >
         <a
-          href={`${process.env.NEXT_PUBLIC_API_URL || ""}/auth/login`}
+          href={`${import.meta.env.VITE_API_URL || ""}/auth/login`}
           className="btn btn-primary"
           style={{
             width: "100%",
@@ -65,7 +60,7 @@ function HomeContent() {
           Login with Google
         </a>
         <a
-          href={`${process.env.NEXT_PUBLIC_API_URL || ""}/auth/demo-login`}
+          href={`${import.meta.env.VITE_API_URL || ""}/auth/demo-login`}
           className="btn"
           style={{
             width: "100%",
@@ -89,13 +84,13 @@ function HomeContent() {
     <main className={styles.main}>
       <div className={`${styles.card} glass`}>
         <div className={styles.logoContainer}>
-          <Image
+          <img
             src="/icon-512x512.png"
             alt="GophDrive"
             width={160}
             height={160}
             className={styles.logo}
-            priority
+            fetchPriority="high"
           />
         </div>
         <h1 className={styles.title}>GophDrive</h1>
@@ -106,7 +101,6 @@ function HomeContent() {
         </p>
 
         <div className={styles.statusContainer}>
-          {/* Wasm Status */}
           {error ? (
             <div
               style={{
@@ -155,7 +149,6 @@ function HomeContent() {
             </div>
           )}
 
-          {/* Actions always visible */}
           {renderActions()}
         </div>
 

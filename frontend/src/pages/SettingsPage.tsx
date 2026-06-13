@@ -1,30 +1,28 @@
-"use client";
-
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, exportNotes } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { APIKeysSection } from "./APIKeysSection";
+import { APIKeysSection } from "@/components/APIKeysSection";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Loader2, ArrowLeft, Download } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading, refreshUser } = useAuth();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogout = async () => {
-    if (confirm("Are you sure you want to logout?")) {
-      try {
-        await apiFetch("/auth/logout", { method: "POST" });
-      } catch (e) {
-        console.error("Logout failed", e);
-      }
-      localStorage.removeItem("session_token");
-      await refreshUser();
-      router.push("/");
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch (e) {
+      console.error("Logout failed", e);
     }
+    localStorage.removeItem("session_token");
+    await refreshUser();
+    navigate("/");
   };
 
   const handleExport = async () => {
@@ -84,7 +82,7 @@ export default function SettingsPage() {
         }}
       >
         <button
-          onClick={() => router.back()}
+          onClick={() => navigate(-1)}
           style={{
             background: "transparent",
             border: "1px solid var(--border)",
@@ -242,7 +240,7 @@ export default function SettingsPage() {
           }}
         >
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="btn"
             style={{
               color: "var(--destructive)",
@@ -254,6 +252,18 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        confirmLabel="Logout"
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleLogout();
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 }

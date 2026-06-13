@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, waitFor, cleanup } from "@testing-library/react";
 import type { WikiLinkRef } from "@/lib/linkifyWikilinks";
 
-const mockPush = vi.hoisted(() => vi.fn());
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
-}));
+vi.mock("react-router", () => import("@/__mocks__/react-router"));
 
 vi.mock("@/hooks/useWasm", () => ({
   useWasm: () => ({ isReady: true, error: null }),

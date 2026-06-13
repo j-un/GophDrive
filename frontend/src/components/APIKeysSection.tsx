@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Check, Loader2, Key } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -39,10 +37,10 @@ export function APIKeysSection() {
   }, [isDemo]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchStatus();
   }, [fetchStatus]);
 
-  // Demo sessions cannot issue API keys.
   if (isDemo) return null;
 
   const doIssue = async () => {
@@ -162,7 +160,6 @@ export function APIKeysSection() {
         </p>
       )}
 
-      {/* New key disclosure modal */}
       {newKey && (
         <div
           style={{
@@ -253,7 +250,6 @@ export function APIKeysSection() {
         </div>
       )}
 
-      {/* Key status */}
       {!loading && !newKey && status && (
         <div style={{ marginBottom: "1rem" }}>
           {status.has_key ? (
@@ -311,7 +307,6 @@ export function APIKeysSection() {
         </div>
       )}
 
-      {/* Actions */}
       {!loading && (
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <button

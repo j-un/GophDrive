@@ -1,8 +1,5 @@
-"use client";
-
 import React, { useEffect, useState, useRef } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router";
 import { FileText, Plus, RefreshCw, Folder, FolderPlus } from "lucide-react";
 import {
   FileItem,
@@ -38,7 +35,7 @@ export default function NoteList({
   tagFilter,
   onAfterMutation,
 }: NoteListProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [notes, setNotes] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,9 +140,13 @@ export default function NoteList({
     }
   };
 
+  const loadNotesRef = useRef(loadNotes);
   useEffect(() => {
-    loadNotes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadNotesRef.current = loadNotes;
+  });
+
+  useEffect(() => {
+    loadNotesRef.current();
   }, [folderId, searchQuery, tagFilter, isOffline]);
 
   // Close menu when clicking outside
@@ -161,9 +162,9 @@ export default function NoteList({
 
   const navigateToFolder = (id: string | null) => {
     if (id) {
-      router.push(`/drive/?folderId=${id}`);
+      navigate(`/drive/?folderId=${id}`);
     } else {
-      router.push("/drive/");
+      navigate("/drive/");
     }
   };
 
@@ -172,7 +173,7 @@ export default function NoteList({
     setIsSubmitting(true);
     try {
       const note = await apiCreateNote(name, "# " + name, folderId);
-      router.push(`/note/?id=${note.id}`);
+      navigate(`/note/?id=${note.id}`);
     } catch (error) {
       const err = error as Error;
       console.error("Failed to create note:", err);
@@ -580,7 +581,7 @@ export default function NoteList({
               {notes.map((note) => (
                 <div key={note.id} style={{ position: "relative" }}>
                   <Link
-                    href={`/note/?id=${note.id}`}
+                    to={`/note/?id=${note.id}`}
                     className="glass group"
                     style={{
                       padding: "1rem",
@@ -1046,7 +1047,7 @@ export default function NoteList({
                 notes.map((note) => (
                   <div key={note.id} style={{ position: "relative" }}>
                     <Link
-                      href={`/note/?id=${note.id}`}
+                      to={`/note/?id=${note.id}`}
                       className="glass"
                       style={{
                         ...cardStyle,

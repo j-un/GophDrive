@@ -22,14 +22,10 @@ vi.mock("@/lib/api", () => ({
   starFile: vi.fn().mockResolvedValue({}),
 }));
 
-const mockPush = vi.hoisted(() => vi.fn());
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
-  useSearchParams: () => new URLSearchParams(),
-}));
+vi.mock("react-router", () => import("@/__mocks__/react-router"));
 
 import { listRecent, listStarred, starFile, type FileItem } from "@/lib/api";
+import { mockNavigate } from "@/__mocks__/react-router";
 import { Sidebar } from "./Sidebar";
 
 const FOLDER_ITEM: FileItem = {
@@ -139,7 +135,7 @@ describe("Sidebar refreshTrigger", () => {
 
 describe("Sidebar Starred section", () => {
   beforeEach(() => {
-    mockPush.mockClear();
+    mockNavigate.mockClear();
     vi.mocked(listStarred).mockClear();
     vi.mocked(starFile).mockClear();
   });
@@ -163,7 +159,7 @@ describe("Sidebar Starred section", () => {
     await screen.findByText("StarredFolder");
     fireEvent.click(screen.getByText("StarredFolder"));
     expect(onNavigate).toHaveBeenCalledWith("folder-1");
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("calls router.push and onClose when a starred note is clicked", async () => {
@@ -172,7 +168,7 @@ describe("Sidebar Starred section", () => {
     render(<Sidebar onNavigate={() => {}} onClose={onClose} />);
     await screen.findByText("StarredNote");
     fireEvent.click(screen.getByText("StarredNote"));
-    expect(mockPush).toHaveBeenCalledWith("/note/?id=note-1");
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-1");
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -190,6 +186,6 @@ describe("Sidebar Starred section", () => {
     await screen.findByText("StarredNote");
     fireEvent.click(screen.getByRole("button", { name: "Unstar StarredNote" }));
     await waitFor(() => expect(starFile).toHaveBeenCalled());
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

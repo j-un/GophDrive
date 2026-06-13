@@ -1,5 +1,4 @@
-"use client";
-
+/* eslint-disable react-refresh/only-export-components */
 // TODO(aria-pressed): Derive active-marker state from CodeMirror ViewPlugin to reflect
 // current selection formatting in button aria-pressed attributes (future enhancement).
 

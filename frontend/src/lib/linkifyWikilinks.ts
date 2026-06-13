@@ -30,7 +30,7 @@ export function linkifyWikilinks(html: string, links: WikiLinkRef[]): string {
   // captured and back-referenced (\2) so an opening <pre> only closes on its
   // matching </pre> — a nested <pre><code>…</code></pre> (or any token between
   // </code> and </pre>) is skipped as one unit instead of leaking out.
-  const re = /(<(pre|code)[^>]*>[\s\S]*?<\/\2>)|\[\[([^\[\]\n|#]+?)\]\]/g;
+  const re = /(<(pre|code)[^>]*>[\s\S]*?<\/\2>)|\[\[([^[\]\n|#]+?)\]\]/g;
 
   return html.replace(re, (match, codeBlock, _tag, rawTitle) => {
     if (codeBlock !== undefined) return codeBlock;

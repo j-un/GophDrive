@@ -7,12 +7,14 @@ interface ConflictDialogProps {
   isOpen: boolean;
   onKeepLocal: () => void;
   onKeepRemote: () => void;
+  errorMessage?: string;
 }
 
 export function ConflictDialog({
   isOpen,
   onKeepLocal,
   onKeepRemote,
+  errorMessage,
 }: ConflictDialogProps) {
   if (!isOpen) return null;
 
@@ -64,6 +66,17 @@ export function ConflictDialog({
           The file has been modified on the server since you started editing.
           Which version do you want to keep?
         </p>
+        {errorMessage && (
+          <p
+            style={{
+              color: "var(--destructive, #ef4444)",
+              fontSize: "0.875rem",
+              marginBottom: "1rem",
+            }}
+          >
+            {errorMessage}
+          </p>
+        )}
         <div
           className="flex gap-4 justify-end"
           style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}

@@ -1,7 +1,7 @@
 import styles from "./Footer.module.css";
 
-const privacyPolicyUrl = process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL || "";
-const termsOfServiceUrl = process.env.NEXT_PUBLIC_TERMS_OF_SERVICE_URL || "";
+const privacyPolicyUrl = import.meta.env.VITE_PRIVACY_POLICY_URL || "";
+const termsOfServiceUrl = import.meta.env.VITE_TERMS_OF_SERVICE_URL || "";
 
 function isExternal(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
