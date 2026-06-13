@@ -49,22 +49,19 @@ export class FrontendStack extends cdk.Stack {
       },
     });
 
-    // CloudFront Function for SPA routing (resolve index.html for subdirectories)
+    // CloudFront Function for SPA routing — Vite single index.html fallback
     const rewriteFunction = new cloudfront.Function(this, "RewriteFunction", {
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
     var request = event.request;
     var uri = request.uri;
-    
-    // Check whether the URI is missing a file name.
-    if (uri.endsWith('/')) {
-        request.uri += 'index.html';
-    } 
-    // Check whether the URI is missing a file extension.
-    else if (!uri.includes('.')) {
-        request.uri += '/index.html';
+    // Static assets (have a file extension) pass through to S3 as-is.
+    // {2,12} covers extensions up to ".webmanifest" (11 chars after the dot).
+    if (uri.match(/\\.[a-zA-Z0-9]{2,12}$/)) {
+        return request;
     }
-    
+    // All other paths (SPA routes) return the single index.html entry point.
+    request.uri = '/index.html';
     return request;
 }
       `),
