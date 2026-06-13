@@ -136,8 +136,7 @@ function handler(event) {
           customHeaders: [
             {
               header: "Permissions-Policy",
-              value:
-                "camera=(), microphone=(), geolocation=(), browsing-topics=(), attribution-reporting=()",
+              value: "camera=(), microphone=(), geolocation=()",
               override: true,
             },
             {
