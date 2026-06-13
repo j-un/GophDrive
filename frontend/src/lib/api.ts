@@ -1,10 +1,4 @@
-"use client";
-
-/**
- * Central API helper that adds Authorization header from stored token.
- */
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 // Replaceable fetch function for testability
 let fetchFn: typeof fetch = (...args: Parameters<typeof fetch>) =>
@@ -85,7 +79,6 @@ export async function apiFetch(
     headers,
     credentials: "include",
     cache: "no-store",
-    next: { revalidate: 0 },
   });
 
   if (res.status === 401) {

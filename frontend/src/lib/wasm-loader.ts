@@ -18,7 +18,7 @@ export const initWasm = async () => {
 
   if (wasmPromise) return wasmPromise;
 
-  wasmPromise = new Promise<void>(async (resolve, reject) => {
+  wasmPromise = new Promise<void>((resolve, reject) => {
     if (!window.Go) {
       console.error("Go runtime not found. Ensure wasm_exec.js is loaded.");
       reject(new Error("Go runtime not found"));
@@ -27,18 +27,17 @@ export const initWasm = async () => {
 
     const go = new window.Go();
 
-    try {
-      const result = await WebAssembly.instantiateStreaming(
-        fetch("/core.wasm"),
-        go.importObject,
-      );
-      go.run(result.instance);
-      console.log("Wasm initialized");
-      resolve();
-    } catch (err) {
-      console.error("Failed to load Wasm", err);
-      reject(err);
-    }
+    WebAssembly.instantiateStreaming(fetch("/core.wasm"), go.importObject)
+      .then((result) => {
+        go.run(result.instance);
+        console.log("Wasm initialized");
+        resolve();
+      })
+      .catch((err) => {
+        console.error("Failed to load Wasm", err);
+        wasmPromise = null;
+        reject(err);
+      });
   });
 
   return wasmPromise;

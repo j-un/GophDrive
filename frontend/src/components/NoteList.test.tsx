@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { mockNavigate } from "@/__mocks__/react-router";
 import { deleteFile } from "@/lib/api";
 import { getAllNotesLocal } from "@/lib/idb";
 import { useOffline } from "@/hooks/useOffline";
@@ -17,7 +18,7 @@ const mockListFiles = vi.hoisted(() =>
   ]),
 );
 
-const mockPush = vi.hoisted(() => vi.fn());
+vi.mock("react-router", () => import("@/__mocks__/react-router"));
 
 vi.mock("@/lib/api", () => ({
   listFiles: mockListFiles,
@@ -37,10 +38,6 @@ vi.mock("@/lib/idb", () => ({
 
 vi.mock("@/hooks/useOffline", () => ({
   useOffline: vi.fn().mockReturnValue(false),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
 }));
 
 import NoteList from "./NoteList";
@@ -107,7 +104,7 @@ describe("NoteList folder display", () => {
 
     fireEvent.click(await screen.findByText("My Folder"));
 
-    expect(mockPush).toHaveBeenCalledWith("/drive/?folderId=folder-1");
+    expect(mockNavigate).toHaveBeenCalledWith("/drive/?folderId=folder-1");
   });
 });
 

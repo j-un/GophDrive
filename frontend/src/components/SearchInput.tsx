@@ -1,12 +1,10 @@
-"use client";
-
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useNavigate, useSearchParams } from "react-router";
 import { Search } from "lucide-react";
 
 export default function SearchInput() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
 
   // Sync with URL q param so the input reflects current search
@@ -22,10 +20,7 @@ export default function SearchInput() {
 
   const handleSearch = () => {
     if (query.trim()) {
-      router.push(`/drive/?q=${encodeURIComponent(query)}`);
-    } else {
-      // If empty, maybe go back to notes list/home?
-      // router.push('/notes');
+      navigate(`/drive/?q=${encodeURIComponent(query)}`);
     }
   };
 
@@ -63,9 +58,9 @@ export default function SearchInput() {
           borderBottom: "1px solid var(--border)",
           outline: "none",
           background: "transparent",
-          height: "24px", // Reduced height to move underline up
-          alignSelf: "center", // Center vertically
-          padding: 0, // Reset padding
+          height: "24px",
+          alignSelf: "center",
+          padding: 0,
         }}
       />
     </div>

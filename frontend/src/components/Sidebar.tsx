@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate, Link } from "react-router";
 import {
   Folder,
   ChevronRight,
@@ -39,7 +39,7 @@ export function Sidebar({
     onNavigate(folderId);
     onClose?.();
   };
-  const router = useRouter();
+  const navigate = useNavigate();
   const [starredItems, setStarredItems] = useState<FileItem[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +75,7 @@ export function Sidebar({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadFolders();
   }, [refreshTrigger]);
 
@@ -200,11 +201,11 @@ export function Sidebar({
                 {starredItems.map((item) => {
                   const isFolder =
                     item.mimeType === "application/vnd.google-apps.folder";
-                  const navigate = () => {
+                  const handleClick = () => {
                     if (isFolder) {
                       handleNavigate(item.id);
                     } else {
-                      router.push(`/note/?id=${item.id}`);
+                      navigate(`/note/?id=${item.id}`);
                       onClose?.();
                     }
                   };
@@ -213,11 +214,11 @@ export function Sidebar({
                       key={`starred-${item.id}`}
                       role="button"
                       tabIndex={0}
-                      onClick={navigate}
+                      onClick={handleClick}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          navigate();
+                          handleClick();
                         }
                       }}
                       style={{
@@ -378,7 +379,7 @@ export function Sidebar({
                     <div
                       key={`recent-${file.id}`}
                       onClick={() => {
-                        router.push(`/note/?id=${file.id}`);
+                        navigate(`/note/?id=${file.id}`);
                         onClose?.();
                       }}
                       style={{
@@ -446,9 +447,9 @@ export function Sidebar({
                 }}
               >
                 {tags.map((tag) => (
-                  <a
+                  <Link
                     key={tag.name}
-                    href={`/drive/?tag=${encodeURIComponent(tag.name)}`}
+                    to={`/drive/?tag=${encodeURIComponent(tag.name)}`}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -467,7 +468,7 @@ export function Sidebar({
                     <span style={{ opacity: 0.6, fontSize: "0.65rem" }}>
                       {tag.count}
                     </span>
-                  </a>
+                  </Link>
                 ))}
               </div>
               <div
@@ -484,7 +485,7 @@ export function Sidebar({
           style={{ padding: "0.75rem", borderTop: "1px solid var(--border)" }}
         >
           <button
-            onClick={() => router.push("/settings/")}
+            onClick={() => navigate("/settings/")}
             style={{
               display: "flex",
               alignItems: "center",

@@ -1,13 +1,14 @@
-"use client";
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   ReactNode,
   useCallback,
 } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useNavigate, useLocation } from "react-router";
 import { getUser, User } from "@/lib/api";
 
 interface AuthContextType {
@@ -25,21 +26,22 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  useEffect(() => {
+    navigateRef.current = navigate;
+  });
+  const location = useLocation();
+  const pathname = location.pathname;
 
   const fetchUser = useCallback(async () => {
-    console.log("AuthContext: fetchUser started");
-
-    // Extract token from URL if present (e.g. after demo-login)
-    if (typeof window !== "undefined") {
+    // Only extract ?token= on the root path to prevent session hijacking via
+    // crafted links on other routes (e.g. /drive/?token=<attacker_jwt>).
+    if (window.location.pathname === "/") {
       const urlParams = new URLSearchParams(window.location.search);
       const token = urlParams.get("token");
       if (token) {
-        // We must import setToken from api or use localStorage directly.
-        // Since this runs before page.tsx's effect, it ensures token is set.
         localStorage.setItem("session_token", token);
-        // Also remove it from URL so it doesn't linger
         window.history.replaceState(
           {},
           document.title,
@@ -50,13 +52,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const u = await getUser();
-      console.log("AuthContext: getUser success:", u);
       setUser(u);
+      // Restore deep link saved before auth redirect (see redirect effect below).
+      const redirect = sessionStorage.getItem("authRedirect");
+      if (redirect) {
+        sessionStorage.removeItem("authRedirect");
+        navigateRef.current(redirect);
+      }
     } catch (error) {
       const e = error as Error;
       if (e.message && e.message.includes("401")) {
         // Not an error, just means user is not logged in
-        console.log("AuthContext: User is not logged in (401).");
       } else {
         console.error(
           "AuthContext: Failed to fetch user. Detailed error:",
@@ -65,12 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(null);
     } finally {
-      console.log("AuthContext: setLoading(false)");
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchUser();
   }, [fetchUser]);
 
@@ -89,14 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isPublic) return;
 
     if (!user) {
-      console.warn(
-        "AuthContext: Redirecting to / because user is null on protected route:",
-        pathname,
-      );
-      router.push("/");
+      // Save the intended destination so fetchUser can restore it after login.
+      sessionStorage.setItem("authRedirect", pathname + location.search);
+      navigate("/");
       return;
     }
-  }, [user, loading, pathname, router]);
+  }, [user, loading, pathname, location.search, navigate]);
 
   return (
     <AuthContext.Provider value={{ user, loading, refreshUser: fetchUser }}>

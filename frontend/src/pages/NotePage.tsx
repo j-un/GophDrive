@@ -1,5 +1,3 @@
-"use client";
-
 import React, {
   useEffect,
   useState,
@@ -7,8 +5,7 @@ import React, {
   Suspense,
   useRef,
 } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useSearchParams, useNavigate, Link } from "react-router";
 import {
   Check,
   Save,
@@ -50,8 +47,8 @@ interface RemoteData {
 }
 
 function NoteContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const id = searchParams.get("id");
 
   const [content, setContent] = useState("");
@@ -66,6 +63,7 @@ function NoteContent() {
   const [lockExpires, setLockExpires] = useState<number | null>(null);
   const [conflictLocal, setConflictLocal] = useState<string | null>(null);
   const [conflictRemote, setConflictRemote] = useState<RemoteData | null>(null);
+  const [conflictError, setConflictError] = useState<string | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [noteLinks, setNoteLinks] = useState<LinkRef[]>([]);
   const [noteBacklinks, setNoteBacklinks] = useState<BacklinkEntry[]>([]);
@@ -84,6 +82,7 @@ function NoteContent() {
   const isSyncing = useRef(false);
   const copyTimerRef = useRef<number | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+  const noteLoadRef = useRef(0);
 
   const handleEditorScroll = () => {
     if (
@@ -123,14 +122,19 @@ function NoteContent() {
 
   useEffect(() => {
     if (!id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError("No Note ID provided");
       setLoading(false);
       return;
     }
 
+    setLoading(true);
+    setError(null);
+    const requestId = ++noteLoadRef.current;
+
     async function load() {
-      // Try to load from local first if offline or as fallback
       const localNote = await getNoteLocal(id!);
+      if (requestId !== noteLoadRef.current) return;
 
       if (!navigator.onLine) {
         if (localNote) {
@@ -156,6 +160,7 @@ function NoteContent() {
         const lockRes = await apiFetch(`/sessions/${id}/lock`, {
           method: "POST",
         });
+        if (requestId !== noteLoadRef.current) return;
         if (lockRes.status === 409 || lockRes.status === 423) {
           try {
             const lockData = await parseJson<{
@@ -177,11 +182,13 @@ function NoteContent() {
           console.error("Failed to acquire lock", lockRes.status);
         }
       } catch (e) {
+        if (requestId !== noteLoadRef.current) return;
         console.error("Lock error", e);
       }
 
       try {
         const res = await apiFetch(`/notes/${id}`);
+        if (requestId !== noteLoadRef.current) return;
         if (res.status === 401) {
           setError("Unauthorized. Please login.");
           return;
@@ -215,7 +222,6 @@ function NoteContent() {
         const headerEtag = res.headers.get("ETag");
         setEtag(headerEtag || data.etag || "");
 
-        // Update local cache
         saveNoteLocal({
           id: id!,
           content: data.content || "",
@@ -224,6 +230,7 @@ function NoteContent() {
           dirty: false,
         });
       } catch (error) {
+        if (requestId !== noteLoadRef.current) return;
         const e = error as Error;
         if (localNote) {
           setContent(localNote.content);
@@ -233,11 +240,11 @@ function NoteContent() {
           setError(e.message || String(error));
         }
       } finally {
-        setLoading(false);
+        if (requestId === noteLoadRef.current) setLoading(false);
       }
     }
     load();
-  }, [id]);
+  }, [id, isOffline]);
 
   useEffect(() => {
     if (parentId) {
@@ -245,6 +252,7 @@ function NoteContent() {
         setBreadcrumbs(crumbs);
       });
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBreadcrumbs([{ id: "", name: "Home" }]);
     }
   }, [parentId]);
@@ -259,7 +267,6 @@ function NoteContent() {
     async (newContent: string) => {
       if (!id || lockedBy) return;
 
-      // Offline Save
       if (isOffline) {
         await saveNoteLocal({
           id,
@@ -308,9 +315,6 @@ function NoteContent() {
         setEtag(newEtag ?? "");
         if (data.links !== undefined) {
           const incoming = data.links;
-          // The save response carries no currentTitle (enrichment is GET-only).
-          // Preserve the last enriched currentTitle per targetId so a renamed
-          // target keeps its up-to-date label until the next full GET.
           setNoteLinks((prev) => {
             const prevTitle = new Map(
               prev
@@ -325,7 +329,6 @@ function NoteContent() {
           });
         }
 
-        // Update local cache (clean)
         const now = new Date().toISOString();
         setModifiedTime(now);
         saveNoteLocal({
@@ -356,21 +359,19 @@ function NoteContent() {
     [id, lockedBy, etag, isOffline, title],
   );
 
-  // Autosave
   const {
     isSaving,
     hasUnsavedChanges,
     error: autoSaveError,
   } = useAutoSave(content, saveNote, 2000, !loading && !error && !!id);
 
-  // Heartbeat
   useHeartbeat(id ?? "", !lockedBy && !loading && !error && !!id);
 
-  // Conflict Handlers
   const handleKeepLocal = () => {
     if (!conflictRemote || !id) return;
 
     const newContent = conflictLocal || content;
+    setConflictError(null);
 
     apiFetch(`/notes/${id}`, {
       method: "PUT",
@@ -379,17 +380,23 @@ function NoteContent() {
         "Content-Type": "application/json",
         "If-Match": conflictRemote.etag,
       },
-    }).then(async (res) => {
-      if (res.ok) {
-        const data = await parseJson<{ etag?: string }>(res);
-        setEtag(res.headers.get("ETag") || data.etag || "");
-        setConflictRemote(null);
-        setConflictLocal(null);
-      } else {
-        const text = await res.text();
-        alert(`Failed to overwrite: ${text}`);
-      }
-    });
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await parseJson<{ etag?: string }>(res);
+          setEtag(res.headers.get("ETag") || data.etag || "");
+          setConflictRemote(null);
+          setConflictLocal(null);
+          setConflictError(null);
+        } else {
+          const text = await res.text();
+          setConflictError(`Failed to overwrite: ${text}`);
+        }
+      })
+      .catch((err: Error) => {
+        console.error("handleKeepLocal network error", err);
+        setConflictError(`Network error: ${err.message}`);
+      });
   };
 
   const handleKeepRemote = () => {
@@ -408,7 +415,6 @@ function NoteContent() {
     }
     try {
       if (isOffline) {
-        // Offline rename logic
         setTitle(newName);
         await saveNoteLocal({
           id,
@@ -420,7 +426,6 @@ function NoteContent() {
       } else {
         await renameNote(id, newName);
         setTitle(newName);
-        // Update local
         await saveNoteLocal({
           id,
           content,
@@ -446,7 +451,7 @@ function NoteContent() {
     setIsMenuOpen(false);
     try {
       const newNote = await duplicateNote(id);
-      router.push(`/note/?id=${newNote.id}`);
+      navigate(`/note/?id=${newNote.id}`);
     } catch (error) {
       const e = error as Error;
       console.error("Duplicate failed", e);
@@ -466,10 +471,9 @@ function NoteContent() {
         await deleteNoteLocal(id);
       } else {
         await deleteFile(id);
-        // Also remove from local
         await deleteNoteLocal(id);
       }
-      router.push("/drive/");
+      navigate("/drive/");
     } catch (error) {
       const e = error as Error;
       console.error("Delete failed", e);
@@ -507,7 +511,7 @@ function NoteContent() {
         <p style={{ color: "var(--destructive)", fontSize: "1.125rem" }}>
           {error}
         </p>
-        <Link href="/" className="btn btn-primary">
+        <Link to="/" className="btn btn-primary">
           Go Home
         </Link>
       </div>
@@ -566,7 +570,7 @@ function NoteContent() {
                   </span>
                 )}
                 <Link
-                  href={bc.id ? `/drive/?folderId=${bc.id}` : "/drive/"}
+                  to={bc.id ? `/drive/?folderId=${bc.id}` : "/drive/"}
                   className="hover:underline"
                   style={{
                     display: "flex",
@@ -636,7 +640,7 @@ function NoteContent() {
                   fontSize: "1rem",
                   margin: 0,
                   cursor: lockedBy ? "default" : "pointer",
-                  border: "1px solid transparent", // To prevent layout shift
+                  border: "1px solid transparent",
                 }}
                 onMouseEnter={(e) => {
                   if (!lockedBy)
@@ -943,7 +947,7 @@ function NoteContent() {
                     {noteBacklinks.map((bl) => (
                       <li key={bl.id}>
                         <Link
-                          href={`/note/?id=${bl.id}`}
+                          to={`/note/?id=${bl.id}`}
                           style={{
                             fontSize: "0.875rem",
                             padding: "0.125rem 0.5rem",
@@ -970,6 +974,7 @@ function NoteContent() {
         isOpen={!!conflictRemote}
         onKeepLocal={handleKeepLocal}
         onKeepRemote={handleKeepRemote}
+        errorMessage={conflictError ?? undefined}
       />
     </div>
   );

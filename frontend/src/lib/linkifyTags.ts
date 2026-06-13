@@ -4,7 +4,7 @@
 export function linkifyTags(html: string): string {
   // /mu: m for ^ line-start matching, u for \p{} Unicode property escapes
   return html.replace(
-    /(<(?:pre|code)[^>]*>[\s\S]*?<\/(?:pre|code)>)|([\s>　、。，．！？「」『』【】（）\[\]]|^)#([\p{L}_][\p{L}\p{N}_\-/]*)/gmu,
+    /(<(?:pre|code)[^>]*>[\s\S]*?<\/(?:pre|code)>)|([\s>\u3000、。，．！？「」『』【】（）[\]]|^)#([\p{L}_][\p{L}\p{N}_\-/]*)/gmu,
     (match, codeBlock, prefix, tag) => {
       if (codeBlock !== undefined) return codeBlock;
       const cleaned = tag.replace(/[-_/]+$/, "");

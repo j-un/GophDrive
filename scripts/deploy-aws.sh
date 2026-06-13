@@ -41,19 +41,30 @@ if [ -n "${CUSTOM_DOMAIN_NAME}" ]; then
   export FRONTEND_URL="https://${CUSTOM_DOMAIN_NAME}"
 fi
 
-# Note: NEXT_PUBLIC_API_URL should be empty for CloudFront proxying (relative paths)
-export NEXT_PUBLIC_API_URL="/api"
+# Note: VITE_API_URL should be empty for CloudFront proxying (relative paths)
+export VITE_API_URL="/api"
 
 # Optional: Privacy Policy and Terms of Service URLs
 # These are baked into the frontend at build time.
 if [ -n "${PRIVACY_POLICY_URL}" ]; then
-  export NEXT_PUBLIC_PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL}"
+  export VITE_PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL}"
   echo "  Privacy Policy URL: ${PRIVACY_POLICY_URL}"
 fi
 if [ -n "${TERMS_OF_SERVICE_URL}" ]; then
-  export NEXT_PUBLIC_TERMS_OF_SERVICE_URL="${TERMS_OF_SERVICE_URL}"
+  export VITE_TERMS_OF_SERVICE_URL="${TERMS_OF_SERVICE_URL}"
   echo "  Terms of Service URL: ${TERMS_OF_SERVICE_URL}"
 fi
+
+# Optional: App branding / legal page content (baked in at build time).
+# Defaults are set in PrivacyPage.tsx / TermsPage.tsx if these are unset.
+# APP_NAME         → VITE_APP_NAME          (default: "GophDrive")
+# CONTACT_EMAIL    → VITE_CONTACT_EMAIL     (default: "the administrator")
+# ENCRYPTION_METHOD→ VITE_ENCRYPTION_METHOD (default: "AES-256")
+# JURISDICTION     → VITE_JURISDICTION      (default: "Your Jurisdiction")
+[ -n "${APP_NAME}" ]          && export VITE_APP_NAME="${APP_NAME}"
+[ -n "${CONTACT_EMAIL}" ]     && export VITE_CONTACT_EMAIL="${CONTACT_EMAIL}"
+[ -n "${ENCRYPTION_METHOD}" ] && export VITE_ENCRYPTION_METHOD="${ENCRYPTION_METHOD}"
+[ -n "${JURISDICTION}" ]      && export VITE_JURISDICTION="${JURISDICTION}"
 
 # ---- SSM Parameter Store: Manage Secrets ----
 echo "Managing secrets in SSM Parameter Store..."

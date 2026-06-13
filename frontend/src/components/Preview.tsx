@@ -1,7 +1,5 @@
-"use client";
-
 import React, { useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { useWasm } from "@/hooks/useWasm";
 import { linkifyTags } from "@/lib/linkifyTags";
 import { linkifyWikilinks, WikiLinkRef } from "@/lib/linkifyWikilinks";
@@ -16,7 +14,7 @@ interface PreviewProps {
 
 export function Preview({ markdown, links, className }: PreviewProps) {
   const { isReady } = useWasm();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // isReady gates window access — safe in SSR/static-generation contexts where
   // isReady stays false and window is undefined.
@@ -44,10 +42,10 @@ export function Preview({ markdown, links, className }: PreviewProps) {
       if (anchor) {
         e.preventDefault();
         const noteId = anchor.getAttribute("data-note-id");
-        if (noteId) router.push(`/note/?id=${noteId}`);
+        if (noteId) navigate(`/note/?id=${noteId}`);
       }
     },
-    [router],
+    [navigate],
   );
 
   if (!isReady) {

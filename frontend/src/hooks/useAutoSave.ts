@@ -15,6 +15,7 @@ export function useAutoSave(
     if (!enabled) return;
 
     if (lastSavedValue === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLastSavedValue(value);
       return;
     }

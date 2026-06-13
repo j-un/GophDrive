@@ -5,5 +5,5 @@
  */
 export function buildShareLink(title: string, url: string): string {
   const trimmed = title.trim();
-  return trimmed ? `[${trimmed.replace(/[\\\[\]]/g, "\\$&")}](${url})` : url;
+  return trimmed ? `[${trimmed.replace(/[\\[\]]/g, "\\$&")}](${url})` : url;
 }

@@ -1,5 +1,3 @@
-"use client";
-
 import React, {
   forwardRef,
   useEffect,
@@ -15,7 +13,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import type { TransactionSpec } from "@codemirror/state";
 
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/ThemeProvider";
 
 export type EditorHandle = {
   runCommand(fn: (state: EditorState) => TransactionSpec): void;
@@ -38,7 +36,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const viewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
