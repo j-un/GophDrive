@@ -10,6 +10,25 @@ interface FrontendStackProps extends cdk.StackProps {
   apiGatewayDomain: string;
 }
 
+// Exported so tests can pin the exact policy string (single source of truth).
+export const STRICT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  // 'unsafe-inline' required: CodeMirror style-mod and framer-motion both inject
+  // <style> elements at runtime with no nonce path available in these libraries.
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 export class FrontendStack extends cdk.Stack {
   public readonly distribution: cloudfront.Distribution;
 
@@ -83,7 +102,7 @@ function handler(event) {
       domainNames = [customDomainName];
     }
 
-    // Security response headers for the frontend (no CSP yet — strict CSP requires Vite migration Phase 2)
+    // Security response headers for the frontend
     const securityHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
       this,
       "SecurityHeadersPolicy",
@@ -103,10 +122,13 @@ function handler(event) {
             accessControlMaxAge: cdk.Duration.days(730),
             includeSubdomains: true,
             // preload registers the domain in browser preload lists — a one-way
-            // commitment; removal takes 6–12 months. Only effective when a custom
-            // domain (customDomainName) is configured; the *.cloudfront.net default
-            // domain is not eligible for preload list submission.
-            preload: true,
+            // commitment; removal takes 6–12 months. *.cloudfront.net is ineligible
+            // for preload submission; only enable when a custom domain is configured.
+            preload: !!(customDomainName && certificateArn),
+            override: true,
+          },
+          contentSecurityPolicy: {
+            contentSecurityPolicy: STRICT_CSP,
             override: true,
           },
         },
