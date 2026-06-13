@@ -1,6 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
-import { FrontendStack } from "../lib/frontend-stack";
+import { FrontendStack, STRICT_CSP } from "../lib/frontend-stack";
 
 describe("FrontendStack", () => {
   let template: Template;
@@ -62,5 +62,22 @@ describe("FrontendStack", () => {
     template.hasOutput("FrontendUrl", {
       Value: Match.anyValue(),
     });
+  });
+
+  test("attaches a strict CSP to the CloudFront ResponseHeadersPolicy", () => {
+    template.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
+      ResponseHeadersPolicyConfig: Match.objectLike({
+        SecurityHeadersConfig: Match.objectLike({
+          ContentSecurityPolicy: {
+            ContentSecurityPolicy: STRICT_CSP,
+            Override: true,
+          },
+        }),
+      }),
+    });
+  });
+
+  test("CSP script-src does not allow unsafe-eval", () => {
+    expect(STRICT_CSP).not.toMatch(/script-src[^;]*'unsafe-eval'(?!-)/);
   });
 });
