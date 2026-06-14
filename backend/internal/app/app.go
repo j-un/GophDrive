@@ -427,8 +427,11 @@ func translateAPIKey(ctx context.Context, headers map[string]string, store apike
 }
 
 // injectSessionCookie appends session_token=<jwt> to the request Cookie header
-// so that downstream GetTokenString (cookie-only) can find it. Existing cookies
-// are preserved. The header name is normalised to canonical "Cookie".
+// so that downstream GetTokenString (cookie-only) can find it. Any existing
+// value in req.Headers["Cookie"] (case-insensitive) is preserved and
+// concatenated. req.MultiValueHeaders Cookie entries are left untouched;
+// GetTokenString reads both bags, so the injected token is still found.
+// The header name is normalised to canonical "Cookie".
 func injectSessionCookie(req *events.APIGatewayProxyRequest, tok string) {
 	if req.Headers == nil {
 		req.Headers = make(map[string]string)
