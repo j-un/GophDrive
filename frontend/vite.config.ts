@@ -20,6 +20,7 @@ export default defineConfig({
       strategies: "generateSW",
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             // Must use a function — Workbox matches against the full URL string,
