@@ -316,7 +316,7 @@ export async function getBreadcrumbs(
         `Failed to fetch breadcrumb for ${currentId}. This might be due to permissions (e.g. parent folder created outside the app). Stopping traversal.`,
       );
       // If it's a 404/403 (likely), we just stop here and show what we have.
-      // If it's a 401, apiFetch would have cleared the token and redirected?
+      // On 401, apiFetch attempts a refresh once; if that also fails, the error propagates here.
       // "Failed to fetch file" comes from apiFetch throwing error.
       if (e.message) {
         console.warn("Breadcrumb Error Message:", e.message);

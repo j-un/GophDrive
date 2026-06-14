@@ -45,6 +45,9 @@ function fakeFetch(
 }
 
 describe("apiFetch", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
   afterEach(() => {
     resetFetchFn();
   });
@@ -69,14 +72,16 @@ describe("apiFetch", () => {
     expect(init.headers["X-Requested-With"]).toBe("XMLHttpRequest");
   });
 
-  it("does not write to localStorage on 401", async () => {
+  it("does not touch localStorage on 401 (Cookie-only auth)", async () => {
     const mockFetch = fakeFetch(401);
     setFetchFn(mockFetch);
-    const spy = vi.spyOn(localStorage, "setItem");
+    const setSpy = vi.spyOn(localStorage, "setItem");
+    const removeSpy = vi.spyOn(localStorage, "removeItem");
 
     await apiFetch("/test");
 
-    expect(spy).not.toHaveBeenCalled();
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
   it("retries after 401 via refresh: no Authorization, X-Requested-With present, original init preserved", async () => {
