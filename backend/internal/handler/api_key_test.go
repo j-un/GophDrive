@@ -41,7 +41,7 @@ func newReq(method, path, token, body string) events.APIGatewayProxyRequest {
 		Body:       body,
 	}
 	if token != "" {
-		req.Headers = map[string]string{"Authorization": "Bearer " + token}
+		req.Headers = map[string]string{"Cookie": "session_token=" + token}
 	}
 	return req
 }

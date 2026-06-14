@@ -31,8 +31,8 @@ func makeRequest(method, path, body string) events.APIGatewayProxyRequest {
 		Path:       path,
 		Body:       body,
 		Headers: map[string]string{
-			"Authorization": "Bearer " + makeToken(testUserID),
-			"Content-Type":  "application/json",
+			"Cookie":       "session_token=" + makeToken(testUserID),
+			"Content-Type": "application/json",
 		},
 		PathParameters: map[string]string{},
 	}

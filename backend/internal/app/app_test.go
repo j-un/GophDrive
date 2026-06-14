@@ -424,7 +424,7 @@ func TestTranslateAPIKey_CorrectKey(t *testing.T) {
 	const plain, jwtSecret = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", "jwt-secret"
 	store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]) //nolint:errcheck
 
-	newAuth, ok := translateAPIKey(
+	tok, ok := translateAPIKey(
 		context.Background(),
 		map[string]string{"Authorization": "Bearer " + plain},
 		store, jwtSecret,
@@ -432,8 +432,11 @@ func TestTranslateAPIKey_CorrectKey(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true for correct key")
 	}
-	if len(newAuth) < 8 || newAuth[:7] != "Bearer " {
-		t.Errorf("expected 'Bearer <jwt>', got %q", newAuth)
+	if tok == "" {
+		t.Error("expected non-empty session JWT")
+	}
+	if len(tok) >= 7 && tok[:7] == "Bearer " {
+		t.Errorf("expected plain JWT (no Bearer prefix), got %q", tok)
 	}
 }
 
