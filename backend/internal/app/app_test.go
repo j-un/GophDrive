@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -435,7 +436,7 @@ func TestTranslateAPIKey_CorrectKey(t *testing.T) {
 	if tok == "" {
 		t.Error("expected non-empty session JWT")
 	}
-	if len(tok) >= 7 && tok[:7] == "Bearer " {
+	if strings.HasPrefix(tok, "Bearer ") {
 		t.Errorf("expected plain JWT (no Bearer prefix), got %q", tok)
 	}
 }
@@ -618,5 +619,81 @@ func TestAPIKey_RequiresOriginVerify(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("missing X-Origin-Verify: want 403, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+// ---- injectSessionCookie unit tests ----
+
+func TestInjectSessionCookie_NilHeaders(t *testing.T) {
+	req := events.APIGatewayProxyRequest{Headers: nil}
+	injectSessionCookie(&req, "tok-abc")
+	if req.Headers["Cookie"] != "session_token=tok-abc" {
+		t.Errorf("nil-headers: got %q, want session_token=tok-abc", req.Headers["Cookie"])
+	}
+}
+
+func TestInjectSessionCookie_NoExistingCookie(t *testing.T) {
+	req := events.APIGatewayProxyRequest{Headers: map[string]string{"X-Custom": "val"}}
+	injectSessionCookie(&req, "tok-123")
+	if req.Headers["Cookie"] != "session_token=tok-123" {
+		t.Errorf("no-prior-cookie: got %q", req.Headers["Cookie"])
+	}
+	// Original header must be preserved.
+	if req.Headers["X-Custom"] != "val" {
+		t.Errorf("X-Custom was dropped: %v", req.Headers)
+	}
+}
+
+func TestInjectSessionCookie_ExistingCookiePreserved(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{"Cookie": "other=value"},
+	}
+	injectSessionCookie(&req, "tok-xyz")
+	got := req.Headers["Cookie"]
+	if !strings.Contains(got, "other=value") || !strings.Contains(got, "session_token=tok-xyz") {
+		t.Errorf("existing cookie not preserved: got %q", got)
+	}
+	// Canonical key only — no duplicate.
+	if _, hasLower := req.Headers["cookie"]; hasLower {
+		t.Error("duplicate lowercase 'cookie' key left in map")
+	}
+}
+
+func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{"cookie": "prior=1"}, // lowercase
+	}
+	injectSessionCookie(&req, "tok-lower")
+	// The old lowercase key must be gone.
+	if _, hasLower := req.Headers["cookie"]; hasLower {
+		t.Error("lowercase 'cookie' key not removed after normalisation")
+	}
+	got := req.Headers["Cookie"]
+	if !strings.Contains(got, "prior=1") || !strings.Contains(got, "session_token=tok-lower") {
+		t.Errorf("lowercase cookie not preserved: got %q", got)
+	}
+}
+
+// Phase 3c regression: Authorization: Bearer <session-JWT> without a Cookie
+// must no longer authenticate (Bearer read path has been removed).
+func TestBearerSessionJWT_NoLongerAuthenticates(t *testing.T) {
+	ta := newAPIKeyTestApp("bearer-jwt-user", "", "jwt-secret")
+
+	// Mint a valid session JWT directly (not via API key exchange).
+	tok, err := handler.SignSession(handler.SessionClaims{UserID: "bearer-jwt-user"}, 5*60*1e9, "jwt-secret")
+	if err != nil {
+		t.Fatalf("SignSession: %v", err)
+	}
+
+	resp, reqErr := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "GET",
+		Path:       "/api/notes",
+		Headers:    map[string]string{"Authorization": "Bearer " + tok},
+	})
+	if reqErr != nil {
+		t.Fatalf("HandleRequest: %v", reqErr)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Bearer-only session JWT: want 401, got %d (Phase 3c regression)", resp.StatusCode)
 	}
 }
