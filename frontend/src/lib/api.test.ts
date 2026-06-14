@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  getToken,
-  setToken,
-  clearToken,
-  isLoggedIn,
   apiFetch,
   parseJson,
   listFiles,
@@ -28,25 +24,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => {
-      store[key] = value;
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    clear: () => {
-      store = {};
-    },
-  };
-})();
-
-Object.defineProperty(globalThis, "localStorage", { value: localStorageMock });
-
 // Fake fetch helper
 function fakeFetch(
   status: number,
@@ -67,34 +44,7 @@ function fakeFetch(
   } as unknown as Response);
 }
 
-describe("Token management", () => {
-  beforeEach(() => localStorageMock.clear());
-
-  it("setToken stores and getToken retrieves", () => {
-    setToken("abc123");
-    expect(getToken()).toBe("abc123");
-  });
-
-  it("clearToken removes token", () => {
-    setToken("abc123");
-    clearToken();
-    expect(getToken()).toBeNull();
-  });
-
-  it("isLoggedIn returns true when token exists", () => {
-    setToken("abc123");
-    expect(isLoggedIn()).toBe(true);
-  });
-
-  it("isLoggedIn returns false when no token", () => {
-    expect(isLoggedIn()).toBe(false);
-  });
-});
-
 describe("apiFetch", () => {
-  beforeEach(() => {
-    localStorageMock.clear();
-  });
   afterEach(() => {
     resetFetchFn();
   });
@@ -102,7 +52,6 @@ describe("apiFetch", () => {
   it("never sends Authorization header", async () => {
     const mockFetch = fakeFetch(200, { ok: true });
     setFetchFn(mockFetch);
-    setToken("my-token"); // token exists but must not be sent
 
     await apiFetch("/test");
 
@@ -123,21 +72,11 @@ describe("apiFetch", () => {
   it("does not write to localStorage on 401", async () => {
     const mockFetch = fakeFetch(401);
     setFetchFn(mockFetch);
-    const spy = vi.spyOn(localStorageMock, "setItem");
+    const spy = vi.spyOn(localStorage, "setItem");
 
     await apiFetch("/test");
 
     expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("does not call clearToken on 401 (Cookie managed by server)", async () => {
-    const mockFetch = fakeFetch(401);
-    setFetchFn(mockFetch);
-    setToken("old-token"); // should remain untouched
-
-    await apiFetch("/test");
-
-    expect(getToken()).toBe("old-token");
   });
 
   it("retries after 401 via refresh: no Authorization, X-Requested-With present, original init preserved", async () => {
@@ -212,7 +151,6 @@ describe("apiFetch", () => {
 describe("API functions", () => {
   afterEach(() => {
     resetFetchFn();
-    localStorageMock.clear();
   });
 
   it("listFiles returns parsed file array", async () => {
@@ -497,7 +435,6 @@ describe("getBreadcrumbs", () => {
   }
 
   beforeEach(() => {
-    localStorageMock.clear();
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
