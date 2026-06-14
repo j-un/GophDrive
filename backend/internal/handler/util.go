@@ -88,7 +88,7 @@ func SignSession(c SessionClaims, ttl time.Duration, jwtSecret string) (string, 
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, mc).SignedString([]byte(jwtSecret))
 }
 
-// GetTokenString extracts the raw JWT string from Authorization header or session_token cookie.
+// GetTokenString extracts the raw JWT string from the session_token cookie.
 func GetTokenString(req events.APIGatewayProxyRequest) string {
 	// Helper for case-insensitive header lookup
 	getHeader := func(name string) string {
@@ -97,18 +97,12 @@ func GetTokenString(req events.APIGatewayProxyRequest) string {
 				return v
 			}
 		}
-		// Also check multi-value headers (API Gateway v1)
 		for k, v := range req.MultiValueHeaders {
 			if strings.EqualFold(k, name) && len(v) > 0 {
 				return v[0]
 			}
 		}
 		return ""
-	}
-
-	authHeader := getHeader("Authorization")
-	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
 	}
 
 	cookieHeaders := []string{}

@@ -242,14 +242,11 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		}
 	}
 
-	// Translate an API key (Bearer <plaintext>) to a short-lived session JWT so
-	// all downstream handlers can verify it via the normal GetSessionClaims path
-	// without modification. Revocation is immediate — DynamoDB lookup on every request.
-	if newAuth, ok := translateAPIKey(ctx, req.Headers, app.apiKeys, app.jwtSecret); ok {
-		if req.Headers == nil {
-			req.Headers = make(map[string]string)
-		}
-		req.Headers["Authorization"] = newAuth
+	// Translate an API key (Bearer <plaintext>) to a short-lived session JWT and
+	// inject it as a Cookie so downstream GetTokenString (cookie-only) can find it.
+	// Revocation is immediate — DynamoDB lookup on every request.
+	if tok, ok := translateAPIKey(ctx, req.Headers, app.apiKeys, app.jwtSecret); ok {
+		injectSessionCookie(&req, tok)
 	}
 
 	if req.PathParameters == nil {
@@ -392,9 +389,9 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 
 // translateAPIKey checks whether the Authorization header carries a valid API key.
 // On match it mints a 5-minute session JWT for the key owner and returns the
-// replacement "Bearer <jwt>" header value. Returns ok=false when no key is
-// provided, the key is unknown, or signing fails. DynamoDB errors are logged
-// and treated as a miss so human sessions are never affected.
+// plain JWT string. Returns ok=false when no key is provided, the key is
+// unknown, or signing fails. DynamoDB errors are logged and treated as a miss
+// so human sessions are never affected.
 // The Authorization header name is checked case-insensitively; the Bearer
 // scheme is also accepted in any case (bearer, BEARER, etc.).
 func translateAPIKey(ctx context.Context, headers map[string]string, store apikey.Store, jwtSecret string) (string, bool) {
@@ -426,7 +423,29 @@ func translateAPIKey(ctx context.Context, headers map[string]string, store apike
 		log.Printf("WARNING: translateAPIKey: SignSession: %v", err)
 		return "", false
 	}
-	return "Bearer " + tok, true
+	return tok, true
+}
+
+// injectSessionCookie appends session_token=<jwt> to the request Cookie header
+// so that downstream GetTokenString (cookie-only) can find it. Existing cookies
+// are preserved. The header name is normalised to canonical "Cookie".
+func injectSessionCookie(req *events.APIGatewayProxyRequest, tok string) {
+	if req.Headers == nil {
+		req.Headers = make(map[string]string)
+	}
+	existing := ""
+	for k, v := range req.Headers {
+		if strings.EqualFold(k, "Cookie") {
+			existing = v
+			delete(req.Headers, k)
+			break
+		}
+	}
+	cookie := "session_token=" + tok
+	if existing != "" {
+		cookie = existing + "; " + cookie
+	}
+	req.Headers["Cookie"] = cookie
 }
 
 // corsResponse adds CORS headers to an API Gateway response.

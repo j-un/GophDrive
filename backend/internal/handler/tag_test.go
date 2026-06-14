@@ -120,7 +120,7 @@ func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
 	// userA creates a note with a tag
 	userAToken := makeToken("user-a")
 	createReq := makeRequest("POST", "/notes", `{"name":"n.md","content":"Tag #secret"}`)
-	createReq.Headers["Authorization"] = "Bearer " + userAToken
+	createReq.Headers["Cookie"] = "session_token=" + userAToken
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	noteH.CreateNote(ctx, createReq)
 
@@ -128,7 +128,7 @@ func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
 	userBToken := makeToken("user-b")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	tagReq := makeRequest("GET", "/tags", "")
-	tagReq.Headers["Authorization"] = "Bearer " + userBToken
+	tagReq.Headers["Cookie"] = "session_token=" + userBToken
 	resp, _ := tagH.ListTags(ctx, tagReq)
 
 	var tags []adapter.TagCount

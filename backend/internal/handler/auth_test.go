@@ -341,7 +341,7 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 	})
 
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{"Authorization": "Bearer " + expired},
+		Headers: map[string]string{"Cookie": "session_token=" + expired},
 	}
 	resp, err := h.Refresh(context.Background(), req)
 	if err != nil {
@@ -404,7 +404,7 @@ func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
 	})
 
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{"Authorization": "Bearer " + demoToken},
+		Headers: map[string]string{"Cookie": "session_token=" + demoToken},
 	}
 	resp, err := h.Refresh(context.Background(), req)
 	if err != nil {
@@ -441,7 +441,7 @@ func TestAuthHandler_Refresh_RejectsTokensOlderThanMaxRefreshAge(t *testing.T) {
 	})
 
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{"Authorization": "Bearer " + stale},
+		Headers: map[string]string{"Cookie": "session_token=" + stale},
 	}
 	resp, _ := h.Refresh(context.Background(), req)
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -467,7 +467,7 @@ func TestAuthHandler_Refresh_RejectsTokensWithoutIat(t *testing.T) {
 	})
 
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{"Authorization": "Bearer " + noIat},
+		Headers: map[string]string{"Cookie": "session_token=" + noIat},
 	}
 	resp, _ := h.Refresh(context.Background(), req)
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -490,7 +490,7 @@ func TestAuthHandler_Refresh_Unauthorized(t *testing.T) {
 
 	t.Run("bad signature", func(t *testing.T) {
 		bad := signClaims(t, "other-secret", jwt.MapClaims{"sub": "user-1"})
-		req := events.APIGatewayProxyRequest{Headers: map[string]string{"Authorization": "Bearer " + bad}}
+		req := events.APIGatewayProxyRequest{Headers: map[string]string{"Cookie": "session_token=" + bad}}
 		resp, _ := h.Refresh(context.Background(), req)
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("status = %d, want 401", resp.StatusCode)
@@ -509,7 +509,7 @@ func TestAuthHandler_GetUser_FromJWTClaims(t *testing.T) {
 		"base_folder_id": "fld",
 		"exp":            time.Now().Add(1 * time.Hour).Unix(),
 	})
-	req := events.APIGatewayProxyRequest{Headers: map[string]string{"Authorization": "Bearer " + tokStr}}
+	req := events.APIGatewayProxyRequest{Headers: map[string]string{"Cookie": "session_token=" + tokStr}}
 
 	resp, err := h.GetUser(context.Background(), req)
 	if err != nil {

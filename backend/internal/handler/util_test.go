@@ -11,23 +11,6 @@ import (
 
 const testJWTSecret = "test-secret"
 
-func TestGetUserID_BearerToken(t *testing.T) {
-	token := makeToken(testUserID)
-	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{
-			"Authorization": "Bearer " + token,
-		},
-	}
-
-	userID, err := handler.GetUserID(req, testJWTSecret)
-	if err != nil {
-		t.Fatalf("GetUserID failed: %v", err)
-	}
-	if userID != testUserID {
-		t.Errorf("Expected userID '%s', got '%s'", testUserID, userID)
-	}
-}
-
 func TestGetUserID_Cookie(t *testing.T) {
 	token := makeToken(testUserID)
 	req := events.APIGatewayProxyRequest{
@@ -59,7 +42,7 @@ func TestGetUserID_NoToken(t *testing.T) {
 func TestGetUserID_InvalidToken(t *testing.T) {
 	req := events.APIGatewayProxyRequest{
 		Headers: map[string]string{
-			"Authorization": "Bearer invalid-jwt-token",
+			"Cookie": "session_token=invalid-jwt-token",
 		},
 	}
 
@@ -70,7 +53,6 @@ func TestGetUserID_InvalidToken(t *testing.T) {
 }
 
 func TestGetUserID_ExpiredToken(t *testing.T) {
-	// Create an expired token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": testUserID,
 		"exp": time.Now().Add(-1 * time.Hour).Unix(),
@@ -79,7 +61,7 @@ func TestGetUserID_ExpiredToken(t *testing.T) {
 
 	req := events.APIGatewayProxyRequest{
 		Headers: map[string]string{
-			"Authorization": "Bearer " + signed,
+			"Cookie": "session_token=" + signed,
 		},
 	}
 
@@ -89,17 +71,17 @@ func TestGetUserID_ExpiredToken(t *testing.T) {
 	}
 }
 
-func TestGetUserID_CaseInsensitiveHeaders(t *testing.T) {
+func TestGetUserID_CaseInsensitiveCookieHeader(t *testing.T) {
 	token := makeToken(testUserID)
 	req := events.APIGatewayProxyRequest{
 		Headers: map[string]string{
-			"authorization": "Bearer " + token, // lowercase
+			"cookie": "session_token=" + token, // lowercase header name
 		},
 	}
 
 	userID, err := handler.GetUserID(req, testJWTSecret)
 	if err != nil {
-		t.Fatalf("GetUserID with lowercase header failed: %v", err)
+		t.Fatalf("GetUserID with lowercase cookie header failed: %v", err)
 	}
 	if userID != testUserID {
 		t.Errorf("Expected userID '%s', got '%s'", testUserID, userID)
