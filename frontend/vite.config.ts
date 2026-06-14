@@ -24,8 +24,11 @@ export default defineConfig({
           {
             // Must use a function — Workbox matches against the full URL string,
             // so a regex like /^\/api\// would never match "https://…/api/…".
-            urlPattern: ({ url }: { url: URL }) =>
-              url.pathname.startsWith("/api/"),
+            // Exclude navigate-mode requests (link clicks like /api/auth/demo-login)
+            // so the browser handles the 302 + Set-Cookie natively instead of via
+            // a SW fetch() that swallows redirect cookies.
+            urlPattern: ({ url, request }: { url: URL; request: Request }) =>
+              url.pathname.startsWith("/api/") && request.mode !== "navigate",
             handler: "NetworkOnly",
           },
           {
