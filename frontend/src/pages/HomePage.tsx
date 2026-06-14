@@ -45,7 +45,7 @@ function HomeContent() {
         }}
       >
         <a
-          href={`${import.meta.env.VITE_API_URL || ""}/auth/login`}
+          href="/api/auth/login"
           className="btn btn-primary"
           style={{
             width: "100%",
@@ -60,7 +60,7 @@ function HomeContent() {
           Login with Google
         </a>
         <a
-          href={`${import.meta.env.VITE_API_URL || ""}/auth/demo-login`}
+          href="/api/auth/demo-login"
           className="btn"
           style={{
             width: "100%",

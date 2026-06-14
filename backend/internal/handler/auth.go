@@ -268,7 +268,6 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 	response := map[string]interface{}{
 		"id":             sc.UserID,
 		"base_folder_id": sc.BaseFolderID,
-		"token":          signed,
 	}
 	body, _ := json.Marshal(response)
 
@@ -344,7 +343,7 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusFound,
 		Headers: map[string]string{
-			"Location": fmt.Sprintf("%s/?token=%s", h.deps.FrontendURL, signed),
+			"Location": fmt.Sprintf("%s/?success=true&demo=true", h.deps.FrontendURL),
 		},
 		MultiValueHeaders: map[string][]string{
 			"Set-Cookie": {cookie},

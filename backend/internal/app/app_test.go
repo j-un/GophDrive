@@ -14,6 +14,168 @@ import (
 	"github.com/jun/gophdrive/backend/internal/handler"
 )
 
+const csrfFrontendURL = "http://localhost:5173"
+
+// newCSRFTestApp builds a minimal App for CSRF tests.
+// apiGatewaySecret is intentionally empty so the X-Origin-Verify gate passes
+// (both sides are "" → condition false → not blocked).
+func newCSRFTestApp() *App {
+	p := dynamo.NewProvider(nil)
+	store := apikey.NewInMemoryStore()
+	return &App{
+		noteHandler:   handler.NewNoteHandler(p, "csrf-secret"),
+		searchHandler: handler.NewSearchHandler(p, "csrf-secret"),
+		exportHandler: handler.NewExportHandler(p, "csrf-secret"),
+		tagHandler:    handler.NewTagHandler(p, "csrf-secret"),
+		graphHandler:  handler.NewGraphHandler(p, "csrf-secret"),
+		apiKeyHandler: handler.NewAPIKeyHandler(store, "csrf-secret"),
+		apiKeys:       store,
+		jwtSecret:     "csrf-secret",
+		frontendURL:   csrfFrontendURL,
+	}
+}
+
+func TestCSRF_GETPassesWithoutOrigin(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "GET",
+		Path:       "/api/notes",
+		Headers:    map[string]string{},
+	})
+	// 401 because no auth — but NOT 403 (CSRF gate does not apply to GET)
+	if resp.StatusCode == http.StatusForbidden {
+		t.Errorf("GET without Origin: want non-403, got 403 (CSRF gate should not apply to GET)")
+	}
+}
+
+func TestCSRF_POSTBlockedOnBadOrigin(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"Origin":           "http://evil.example",
+			"X-Requested-With": "XMLHttpRequest",
+		},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("bad Origin: want 403, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestCSRF_POSTBlockedOnEmptyOrigin(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"X-Requested-With": "XMLHttpRequest",
+			// Origin omitted — most common CSRF attack vector (form POST)
+		},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("empty Origin: want 403, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestCSRF_POSTBlockedOnMissingXRW(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"Origin": csrfFrontendURL,
+			// X-Requested-With omitted
+		},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("missing X-Requested-With: want 403, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestCSRF_POSTPassesWithCorrectHeaders(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"Origin":           csrfFrontendURL,
+			"X-Requested-With": "XMLHttpRequest",
+		},
+	})
+	// 401 because no auth — but NOT 403 (CSRF gate passed)
+	if resp.StatusCode == http.StatusForbidden {
+		t.Errorf("correct CSRF headers: want non-403, got 403")
+	}
+}
+
+func TestCSRF_RefreshPassesWithCorrectHeaders(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/auth/refresh",
+		Headers: map[string]string{
+			"Origin":           csrfFrontendURL,
+			"X-Requested-With": "XMLHttpRequest",
+		},
+	})
+	// 401 because no valid session — but NOT 403 (CSRF gate passed)
+	if resp.StatusCode == http.StatusForbidden {
+		t.Errorf("/auth/refresh with correct CSRF headers: want non-403, got 403")
+	}
+}
+
+func TestCSRF_RefreshBlockedOnMissingXRW(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/auth/refresh",
+		Headers: map[string]string{
+			"Origin": csrfFrontendURL,
+			// X-Requested-With omitted
+		},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("/auth/refresh missing X-Requested-With: want 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestCSRF_POSTWithAuthHeaderSkipsCsrf(t *testing.T) {
+	ta := newAPIKeyTestApp("csrf-api-user", "", "csrf-api-secret")
+	ta.app.frontendURL = csrfFrontendURL
+	resp, _ := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"Authorization": "Bearer " + ta.keyPlain,
+			// Origin and X-Requested-With deliberately absent
+		},
+		Body: `{"name":"via-api-key","content":"hello"}`,
+	})
+	// API key is valid → 200 or 201, not 403
+	if resp.StatusCode == http.StatusForbidden {
+		t.Errorf("Bearer Authorization present: CSRF gate must not block, got 403")
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		t.Errorf("Bearer Authorization present: want 200/201, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestCSRF_POSTWithGarbageAuthHeaderTriggersCsrf(t *testing.T) {
+	a := newCSRFTestApp()
+	resp, _ := a.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/notes",
+		Headers: map[string]string{
+			"Authorization": "hello", // not "bearer ..." → CSRF gate applies
+			"Origin":        "http://evil.example",
+		},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("garbage auth + bad Origin: want 403, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
 // apiKeyTestApp bundles a minimal App and the plaintext API key issued to it.
 type apiKeyTestApp struct {
 	app      *App

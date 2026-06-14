@@ -37,7 +37,24 @@ type App struct {
 	apiKeyHandler    *handler.APIKeyHandler
 	apiKeys          apikey.Store
 	apiGatewaySecret string
+	frontendURL      string
 	jwtSecret        string
+}
+
+// getRequestHeader returns the first value for the given header name, checking
+// both req.Headers and req.MultiValueHeaders case-insensitively.
+func getRequestHeader(req events.APIGatewayProxyRequest, name string) string {
+	for k, v := range req.Headers {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	for k, v := range req.MultiValueHeaders {
+		if strings.EqualFold(k, name) && len(v) > 0 {
+			return v[0]
+		}
+	}
+	return ""
 }
 
 // NewApp initializes the application dependencies.
@@ -169,6 +186,7 @@ func NewApp(ctx context.Context) *App {
 		apiKeyHandler:    apiKeyHandler,
 		apiKeys:          apiKeyStore,
 		apiGatewaySecret: apiGatewaySecret,
+		frontendURL:      frontendURL,
 		jwtSecret:        jwtSecret,
 	}
 }
@@ -185,7 +203,7 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 	}
 
 	if os.Getenv("DEV_MODE") != "true" {
-		if req.Headers["X-Origin-Verify"] != app.apiGatewaySecret && req.Headers["x-origin-verify"] != app.apiGatewaySecret {
+		if getRequestHeader(req, "X-Origin-Verify") != app.apiGatewaySecret {
 			fmt.Printf("Security Block: Missing or invalid X-Origin-Verify header\n")
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusForbidden,
@@ -196,6 +214,32 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 
 	if strings.HasPrefix(path, "/api/") {
 		path = strings.TrimPrefix(path, "/api")
+	}
+
+	// CSRF defense: Cookie-only POST/PUT/PATCH/DELETE requests must carry a matching
+	// Origin and X-Requested-With: XMLHttpRequest header. Bearer-authenticated
+	// requests are exempted — programmatic clients (CLI, API keys) send an explicit
+	// Authorization header and cannot accidentally ride Cookies across origins.
+	// NOTE: this check must run before translateAPIKey so it sees the original header.
+	if method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
+		authHeader := getRequestHeader(req, "Authorization")
+		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			origin := getRequestHeader(req, "Origin")
+			if origin != app.frontendURL {
+				fmt.Printf("Security Block: CSRF — Origin %q != expected %q\n", origin, app.frontendURL)
+				return events.APIGatewayProxyResponse{
+					StatusCode: http.StatusForbidden,
+					Body:       "Forbidden: Bad Origin",
+				}, nil
+			}
+			if getRequestHeader(req, "X-Requested-With") != "XMLHttpRequest" {
+				fmt.Printf("Security Block: CSRF — X-Requested-With missing or invalid\n")
+				return events.APIGatewayProxyResponse{
+					StatusCode: http.StatusForbidden,
+					Body:       "Forbidden: Missing X-Requested-With",
+				}, nil
+			}
+		}
 	}
 
 	// Translate an API key (Bearer <plaintext>) to a short-lived session JWT so
