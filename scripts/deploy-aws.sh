@@ -41,9 +41,6 @@ if [ -n "${CUSTOM_DOMAIN_NAME}" ]; then
   export FRONTEND_URL="https://${CUSTOM_DOMAIN_NAME}"
 fi
 
-# Note: VITE_API_URL should be empty for CloudFront proxying (relative paths)
-export VITE_API_URL="/api"
-
 # Optional: Privacy Policy and Terms of Service URLs
 # These are baked into the frontend at build time.
 if [ -n "${PRIVACY_POLICY_URL}" ]; then

@@ -354,7 +354,6 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 	var body struct {
 		ID           string `json:"id"`
 		BaseFolderID string `json:"base_folder_id"`
-		Token        string `json:"token"`
 	}
 	if err := json.Unmarshal([]byte(resp.Body), &body); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -366,8 +365,22 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 		t.Errorf("base_folder_id = %q, want folder-xyz", body.BaseFolderID)
 	}
 
-	// New token is valid, unexpired, and re-carries the original base_folder_id.
-	claims := parseClaims(t, body.Token, "test-secret")
+	// New token is issued via Set-Cookie (not in the body) and must re-carry base_folder_id.
+	cookies := resp.MultiValueHeaders["Set-Cookie"]
+	if len(cookies) == 0 {
+		t.Fatal("Refresh: no Set-Cookie header")
+	}
+	var tokStr string
+	for _, c := range cookies {
+		if strings.HasPrefix(c, "session_token=") {
+			tokStr = strings.TrimPrefix(strings.Split(c, ";")[0], "session_token=")
+			break
+		}
+	}
+	if tokStr == "" {
+		t.Fatalf("Refresh: could not extract session_token from cookies %v", cookies)
+	}
+	claims := parseClaims(t, tokStr, "test-secret")
 	if claims["base_folder_id"] != "folder-xyz" {
 		t.Errorf("new token base_folder_id = %v, want folder-xyz", claims["base_folder_id"])
 	}
@@ -546,10 +559,25 @@ func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
 	}
 
 	loc := resp.Headers["Location"]
-	if !strings.HasPrefix(loc, "http://demo/?token=") {
-		t.Fatalf("Location = %q, want demo redirect carrying token", loc)
+	if loc != "http://demo/?success=true&demo=true" {
+		t.Fatalf("Location = %q, want demo redirect without token in URL", loc)
 	}
-	tokStr := strings.TrimPrefix(loc, "http://demo/?token=")
+
+	// Extract the JWT from the session cookie to verify claims.
+	cookies := resp.MultiValueHeaders["Set-Cookie"]
+	if len(cookies) == 0 {
+		t.Fatal("DemoLogin: no Set-Cookie header")
+	}
+	var tokStr string
+	for _, c := range cookies {
+		if strings.HasPrefix(c, "session_token=") {
+			tokStr = strings.TrimPrefix(strings.Split(c, ";")[0], "session_token=")
+			break
+		}
+	}
+	if tokStr == "" {
+		t.Fatalf("DemoLogin: could not extract session_token from cookies %v", cookies)
+	}
 	claims := parseClaims(t, tokStr, "test-secret")
 	userID, _ := claims["sub"].(string)
 	baseFolderID, _ := claims["base_folder_id"].(string)

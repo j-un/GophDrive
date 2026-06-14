@@ -35,21 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = location.pathname;
 
   const fetchUser = useCallback(async () => {
-    // Only extract ?token= on the root path to prevent session hijacking via
-    // crafted links on other routes (e.g. /drive/?token=<attacker_jwt>).
-    if (window.location.pathname === "/") {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("token");
-      if (token) {
-        localStorage.setItem("session_token", token);
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
-      }
-    }
-
     try {
       const u = await getUser();
       setUser(u);

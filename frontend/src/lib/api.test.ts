@@ -99,21 +99,10 @@ describe("apiFetch", () => {
     resetFetchFn();
   });
 
-  it("adds Authorization header when token is set", async () => {
+  it("never sends Authorization header", async () => {
     const mockFetch = fakeFetch(200, { ok: true });
     setFetchFn(mockFetch);
-    setToken("my-token");
-
-    await apiFetch("/test");
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(init.headers["Authorization"]).toBe("Bearer my-token");
-  });
-
-  it("does not add Authorization header when no token", async () => {
-    const mockFetch = fakeFetch(200);
-    setFetchFn(mockFetch);
+    setToken("my-token"); // token exists but must not be sent
 
     await apiFetch("/test");
 
@@ -121,14 +110,82 @@ describe("apiFetch", () => {
     expect(init.headers["Authorization"]).toBeUndefined();
   });
 
-  it("clears token on 401 response", async () => {
-    const mockFetch = fakeFetch(401);
+  it("sends X-Requested-With: XMLHttpRequest on every request", async () => {
+    const mockFetch = fakeFetch(200);
     setFetchFn(mockFetch);
-    setToken("old-token");
 
     await apiFetch("/test");
 
-    expect(getToken()).toBeNull();
+    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.headers["X-Requested-With"]).toBe("XMLHttpRequest");
+  });
+
+  it("does not write to localStorage on 401", async () => {
+    const mockFetch = fakeFetch(401);
+    setFetchFn(mockFetch);
+    const spy = vi.spyOn(localStorageMock, "setItem");
+
+    await apiFetch("/test");
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("does not call clearToken on 401 (Cookie managed by server)", async () => {
+    const mockFetch = fakeFetch(401);
+    setFetchFn(mockFetch);
+    setToken("old-token"); // should remain untouched
+
+    await apiFetch("/test");
+
+    expect(getToken()).toBe("old-token");
+  });
+
+  it("retries after 401 via refresh: no Authorization, X-Requested-With present, original init preserved", async () => {
+    let callIdx = 0;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      const idx = callIdx++;
+      const isRefresh = url.includes("/auth/refresh");
+      const ok = isRefresh || idx > 0; // first non-refresh → 401, rest → 200
+      return {
+        ok,
+        status: ok ? 200 : 401,
+        headers: {
+          get: (n: string) =>
+            n.toLowerCase() === "content-type" ? "application/json" : null,
+        },
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve("{}"),
+      } as unknown as Response;
+    });
+    setFetchFn(mockFetch as typeof fetch);
+
+    const result = await apiFetch("/test", {
+      method: "POST",
+      body: "test-body",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(result.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(3); // original → refresh → retry
+
+    const calls = (mockFetch as ReturnType<typeof vi.fn>).mock.calls;
+
+    // Original request: no Authorization, has X-Requested-With
+    const [, origInit] = calls[0];
+    expect(origInit.headers?.["Authorization"]).toBeUndefined();
+    expect(origInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
+
+    // Refresh call: no Authorization, has X-Requested-With
+    const [, refreshInit] = calls[1];
+    expect(refreshInit.headers?.["Authorization"]).toBeUndefined();
+    expect(refreshInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
+
+    // Retry: no Authorization, has X-Requested-With, original body preserved
+    const [, retryInit] = calls[2];
+    expect(retryInit.headers?.["Authorization"]).toBeUndefined();
+    expect(retryInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
+    expect(retryInit.body).toBe("test-body");
+    expect(retryInit.method).toBe("POST");
   });
 
   it("adds cache buster timestamp to URL", async () => {

@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const API_BASE = "/api";
+
+const CSRF_HEADERS = { "X-Requested-With": "XMLHttpRequest" } as const;
 
 // Replaceable fetch function for testability
 let fetchFn: typeof fetch = (...args: Parameters<typeof fetch>) =>
@@ -43,12 +45,9 @@ async function refreshSession(): Promise<boolean> {
     const res = await fetchFn(`${API_BASE}/auth/refresh`, {
       method: "POST",
       credentials: "include",
+      headers: CSRF_HEADERS,
     });
     if (res.ok) {
-      const data = await parseJson<{ token?: string }>(res);
-      if (data.token) {
-        setToken(data.token);
-      }
       console.log("api: Session refreshed successfully.");
       return true;
     }
@@ -62,13 +61,10 @@ export async function apiFetch(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const token = getToken();
   const headers: Record<string, string> = {
     ...((init?.headers as Record<string, string>) || {}),
+    ...CSRF_HEADERS,
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
   // Append robust cache buster (timestamp) to query
   const timestamp = Date.now();
   const separator = path.includes("?") ? "&" : "?";
@@ -84,7 +80,6 @@ export async function apiFetch(
   if (res.status === 401) {
     // If it's already a refresh request, just let it fail to avoid infinite loop
     if (path === "/auth/refresh") {
-      clearToken();
       return res;
     }
 
@@ -97,25 +92,19 @@ export async function apiFetch(
     refreshPromise = null;
 
     if (success) {
-      // Retry original request with new token (direct fetch, no recursive apiFetch to avoid infinite loop)
-      const newToken = getToken();
-      const newHeaders: Record<string, string> = {
-        ...((init?.headers as Record<string, string>) || {}),
-      };
-      if (newToken) {
-        newHeaders["Authorization"] = `Bearer ${newToken}`;
-      }
+      // Cookie is updated by the refresh response. Retry the original request.
       const retryTimestamp = Date.now();
       const retrySeparator = path.includes("?") ? "&" : "?";
       const retryUrl = `${API_BASE}${path}${retrySeparator}_t=${retryTimestamp}`;
       return fetchFn(retryUrl, {
         ...init,
-        headers: newHeaders,
+        headers: {
+          ...((init?.headers as Record<string, string>) || {}),
+          ...CSRF_HEADERS,
+        },
         credentials: "include",
         cache: "no-store",
       });
-    } else {
-      clearToken();
     }
   }
 

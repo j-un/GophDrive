@@ -5,7 +5,6 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   define: {
-    "import.meta.env.VITE_API_URL": JSON.stringify(""),
     "import.meta.env.VITE_PRIVACY_POLICY_URL": JSON.stringify(""),
     "import.meta.env.VITE_TERMS_OF_SERVICE_URL": JSON.stringify(""),
     "import.meta.env.VITE_APP_NAME": JSON.stringify("GophDrive"),

@@ -20,7 +20,6 @@ export default function SettingsPage() {
     } catch (e) {
       console.error("Logout failed", e);
     }
-    localStorage.removeItem("session_token");
     await refreshUser();
     navigate("/");
   };
