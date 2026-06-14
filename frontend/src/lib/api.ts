@@ -13,23 +13,6 @@ export function resetFetchFn() {
   fetchFn = (...args: Parameters<typeof fetch>) => fetch(...args);
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("session_token");
-}
-
-export function setToken(token: string) {
-  localStorage.setItem("session_token", token);
-}
-
-export function clearToken() {
-  localStorage.removeItem("session_token");
-}
-
-export function isLoggedIn(): boolean {
-  return !!getToken();
-}
-
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
