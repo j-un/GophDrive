@@ -147,6 +147,15 @@ describe("ComputeStack", () => {
     });
   });
 
+  test("API Gateway declares application/zip as a binary media type", () => {
+    // Without this, API Gateway passes through the Lambda's base64-encoded
+    // ZIP body as literal text instead of decoding it to bytes, producing
+    // a corrupt archive on download.
+    template.hasResourceProperties("AWS::ApiGateway::RestApi", {
+      BinaryMediaTypes: ["application/zip"],
+    });
+  });
+
   test("API Gateway has CORS configuration", () => {
     // CORS preflight creates an OPTIONS method
     template.hasResourceProperties("AWS::ApiGateway::Method", {
