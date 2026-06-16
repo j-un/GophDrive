@@ -126,6 +126,7 @@ export class ComputeStack extends cdk.Stack {
     this.api = new apigateway.RestApi(this, "GophDriveAPI", {
       restApiName: "GophDrive API",
       description: "API for GophDrive Backend",
+      binaryMediaTypes: ["application/zip"],
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
