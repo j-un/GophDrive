@@ -408,7 +408,13 @@ export async function revokeAPIKey(): Promise<void> {
 }
 
 export async function exportNotes(): Promise<{ blob: Blob; filename: string }> {
-  const res = await apiFetch("/export");
+  // Explicit Accept is required for API Gateway to base64-decode the
+  // Lambda's binary response — without it the browser's default `*/*`
+  // doesn't reliably match the `application/zip` binaryMediaTypes entry,
+  // and the ZIP arrives as literal base64 text instead of bytes.
+  const res = await apiFetch("/export", {
+    headers: { Accept: "application/zip" },
+  });
   if (!res.ok) return handleError(res, "Failed to export notes");
   const blob = await res.blob();
   const disposition = res.headers.get("Content-Disposition") || "";

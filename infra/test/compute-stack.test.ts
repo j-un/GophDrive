@@ -156,6 +156,13 @@ describe("ComputeStack", () => {
     });
   });
 
+  test("API Gateway creates a Deployment resource", () => {
+    // binaryMediaTypes is pinned into the Deployment's logical ID
+    // (see compute-stack.ts) so that changing it always produces a new
+    // Deployment and the stage picks up the change automatically.
+    template.resourceCountIs("AWS::ApiGateway::Deployment", 1);
+  });
+
   test("API Gateway has CORS configuration", () => {
     // CORS preflight creates an OPTIONS method
     template.hasResourceProperties("AWS::ApiGateway::Method", {
