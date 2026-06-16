@@ -356,6 +356,10 @@ describe("API functions", () => {
     const result = await exportNotes();
     expect(result.blob).toBe(fakeBlob);
     expect(result.filename).toBe("gophdrive-export-20260511.zip");
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init.headers as Record<string, string>).Accept).toBe(
+      "application/zip",
+    );
   });
 
   it("exportNotes falls back to default filename when header is missing", async () => {

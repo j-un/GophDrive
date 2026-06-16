@@ -134,6 +134,14 @@ export class ComputeStack extends cdk.Stack {
       },
     });
 
+    // CDK doesn't hash RestApi-level properties like binaryMediaTypes into
+    // the Deployment's logical ID, so changing them alone never triggers a
+    // new Deployment and the stage keeps serving the old config. Pin it
+    // explicitly so future changes redeploy automatically.
+    this.api.latestDeployment?.addToLogicalId({
+      binaryMediaTypes: ["application/zip"],
+    });
+
     const integration = new apigateway.LambdaIntegration(backendFunction);
     this.api.root.addProxy({
       defaultIntegration: integration,
