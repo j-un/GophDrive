@@ -66,19 +66,17 @@ export const BUTTONS: ReadonlyArray<{
   { label: "Divider", icon: Minus, command: insertDivider },
 ];
 
-export function MobileMarkdownToolbar({ editorRef, readOnly = false }: Props) {
+export function MarkdownToolbar({ editorRef, readOnly = false }: Props) {
   return (
-    <div
-      className="mobile-md-toolbar"
-      role="toolbar"
-      aria-label="Markdown formatting"
-    >
+    <div className="md-toolbar" role="toolbar" aria-label="Markdown formatting">
       {BUTTONS.map(({ label, icon: Icon, command }) => (
         <button
           key={label}
           type="button"
           aria-label={label}
           disabled={readOnly}
+          // Prevents the button from stealing focus so the editor retains
+          // cursor position (desktop) and the virtual keyboard stays up (mobile).
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => {
             editorRef.current?.runCommand(command);
