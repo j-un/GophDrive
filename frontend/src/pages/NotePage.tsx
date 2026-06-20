@@ -33,7 +33,7 @@ import {
   BacklinkEntry,
 } from "@/lib/api";
 import { Editor, type EditorHandle } from "@/components/Editor";
-import { MobileMarkdownToolbar } from "@/components/MobileMarkdownToolbar";
+import { MarkdownToolbar } from "@/components/MarkdownToolbar";
 import { Preview } from "@/components/Preview";
 import { LockBanner } from "@/components/LockBanner";
 import { ConflictDialog } from "@/components/ConflictDialog";
@@ -846,20 +846,7 @@ function NoteContent() {
       >
         {/* Editor Pane */}
         <div className={`editor-pane ${mobileTab !== "edit" ? "hidden" : ""}`}>
-          <div
-            style={{
-              background: "var(--card)",
-              padding: "0.25rem 1rem",
-              fontSize: "0.75rem",
-              fontFamily: "monospace",
-              opacity: 0.5,
-              borderBottom: "1px solid var(--border)",
-            }}
-            className="note-header-meta editor-pane__label"
-          >
-            MARKDOWN
-          </div>
-          <MobileMarkdownToolbar editorRef={editorRef} readOnly={!!lockedBy} />
+          <MarkdownToolbar editorRef={editorRef} readOnly={!!lockedBy} />
           <div
             style={{
               flex: 1,

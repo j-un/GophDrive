@@ -373,49 +373,53 @@ textarea {
   border: 0;
 }
 
-/* ===== Mobile Markdown Toolbar ===== */
-.mobile-md-toolbar {
-  display: none;
+/* ===== Markdown Toolbar (desktop default + mobile overrides) ===== */
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.md-toolbar button {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.md-toolbar button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--primary);
+}
+
+.md-toolbar button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.md-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 @media (max-width: 768px) {
-  .mobile-md-toolbar {
-    display: flex;
-    gap: 0.25rem;
+  .md-toolbar {
     padding: 0.5rem;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    gap: 0.125rem;
   }
 
-  .mobile-md-toolbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-md-toolbar button {
-    flex: 0 0 auto;
-    min-width: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 0.375rem;
-    color: var(--foreground);
-    cursor: pointer;
-  }
-
-  .mobile-md-toolbar button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  /* Hide MARKDOWN label on mobile — replaced by the toolbar. Uses a dedicated class to
-     avoid accidentally hiding other .note-header-meta elements inside .editor-pane. */
-  .editor-pane__label {
-    display: none;
+  .md-toolbar button {
+    min-width: 36px;
+    min-height: 36px;
   }
 }
