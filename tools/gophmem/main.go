@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -35,6 +36,14 @@ func main() {
 		err = runList(client, os.Args[2:])
 	case "tags":
 		err = runTags(client, os.Args[2:])
+	case "links":
+		err = runLinks(client, os.Args[2:], os.Stdout)
+	case "backlinks":
+		err = runBacklinks(client, os.Args[2:], os.Stdout)
+	case "graph":
+		err = runGraph(client, os.Args[2:], os.Stdout)
+	case "unresolved":
+		err = runUnresolved(client, os.Args[2:], os.Stdout)
 	case "setup":
 		err = runSetup(client, os.Args[2:])
 	case "config":
@@ -60,9 +69,14 @@ Usage:
   gophmem write <title> [--tags a,b] [--stdin]              Create note in AI Memory folder
   gophmem append <id|title>                                  Append stdin to an existing note
   gophmem read <id> [--section <heading>]                    Print note content (or one section)
-  gophmem search <query> [--tag t] [--limit N] [--no-snippet] [--in titles|headings|all]  Search notes (Vault-wide)
+  gophmem search <query> [--tag t]... [--type t] [--since D] [--until D] [--limit N] [--no-snippet] [--in titles|headings|all]
+                                                              Search notes (Vault-wide; --until DATE includes that whole day)
   gophmem list [--folder <id>]                               List notes (default: AI Memory)
   gophmem tags                                               List all tags with counts
+  gophmem links <id|title>                                   Outbound wikilinks of a note
+  gophmem backlinks <id|title>                               Notes linking to a note
+  gophmem graph [--center <id|title>] [--depth N]            Adjacency view (default: whole vault)
+  gophmem unresolved                                         Wikilinks whose target note does not exist
   gophmem setup                                              Print sub/base_folder_id for SSM setup
   gophmem config set [--base-url URL] [--api-key KEY]        Save settings to config file (0600)
   gophmem config show                                        Show resolved settings and their source
@@ -189,12 +203,12 @@ func appendToNote(client *Client, id, addition string) (string, error) {
 }
 
 // resolveNoteID returns a note ID given either a UUID string or a title
-// (resolved via search, exact-name match).
+// (resolved via search, exact-name match, falling back to alias match).
 func resolveNoteID(client *Client, idOrTitle string) (string, error) {
 	if looksLikeUUID(idOrTitle) {
 		return idOrTitle, nil
 	}
-	results, err := client.Search(idOrTitle, nil, 0, "")
+	results, err := client.Search(idOrTitle, SearchOpts{})
 	if err != nil {
 		return "", fmt.Errorf("search for %q: %w", idOrTitle, err)
 	}
@@ -202,6 +216,11 @@ func resolveNoteID(client *Client, idOrTitle string) (string, error) {
 		name := strings.TrimSuffix(f.Name, ".md")
 		if strings.EqualFold(name, idOrTitle) || strings.EqualFold(f.Name, idOrTitle) {
 			return f.ID, nil
+		}
+		for _, alias := range f.Aliases {
+			if strings.EqualFold(alias, idOrTitle) {
+				return f.ID, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("note not found: %q", idOrTitle)
@@ -330,16 +349,78 @@ func extractSection(body, needle string) (string, bool) {
 
 // ---- search ----
 
+// stringSlice implements flag.Value, appending each occurrence so a flag can
+// be repeated on the command line (e.g. --tag a --tag b).
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSlice) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// parseDate parses a date-only string (YYYY-MM-DD, interpreted in Local time)
+// or an RFC3339 timestamp. dateOnly reports whether the date-only format
+// matched, which callers use to decide whether to treat the value as covering
+// a whole day.
+func parseDate(s string) (t time.Time, dateOnly bool, err error) {
+	if t, perr := time.ParseInLocation("2006-01-02", s, time.Local); perr == nil {
+		return t, true, nil
+	}
+	if t, perr := time.Parse(time.RFC3339, s); perr == nil {
+		return t, false, nil
+	}
+	return time.Time{}, false, fmt.Errorf("invalid date %q (want YYYY-MM-DD or RFC3339)", s)
+}
+
+// formatModifiedAfter converts a --since input into the modifiedAfter query
+// value. An empty input means "no filter" and returns "".
+func formatModifiedAfter(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	t, _, err := parseDate(s)
+	if err != nil {
+		return "", err
+	}
+	return t.UTC().Format(time.RFC3339), nil
+}
+
+// formatModifiedBefore converts a --until input into the modifiedBefore query
+// value. A date-only input is advanced to the start of the next local day so
+// the named day is fully included; an RFC3339 input passes through unchanged
+// as the exclusive bound. An empty input means "no filter" and returns "".
+func formatModifiedBefore(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	t, dateOnly, err := parseDate(s)
+	if err != nil {
+		return "", err
+	}
+	if dateOnly {
+		t = t.AddDate(0, 0, 1)
+	}
+	return t.UTC().Format(time.RFC3339), nil
+}
+
 func runSearch(client *Client, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	tagFlag := fs.String("tag", "", "filter by tag")
+	var tags stringSlice
+	fs.Var(&tags, "tag", "filter by tag (repeatable, AND)")
 	limitFlag := fs.Int("limit", 10, "max results (1-100)")
 	noSnippetFlag := fs.Bool("no-snippet", false, "suppress snippet lines")
 	inFlag := fs.String("in", "", "search scope: titles, headings, or all (default: all)")
+	typeFlag := fs.String("type", "", "filter by note type")
+	sinceFlag := fs.String("since", "", "only notes modified on/after this date (YYYY-MM-DD or RFC3339)")
+	untilFlag := fs.String("until", "", "only notes modified through this date (YYYY-MM-DD or RFC3339); DATE includes that whole day")
 
 	// Separate query words from flags so flags may appear anywhere.
 	// Value-taking flags are paired with their next arg.
-	valueTakingFlags := map[string]bool{"tag": true, "limit": true, "in": true}
+	valueTakingFlags := map[string]bool{"tag": true, "limit": true, "in": true, "type": true, "since": true, "until": true}
 	var queryWords, flagArgs []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -361,15 +442,26 @@ func runSearch(client *Client, args []string, out io.Writer) error {
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	if len(queryWords) == 0 && *tagFlag == "" {
-		return fmt.Errorf("usage: gophmem search <query> [--tag t] [--limit N] [--no-snippet] [--in titles|headings|all]")
+	if len(queryWords) == 0 && len(tags) == 0 && *typeFlag == "" {
+		return fmt.Errorf("usage: gophmem search <query> [--tag t]... [--type t] [--since D] [--until D] [--limit N] [--no-snippet] [--in titles|headings|all]")
 	}
 	query := strings.Join(queryWords, " ")
-	var tags []string
-	if *tagFlag != "" {
-		tags = []string{*tagFlag}
+	modifiedAfter, err := formatModifiedAfter(*sinceFlag)
+	if err != nil {
+		return err
 	}
-	results, err := client.Search(query, tags, *limitFlag, strings.ToLower(*inFlag))
+	modifiedBefore, err := formatModifiedBefore(*untilFlag)
+	if err != nil {
+		return err
+	}
+	results, err := client.Search(query, SearchOpts{
+		Tags:           tags,
+		Limit:          *limitFlag,
+		Scope:          strings.ToLower(*inFlag),
+		Type:           *typeFlag,
+		ModifiedAfter:  modifiedAfter,
+		ModifiedBefore: modifiedBefore,
+	})
 	if err != nil {
 		return err
 	}

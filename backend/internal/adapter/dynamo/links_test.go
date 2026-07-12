@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
@@ -211,6 +212,120 @@ func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
 	if updated.Links[0].TargetID != a.ID {
 		t.Errorf("carry-forward across case change failed: targetId = %q, want %q (a), not %q (b)",
 			updated.Links[0].TargetID, a.ID, b.ID)
+	}
+}
+
+// TestResolveLinks_AliasResolution covers the alias fallback: a note whose
+// frontmatter aliases include "X" is the target of [[X]] when no note is
+// literally named X.
+func TestResolveLinks_AliasResolution(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	target, err := m.CreateFile(ctx, "Auth Design",
+		[]byte("---\naliases: [Login System]\n---\n# Auth"), "root")
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	src, err := m.CreateFile(ctx, "Overview", []byte("see [[Login System]]"), "root")
+	if err != nil {
+		t.Fatalf("create src: %v", err)
+	}
+	if len(src.Links) != 1 || !src.Links[0].Resolved {
+		t.Fatalf("expected resolved link via alias, got %+v", src.Links)
+	}
+	if src.Links[0].TargetID != target.ID {
+		t.Errorf("alias target = %q, want %q", src.Links[0].TargetID, target.ID)
+	}
+}
+
+// TestResolveLinks_ExactNameBeatsAlias asserts a same-titled note wins over
+// another note that lists the token as an alias.
+func TestResolveLinks_ExactNameBeatsAlias(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	// Note A carries "Payments" as an alias; note B is literally named
+	// "Payments". [[Payments]] must resolve to B regardless of modified-time
+	// ordering — exact-name precedence overrides alias-recency.
+	aliasNote, _ := m.CreateFile(ctx, "Billing",
+		[]byte("---\naliases: [Payments]\n---\n# Billing"), "root")
+	time.Sleep(2 * time.Millisecond)
+	exact, _ := m.CreateFile(ctx, "Payments", []byte("# Payments"), "root")
+
+	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Payments]]"), "root")
+	if src.Links[0].TargetID != exact.ID {
+		t.Errorf("exact-name precedence broken: targetId = %q, want %q (exact), not %q (alias owner)",
+			src.Links[0].TargetID, exact.ID, aliasNote.ID)
+	}
+}
+
+// TestResolveLinks_AliasCollision_MostRecentWins asserts the standard
+// ambiguity rule applies within the alias bucket: two notes sharing the same
+// alias resolve to the most-recently-modified one.
+func TestResolveLinks_AliasCollision_MostRecentWins(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	older, _ := m.CreateFile(ctx, "A",
+		[]byte("---\naliases: [Shared]\n---\n# A"), "root")
+	time.Sleep(2 * time.Millisecond)
+	newer, _ := m.CreateFile(ctx, "B",
+		[]byte("---\naliases: [Shared]\n---\n# B"), "root")
+
+	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Shared]]"), "root")
+	if src.Links[0].TargetID != newer.ID {
+		t.Errorf("alias collision: targetId = %q, want %q (newer), not %q (older)",
+			src.Links[0].TargetID, newer.ID, older.ID)
+	}
+}
+
+// TestResolveLinks_CarryForwardBeatsAliasReResolution locks in that
+// carry-forward wins over a fresh alias resolution: if a link was already
+// resolved to note A, adding a new note that aliases the token must not
+// silently redirect an unchanged link.
+func TestResolveLinks_CarryForwardBeatsAliasReResolution(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	target, _ := m.CreateFile(ctx, "Original", []byte("# Original"), "root")
+	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Original]]"), "root")
+	if src.Links[0].TargetID != target.ID {
+		t.Fatalf("initial resolve failed: %+v", src.Links)
+	}
+
+	// A newer note now claims "Original" as an alias. Resaving src without
+	// changing the token must preserve the original targetId.
+	newer, _ := m.CreateFile(ctx, "Fresh",
+		[]byte("---\naliases: [Original]\n---\n# Fresh"), "root")
+
+	updated, err := m.SaveFile(ctx, src.ID, []byte("still: see [[Original]]"), src.ETag)
+	if err != nil {
+		t.Fatalf("SaveFile: %v", err)
+	}
+	if updated.Links[0].TargetID != target.ID {
+		t.Errorf("carry-forward across alias intro: targetId = %q, want %q (target), not %q (newer)",
+			updated.Links[0].TargetID, target.ID, newer.ID)
+	}
+}
+
+// TestResolveLinks_LegacyItemAliasFallback uses the pure resolveLinks function
+// with a hand-built FileItem whose Aliases attribute is empty but whose
+// Content carries frontmatter aliases — mirroring rows persisted before the
+// aliases field existed.
+func TestResolveLinks_LegacyItemAliasFallback(t *testing.T) {
+	legacy := FileItem{
+		ID:           "legacy-1",
+		Name:         "Legacy.md",
+		MIMEType:     "text/markdown",
+		ModifiedTime: time.Now(),
+		// Aliases attribute intentionally omitted; alias lives inside Content.
+		Content: []byte("---\naliases:\n  - Historic Name\n---\nbody"),
+	}
+	links := resolveLinks([]byte("see [[Historic Name]]"), []FileItem{legacy}, nil)
+	if len(links) != 1 || !links[0].Resolved || links[0].TargetID != "legacy-1" {
+		t.Errorf("legacy fallback: got %+v, want one link resolved to legacy-1", links)
 	}
 }
 

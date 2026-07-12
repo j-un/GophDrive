@@ -154,6 +154,9 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		ETag      string                  `json:"etag"`
 		Parents   []string                `json:"parents"`
 		Tags      []string                `json:"tags,omitempty"`
+		Aliases   []string                `json:"aliases,omitempty"`
+		Type      string                  `json:"type,omitempty"`
+		Status    string                  `json:"status,omitempty"`
 		Links     []adapter.LinkRef       `json:"links,omitempty"`
 		Backlinks []adapter.BacklinkEntry `json:"backlinks,omitempty"`
 	}
@@ -174,6 +177,9 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		ETag:      file.ETag,
 		Parents:   file.Parents,
 		Tags:      file.Tags,
+		Aliases:   file.Aliases,
+		Type:      file.Type,
+		Status:    file.Status,
 		Links:     enriched,
 		Backlinks: backlinks,
 	}

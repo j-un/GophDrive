@@ -142,7 +142,7 @@ func TestClient_Search(t *testing.T) {
 	}))
 	defer close()
 
-	results, err := client.Search("design decision", nil, 0, "")
+	results, err := client.Search("design decision", SearchOpts{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -262,6 +262,132 @@ func TestRunSearch_InFlagUppercaseLowercased(t *testing.T) {
 	_ = runSearch(client, []string{"query", "--in", "HEADINGS"}, &strings.Builder{})
 	if gotIn != "headings" {
 		t.Errorf("expected in=headings (lowercase), got %q", gotIn)
+	}
+}
+
+func TestRunSearch_RepeatedTagFlag(t *testing.T) {
+	var gotTags []string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTags = r.URL.Query()["tag"]
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--tag", "a", "--tag", "b"}, &strings.Builder{})
+	if len(gotTags) != 2 || gotTags[0] != "a" || gotTags[1] != "b" {
+		t.Errorf("expected tag=a and tag=b (repeatable), got %v", gotTags)
+	}
+}
+
+func TestRunSearch_PassesTypeFlag(t *testing.T) {
+	var gotType string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.URL.Query().Get("type")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--type", "decision"}, &strings.Builder{})
+	if gotType != "decision" {
+		t.Errorf("expected type=decision in query, got %q", gotType)
+	}
+}
+
+func TestRunSearch_TypeOnly_NoUsageError(t *testing.T) {
+	var gotQuery, gotType string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query().Get("q")
+		gotType = r.URL.Query().Get("type")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	err := runSearch(client, []string{"--type", "decision"}, &strings.Builder{})
+	if err != nil {
+		t.Fatalf("expected no usage error for type-only search, got: %v", err)
+	}
+	if gotQuery != "" {
+		t.Errorf("expected empty q, got %q", gotQuery)
+	}
+	if gotType != "decision" {
+		t.Errorf("expected type=decision in query, got %q", gotType)
+	}
+}
+
+func TestRunSearch_SinceFlag(t *testing.T) {
+	var gotModifiedAfter string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotModifiedAfter = r.URL.Query().Get("modifiedAfter")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--since", "2026-07-01"}, &strings.Builder{})
+
+	want, err := time.ParseInLocation("2006-01-02", "2026-07-01", time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStr := want.UTC().Format(time.RFC3339)
+	if gotModifiedAfter != wantStr {
+		t.Errorf("expected modifiedAfter=%s, got %q", wantStr, gotModifiedAfter)
+	}
+}
+
+func TestRunSearch_UntilFlag_EndOfDay(t *testing.T) {
+	var gotModifiedBefore string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotModifiedBefore = r.URL.Query().Get("modifiedBefore")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	_ = runSearch(client, []string{"query", "--until", "2026-07-01"}, &strings.Builder{})
+
+	base, err := time.ParseInLocation("2006-01-02", "2026-07-01", time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStr := base.AddDate(0, 0, 1).UTC().Format(time.RFC3339)
+	if gotModifiedBefore != wantStr {
+		t.Errorf("expected modifiedBefore=%s (start of next local day), got %q", wantStr, gotModifiedBefore)
+	}
+}
+
+func TestRunSearch_UntilFlag_RFC3339Passthrough(t *testing.T) {
+	var gotModifiedBefore string
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotModifiedBefore = r.URL.Query().Get("modifiedBefore")
+		writeJSON(w, 200, []FileMetadata{})
+	}))
+	defer close()
+
+	const rfc = "2026-07-01T15:04:05Z"
+	_ = runSearch(client, []string{"query", "--until", rfc}, &strings.Builder{})
+
+	want, err := time.Parse(time.RFC3339, rfc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStr := want.UTC().Format(time.RFC3339)
+	if gotModifiedBefore != wantStr {
+		t.Errorf("expected RFC3339 --until to pass through as exclusive bound: want %s, got %q", wantStr, gotModifiedBefore)
+	}
+}
+
+func TestRunSearch_InvalidDate(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request; invalid date should fail before any HTTP call: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer close()
+
+	err := runSearch(client, []string{"query", "--since", "not-a-date"}, &strings.Builder{})
+	if err == nil {
+		t.Fatal("expected error for invalid date, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid date") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
@@ -624,6 +750,27 @@ func TestResolveNoteID_NotFound(t *testing.T) {
 	_, err := resolveNoteID(client, "nonexistent note")
 	if err == nil {
 		t.Fatal("expected error for not found, got nil")
+	}
+}
+
+func TestResolveNoteID_ByAlias(t *testing.T) {
+	client, close := fakeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, 200, []FileMetadata{
+			{ID: "found-id", Name: "canonical title.md", Aliases: []string{"nickname", "other alias"}},
+		})
+	}))
+	defer close()
+
+	id, err := resolveNoteID(client, "nickname")
+	if err != nil {
+		t.Fatalf("resolveNoteID: %v", err)
+	}
+	if id != "found-id" {
+		t.Errorf("expected found-id via alias match, got %s", id)
 	}
 }
 

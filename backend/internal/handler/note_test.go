@@ -694,6 +694,44 @@ func TestNoteHandler_GetNote_NotFound(t *testing.T) {
 	}
 }
 
+// GetNote must surface aliases/type/status from a note's frontmatter so the
+// frontend can render note-type badges and follow alias links.
+func TestNoteHandler_GetNote_ReturnsFrontmatterMeta(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	// JSON-encode the note body so the embedded newlines survive as YAML.
+	body, _ := json.Marshal("---\ntype: decision\nstatus: active\naliases:\n  - Auth\n  - Login\n---\n# Auth")
+	createReq := makeRequest("POST", "/notes",
+		`{"name":"meta.md","content":`+string(body)+`}`)
+	createResp, _ := h.CreateNote(ctx, createReq)
+	var created adapter.FileMetadata
+	json.Unmarshal([]byte(createResp.Body), &created)
+
+	getReq := makeRequest("GET", "/notes/"+created.ID, "")
+	getReq.PathParameters["id"] = created.ID
+	getResp, _ := h.GetNote(ctx, getReq)
+
+	var note struct {
+		Type    string   `json:"type"`
+		Status  string   `json:"status"`
+		Aliases []string `json:"aliases"`
+	}
+	if err := json.Unmarshal([]byte(getResp.Body), &note); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if note.Type != "decision" {
+		t.Errorf("type = %q, want %q", note.Type, "decision")
+	}
+	if note.Status != "active" {
+		t.Errorf("status = %q, want %q", note.Status, "active")
+	}
+	if len(note.Aliases) != 2 || note.Aliases[0] != "Auth" || note.Aliases[1] != "Login" {
+		t.Errorf("aliases = %v, want [Auth Login]", note.Aliases)
+	}
+}
+
 func TestNoteHandler_CreateNote_InvalidParent_Returns400(t *testing.T) {
 	provider := dynamo.NewProvider(nil)
 	h := handler.NewNoteHandler(provider, "test-secret")

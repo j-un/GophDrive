@@ -12,6 +12,19 @@ func normalizeTitle(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// itemAliases returns the note's aliases, lazily parsing frontmatter for rows
+// persisted before the aliases attribute existed (mirrors the tags fallback).
+func itemAliases(it FileItem) []string {
+	if len(it.Aliases) > 0 {
+		return it.Aliases
+	}
+	if len(it.Content) == 0 {
+		return nil
+	}
+	meta, _, _ := markdown.ParseNoteMeta(it.Content)
+	return meta.Aliases
+}
+
 // resolveLinks extracts [[wiki-link]] tokens from content and resolves each to
 // a stored note UUID.
 //
@@ -20,10 +33,13 @@ func normalizeTitle(s string) string {
 // re-resolving by title. This makes links stable across target renames — the
 // source body keeps the original text, but the stored id remains correct.
 //
-// For all other tokens (new, previously unresolved, or dangling):
-//   - 0 candidates → unresolved
+// Resolution order per token: carry-forward → exact-name candidates → alias
+// candidates → unresolved. Alias candidates are consulted only when there are
+// zero name candidates, so an exact-name match always beats an alias match.
+// Within each bucket:
+//   - 0 candidates → try the next bucket (or unresolved)
 //   - 1 candidate  → resolved
-//   - >1 candidates → most-recently-modified wins (deterministic)
+//   - >1 candidates → most-recently-modified wins, lexically-smallest ID tiebreak
 func resolveLinks(content []byte, items []FileItem, prevLinks []adapter.LinkRef) []adapter.LinkRef {
 	titles := markdown.ExtractWikiLinks(content)
 	if len(titles) == 0 {
@@ -33,6 +49,7 @@ func resolveLinks(content []byte, items []FileItem, prevLinks []adapter.LinkRef)
 	// Build lookup maps from the current user note set.
 	byID := make(map[string]FileItem, len(items))
 	candidates := make(map[string][]FileItem, len(items))
+	aliasCandidates := make(map[string][]FileItem, len(items))
 	for _, it := range items {
 		if it.MIMEType != "text/markdown" {
 			continue
@@ -40,6 +57,13 @@ func resolveLinks(content []byte, items []FileItem, prevLinks []adapter.LinkRef)
 		byID[it.ID] = it
 		key := normalizeTitle(fromStoredName(it.Name))
 		candidates[key] = append(candidates[key], it)
+		for _, a := range itemAliases(it) {
+			ak := normalizeTitle(a)
+			if ak == "" {
+				continue
+			}
+			aliasCandidates[ak] = append(aliasCandidates[ak], it)
+		}
 	}
 
 	// Index existing resolved links by normalized written title for
@@ -61,7 +85,12 @@ func resolveLinks(content []byte, items []FileItem, prevLinks []adapter.LinkRef)
 			result = append(result, adapter.LinkRef{Title: title, TargetID: id, Resolved: true})
 			continue
 		}
-		cands := candidates[normalizeTitle(title)]
+		key := normalizeTitle(title)
+		cands := candidates[key]
+		if len(cands) == 0 {
+			// Only fall back to aliases when no note carries this exact name.
+			cands = aliasCandidates[key]
+		}
 		switch len(cands) {
 		case 0:
 			result = append(result, adapter.LinkRef{Title: title, Resolved: false})
@@ -104,16 +133,28 @@ func resolveLinksLazy(content []byte, prevLinks []adapter.LinkRef, scan func() (
 	return resolveLinks(content, items, prevLinks), nil
 }
 
-// buildLookupMaps constructs two indexes over a flat user-item list:
+// buildLookupMaps constructs three indexes over a flat user-item list:
 //   - byID: note UUID → FileItem (all mime types)
 //   - titleToID: normalized display name → note UUID (markdown only, last seen wins)
-func buildLookupMaps(items []FileItem) (byID map[string]FileItem, titleToID map[string]string) {
+//   - aliasToID: normalized alias → note UUID (markdown only, last seen wins)
+//
+// titleToID and aliasToID are kept separate so name precedence stays explicit
+// at call sites — enrichLinks consults titleToID first, then aliasToID.
+func buildLookupMaps(items []FileItem) (byID map[string]FileItem, titleToID map[string]string, aliasToID map[string]string) {
 	byID = make(map[string]FileItem, len(items))
 	titleToID = make(map[string]string, len(items))
+	aliasToID = make(map[string]string, len(items))
 	for _, it := range items {
 		byID[it.ID] = it
 		if it.MIMEType == "text/markdown" {
 			titleToID[normalizeTitle(fromStoredName(it.Name))] = it.ID
+			for _, a := range itemAliases(it) {
+				ak := normalizeTitle(a)
+				if ak == "" {
+					continue
+				}
+				aliasToID[ak] = it.ID
+			}
 		}
 	}
 	return
@@ -121,8 +162,10 @@ func buildLookupMaps(items []FileItem) (byID map[string]FileItem, titleToID map[
 
 // enrichLinks returns a copy of links with CurrentTitle filled from the live
 // note set and unresolved links re-resolved where the target now exists.
-// Resolved entries' TargetIDs are kept as-is (rename stability).
-func enrichLinks(links []adapter.LinkRef, byID map[string]FileItem, titleToID map[string]string) []adapter.LinkRef {
+// Resolved entries' TargetIDs are kept as-is (rename stability). Re-resolution
+// tries the exact-name index first, then aliases, so an exact-name match
+// always beats an alias match.
+func enrichLinks(links []adapter.LinkRef, byID map[string]FileItem, titleToID map[string]string, aliasToID map[string]string) []adapter.LinkRef {
 	if len(links) == 0 {
 		return nil
 	}
@@ -134,7 +177,12 @@ func enrichLinks(links []adapter.LinkRef, byID map[string]FileItem, titleToID ma
 				e.CurrentTitle = fromStoredName(it.Name)
 			}
 		} else if !l.Resolved {
-			if id, ok := titleToID[normalizeTitle(l.Title)]; ok {
+			key := normalizeTitle(l.Title)
+			id, ok := titleToID[key]
+			if !ok {
+				id, ok = aliasToID[key]
+			}
+			if ok {
 				e.TargetID = id
 				e.Resolved = true
 				if it, ok2 := byID[id]; ok2 {
@@ -152,13 +200,13 @@ func enrichLinks(links []adapter.LinkRef, byID map[string]FileItem, titleToID ma
 // reference to noteID. Enriching here (rather than reading stored Links) keeps
 // GET /notes/{id} backlinks in agreement with GET /graph for late-created
 // targets whose source links were unresolved at write time.
-func backlinksOf(noteID string, items []FileItem, byID map[string]FileItem, titleToID map[string]string) []adapter.BacklinkEntry {
+func backlinksOf(noteID string, items []FileItem, byID map[string]FileItem, titleToID map[string]string, aliasToID map[string]string) []adapter.BacklinkEntry {
 	var result []adapter.BacklinkEntry
 	for _, it := range items {
 		if it.MIMEType != "text/markdown" {
 			continue
 		}
-		for _, l := range enrichLinks(it.Links, byID, titleToID) {
+		for _, l := range enrichLinks(it.Links, byID, titleToID, aliasToID) {
 			if l.Resolved && l.TargetID == noteID {
 				result = append(result, adapter.BacklinkEntry{
 					ID:   it.ID,
@@ -178,7 +226,7 @@ func backlinksOf(noteID string, items []FileItem, byID map[string]FileItem, titl
 // links were unresolved at write time but re-resolved by enrichLinks) are
 // correctly reflected in the graph.
 func buildGraph(items []FileItem) []adapter.GraphNode {
-	byID, titleToID := buildLookupMaps(items)
+	byID, titleToID, aliasToID := buildLookupMaps(items)
 
 	// First pass: enrich all notes so re-resolved links feed into backlinks.
 	type noteRow struct {
@@ -190,7 +238,7 @@ func buildGraph(items []FileItem) []adapter.GraphNode {
 		if it.MIMEType != "text/markdown" {
 			continue
 		}
-		rows = append(rows, noteRow{item: it, enriched: enrichLinks(it.Links, byID, titleToID)})
+		rows = append(rows, noteRow{item: it, enriched: enrichLinks(it.Links, byID, titleToID, aliasToID)})
 	}
 
 	// Build backlink map from enriched links.
