@@ -26,17 +26,49 @@ type FileMetadata struct {
 	Starred      bool      `json:"starred"`
 	Tags         []string  `json:"tags,omitempty"`
 	Snippet      string    `json:"snippet,omitempty"`
+	Aliases      []string  `json:"aliases,omitempty"`
+	Type         string    `json:"type,omitempty"`
 }
 
 // NoteResponse is the shape returned by GET /notes/{id}.
 type NoteResponse struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Content  string   `json:"content"`
-	Modified string   `json:"modified"`
-	ETag     string   `json:"etag"`
-	Parents  []string `json:"parents,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Content   string          `json:"content"`
+	Modified  string          `json:"modified"`
+	ETag      string          `json:"etag"`
+	Parents   []string        `json:"parents,omitempty"`
+	Tags      []string        `json:"tags,omitempty"`
+	Links     []LinkRef       `json:"links,omitempty"`
+	Backlinks []BacklinkEntry `json:"backlinks,omitempty"`
+}
+
+// LinkRef describes a single [[wiki-link]] within a note, mirroring
+// adapter.LinkRef. CurrentTitle and Resolved are derived at read time from
+// the live note set and are never persisted server-side.
+type LinkRef struct {
+	Title        string `json:"title"`
+	TargetID     string `json:"targetId,omitempty"`
+	CurrentTitle string `json:"currentTitle,omitempty"`
+	Resolved     bool   `json:"resolved"`
+}
+
+// BacklinkEntry identifies a note that contains a resolved [[wiki-link]]
+// pointing at another note, mirroring adapter.BacklinkEntry.
+type BacklinkEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// GraphNode is a lightweight representation of a note returned by GET /graph,
+// mirroring adapter.GraphNode. Body content is excluded.
+type GraphNode struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Tags      []string  `json:"tags,omitempty"`
+	Links     []LinkRef `json:"links,omitempty"`
+	Backlinks []string  `json:"backlinks,omitempty"`
+	Modified  time.Time `json:"modified"`
 }
 
 // TagCount mirrors adapter.TagCount.
@@ -161,6 +193,27 @@ func (c *Client) GetNote(id string) (NoteResponse, error) {
 	return readJSON[NoteResponse](resp)
 }
 
+// GetGraph fetches a lightweight knowledge-graph view of every note the
+// caller owns (GET /graph).
+func (c *Client) GetGraph() ([]GraphNode, error) {
+	resp, err := c.do("GET", "/graph", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("GET /graph: status %d", resp.StatusCode)
+	}
+	nodes, err := readJSON[[]GraphNode](resp)
+	if err != nil {
+		return nil, err
+	}
+	if nodes == nil {
+		nodes = []GraphNode{}
+	}
+	return nodes, nil
+}
+
 // CacheKey returns a string unique to this (baseURL, apiKey) pair for use as a
 // folder cache key. The API key is hashed so it never appears in the cache file.
 // GET /notes/{id} resolves both files and folders — callers depend on this.
@@ -232,19 +285,38 @@ func (c *Client) CreateFolder(name string, parents []string) (FileMetadata, erro
 	return readJSON[FileMetadata](resp)
 }
 
-func (c *Client) Search(query string, tags []string, limit int, scope string) ([]FileMetadata, error) {
+// SearchOpts holds the optional filters accepted by GET /search.
+type SearchOpts struct {
+	Tags           []string
+	Limit          int
+	Scope          string // "in" param
+	Type           string
+	ModifiedAfter  string // RFC3339, already formatted
+	ModifiedBefore string
+}
+
+func (c *Client) Search(query string, opts SearchOpts) ([]FileMetadata, error) {
 	v := url.Values{}
 	if query != "" {
 		v.Set("q", query)
 	}
-	for _, t := range tags {
+	for _, t := range opts.Tags {
 		v.Add("tag", t)
 	}
-	if limit > 0 {
-		v.Set("limit", fmt.Sprintf("%d", limit))
+	if opts.Limit > 0 {
+		v.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if scope != "" {
-		v.Set("in", scope)
+	if opts.Scope != "" {
+		v.Set("in", opts.Scope)
+	}
+	if opts.Type != "" {
+		v.Set("type", opts.Type)
+	}
+	if opts.ModifiedAfter != "" {
+		v.Set("modifiedAfter", opts.ModifiedAfter)
+	}
+	if opts.ModifiedBefore != "" {
+		v.Set("modifiedBefore", opts.ModifiedBefore)
 	}
 	resp, err := c.do("GET", "/search?"+v.Encode(), nil, nil)
 	if err != nil {

@@ -17,9 +17,13 @@ type FileMetadata struct {
 	Starred      bool      `json:"starred"`
 	Tags         []string  `json:"tags,omitempty"`
 	Headings     []string  `json:"headings,omitempty"`
+	Aliases      []string  `json:"aliases,omitempty"`
+	Type         string    `json:"type,omitempty"`
+	Status       string    `json:"status,omitempty"`
 	Links        []LinkRef `json:"links,omitempty"`
 	ViewedTime   time.Time `json:"viewedTime,omitempty"`
 	Snippet      string    `json:"snippet,omitempty"`
+	Score        int       `json:"score,omitempty"`
 }
 
 // TagCount is a tag name paired with how many notes carry it.
@@ -149,7 +153,10 @@ type StorageAdapter interface {
 	// SearchFilesWithTags searches for files matching the query AND all of the
 	// provided tags (AND semantics). An empty tags slice applies no tag filter.
 	// scope restricts which fields are matched: ScopeAll (default), ScopeTitles, ScopeHeadings.
-	SearchFilesWithTags(ctx context.Context, query string, tags []string, scope SearchScope) ([]FileMetadata, error)
+	// noteType restricts results to notes whose Type matches (case-insensitive);
+	// an empty string applies no type filter. Results carry a relevance Score
+	// (see scoreMatch in the dynamo adapter) that callers may sort by.
+	SearchFilesWithTags(ctx context.Context, query string, tags []string, scope SearchScope, noteType string) ([]FileMetadata, error)
 
 	// ListAllTags returns every distinct tag across the user's notes with counts.
 	ListAllTags(ctx context.Context) ([]TagCount, error)

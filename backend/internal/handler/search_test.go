@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/jun/gophdrive/backend/internal/adapter"
@@ -385,5 +386,139 @@ func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
 	json.Unmarshal([]byte(resp.Body), &results)
 	if len(results) != 1 {
 		t.Errorf("expected 1 result with ?in=HEADINGS (uppercase), got %d", len(results))
+	}
+}
+
+// TestSearch_RankedOrder locks in the new relevance-first sort: a title match
+// must outrank a body-only match even when the title match is the OLDER note
+// (previously results were sorted purely by ModifiedTime desc).
+func TestSearch_RankedOrder(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	// Older note: query hits the title.
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"apple.md","content":"unrelated body"}`))
+	time.Sleep(2 * time.Millisecond)
+	// Newer note: query hits only the body.
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"other.md","content":"apple mentioned here"}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "apple"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	var results []adapter.FileMetadata
+	if err := json.Unmarshal([]byte(resp.Body), &results); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Name != "apple" {
+		t.Errorf("expected the older title match to rank first, got %q first", results[0].Name)
+	}
+}
+
+// TestSearch_DateFilter covers both modifiedAfter and modifiedBefore as a
+// half-open [after, before) window.
+func TestSearch_DateFilter(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"old.md","content":"shared text"}`))
+	time.Sleep(2 * time.Millisecond)
+	cutover := time.Now()
+	time.Sleep(2 * time.Millisecond)
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"new.md","content":"shared text"}`))
+
+	afterReq := makeRequest("GET", "/search", "")
+	afterReq.QueryStringParameters = map[string]string{"q": "shared", "modifiedAfter": cutover.Format(time.RFC3339Nano)}
+	resp, err := searchH.Search(ctx, afterReq)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	var afterResults []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &afterResults)
+	if len(afterResults) != 1 || afterResults[0].Name != "new" {
+		t.Errorf("modifiedAfter: expected only 'new', got %+v", afterResults)
+	}
+
+	beforeReq := makeRequest("GET", "/search", "")
+	beforeReq.QueryStringParameters = map[string]string{"q": "shared", "modifiedBefore": cutover.Format(time.RFC3339Nano)}
+	resp2, err := searchH.Search(ctx, beforeReq)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	var beforeResults []adapter.FileMetadata
+	json.Unmarshal([]byte(resp2.Body), &beforeResults)
+	if len(beforeResults) != 1 || beforeResults[0].Name != "old" {
+		t.Errorf("modifiedBefore: expected only 'old', got %+v", beforeResults)
+	}
+}
+
+func TestSearch_InvalidDateParam(t *testing.T) {
+	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"q": "x", "modifiedAfter": "not-a-date"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid modifiedAfter, got %d", resp.StatusCode)
+	}
+}
+
+// TestSearch_DateOnly_NoQueryTagType covers the "date modifiers alone are
+// insufficient" rule: modifiedAfter/modifiedBefore must not satisfy the
+// "at least one of q/tag/type" requirement by themselves.
+func TestSearch_DateOnly_NoQueryTagType(t *testing.T) {
+	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	ctx := context.Background()
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"modifiedAfter": "2020-01-01"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for date-only request, got %d", resp.StatusCode)
+	}
+}
+
+// TestSearch_TypeFilter verifies the 'type' query param reaches the adapter
+// and is observable in the filtered results (no q/tag needed).
+func TestSearch_TypeFilter(t *testing.T) {
+	provider := dynamo.NewProvider(nil)
+	noteH := handler.NewNoteHandler(provider, "test-secret")
+	searchH := handler.NewSearchHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	decisionBody, _ := json.Marshal("---\ntype: decision\n---\nbody")
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"a.md","content":`+string(decisionBody)+`}`))
+	howtoBody, _ := json.Marshal("---\ntype: howto\n---\nbody")
+	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"b.md","content":`+string(howtoBody)+`}`))
+
+	req := makeRequest("GET", "/search", "")
+	req.QueryStringParameters = map[string]string{"type": "decision"}
+	resp, err := searchH.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var results []adapter.FileMetadata
+	json.Unmarshal([]byte(resp.Body), &results)
+	if len(results) != 1 || results[0].Name != "a" {
+		t.Errorf("expected only 'a' (type=decision), got %+v", results)
 	}
 }

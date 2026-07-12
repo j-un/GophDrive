@@ -617,7 +617,7 @@ func TestAdapter_SearchFiles_ScopeHeadings(t *testing.T) {
 	m.CreateFile(ctx, "b.md", []byte("body says decision but no heading"), "root")
 	m.CreateFile(ctx, "c.md", []byte("## Background\nunrelated"), "root")
 
-	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeHeadings)
+	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeHeadings, "")
 	if err != nil {
 		t.Fatalf("SearchFilesWithTags: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestAdapter_SearchFiles_ScopeTitles(t *testing.T) {
 	m.CreateFile(ctx, "decision-note.md", []byte("## Background\ntext"), "root")
 	m.CreateFile(ctx, "other.md", []byte("has word decision in body"), "root")
 
-	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeTitles)
+	results, err := m.SearchFilesWithTags(ctx, "decision", nil, adapter.ScopeTitles, "")
 	if err != nil {
 		t.Fatalf("SearchFilesWithTags: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
 	fm, _ := m.CreateFile(ctx, "legacy.md", []byte("## Rejected Alternatives\nold stuff"), "root")
 	m.files[fm.ID].Headings = nil
 
-	results, err := m.SearchFilesWithTags(ctx, "Rejected", nil, adapter.ScopeHeadings)
+	results, err := m.SearchFilesWithTags(ctx, "Rejected", nil, adapter.ScopeHeadings, "")
 	if err != nil {
 		t.Fatalf("SearchFilesWithTags: %v", err)
 	}
@@ -666,27 +666,115 @@ func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
 	}
 }
 
-func TestMatchesScope_NilHeadingsLazyFallback(t *testing.T) {
+// TestMatchesScope_* renamed to TestScoreMatch_* since matchesScope was
+// replaced by scoreMatch (adds relevance scoring on top of the same hit/scope
+// semantics). Intent (lazy heading fallback, no snippet in ScopeHeadings) is
+// unchanged.
+func TestScoreMatch_NilHeadingsLazyFallback(t *testing.T) {
 	content := []byte("## Rejected Alternatives\ntext")
 	// Nil headings — lazy extraction should kick in.
-	hit, snippet := matchesScope("note.md", content, nil, "Rejected", adapter.ScopeHeadings)
-	if !hit {
-		t.Error("expected hit via lazy heading extraction with nil headings")
+	hit, score, snippet := scoreMatch("note.md", nil, content, nil, nil, "Rejected", adapter.ScopeHeadings)
+	if !hit || score == 0 {
+		t.Errorf("expected hit via lazy heading extraction with nil headings, got hit=%v score=%d", hit, score)
 	}
 	if snippet != "" {
 		t.Errorf("ScopeHeadings must not produce snippet, got %q", snippet)
 	}
 }
 
-func TestMatchesScope_ScopeHeadingsNoSnippet(t *testing.T) {
+func TestScoreMatch_ScopeHeadingsNoSnippet(t *testing.T) {
 	content := []byte("## Decision\nsome body text")
 	headings := []string{"Decision"}
-	hit, snippet := matchesScope("note.md", content, headings, "Decision", adapter.ScopeHeadings)
-	if !hit {
-		t.Error("expected hit on stored headings")
+	hit, score, snippet := scoreMatch("note.md", nil, content, headings, nil, "Decision", adapter.ScopeHeadings)
+	if !hit || score == 0 {
+		t.Errorf("expected hit on stored headings, got hit=%v score=%d", hit, score)
 	}
 	if snippet != "" {
 		t.Errorf("ScopeHeadings must produce empty snippet, got %q", snippet)
+	}
+}
+
+// TestScoreMatch_ComponentRanking locks in the relative ordering of score
+// components: title > heading > tag > body, per the spec's point values
+// (100/40/30/10-per-occurrence).
+func TestScoreMatch_ComponentRanking(t *testing.T) {
+	titleHit, titleScore, _ := scoreMatch("apple.md", nil, []byte("unrelated"), nil, nil, "apple", adapter.ScopeAll)
+	headingHit, headingScore, _ := scoreMatch("other.md", nil, []byte("## apple\nbody"), []string{"apple"}, nil, "apple", adapter.ScopeAll)
+	tagHit, tagScore, _ := scoreMatch("other.md", nil, []byte("unrelated"), nil, []string{"apple"}, "apple", adapter.ScopeAll)
+	bodyHit, bodyScore, _ := scoreMatch("other.md", nil, []byte("apple mentioned"), nil, nil, "apple", adapter.ScopeAll)
+
+	if !titleHit || !headingHit || !tagHit || !bodyHit {
+		t.Fatalf("expected all four to hit: title=%v heading=%v tag=%v body=%v", titleHit, headingHit, tagHit, bodyHit)
+	}
+	if !(titleScore > headingScore && headingScore > tagScore && tagScore > bodyScore) {
+		t.Errorf("expected title > heading > tag > body, got title=%d heading=%d tag=%d body=%d",
+			titleScore, headingScore, tagScore, bodyScore)
+	}
+}
+
+func TestScoreMatch_BodyCountCapsAtFiveOccurrences(t *testing.T) {
+	five := []byte("apple apple apple apple apple")
+	ten := []byte("apple apple apple apple apple apple apple apple apple apple")
+
+	_, scoreFive, _ := scoreMatch("note.md", nil, five, nil, nil, "apple", adapter.ScopeAll)
+	_, scoreTen, _ := scoreMatch("note.md", nil, ten, nil, nil, "apple", adapter.ScopeAll)
+
+	if scoreFive != 50 { // 10 points * 5 occurrences
+		t.Errorf("expected body score 50 at 5 occurrences, got %d", scoreFive)
+	}
+	if scoreTen != scoreFive {
+		t.Errorf("expected body score to cap at 5 occurrences: five=%d ten=%d", scoreFive, scoreTen)
+	}
+}
+
+func TestScoreMatch_ExactTitleBonus(t *testing.T) {
+	_, exactScore, _ := scoreMatch("apple.md", nil, nil, nil, nil, "apple", adapter.ScopeAll)
+	_, partialScore, _ := scoreMatch("pineapple.md", nil, nil, nil, nil, "apple", adapter.ScopeAll)
+
+	if partialScore != 100 {
+		t.Errorf("expected partial-title score 100, got %d", partialScore)
+	}
+	if exactScore != 150 { // 100 contains + 50 exact-title bonus
+		t.Errorf("expected exact-title score 150, got %d", exactScore)
+	}
+}
+
+func TestScoreMatch_AliasContainsAndExactBonus(t *testing.T) {
+	hit, containsScore, _ := scoreMatch("note.md", []string{"My Great Alias"}, nil, nil, nil, "Great", adapter.ScopeAll)
+	if !hit || containsScore != 80 {
+		t.Errorf("expected alias-contains score 80, got hit=%v score=%d", hit, containsScore)
+	}
+
+	hit2, exactScore, _ := scoreMatch("note.md", []string{"Alias"}, nil, nil, nil, "Alias", adapter.ScopeAll)
+	if !hit2 || exactScore != 120 { // 80 contains + 40 exact-alias bonus
+		t.Errorf("expected exact-alias score 120, got hit=%v score=%d", hit2, exactScore)
+	}
+}
+
+func TestScoreMatch_ScopeTitlesNoSnippet(t *testing.T) {
+	// Body has plenty of occurrences, but ScopeTitles must never produce a snippet.
+	content := []byte("apple apple apple apple apple")
+	hit, score, snippet := scoreMatch("apple.md", nil, content, nil, nil, "apple", adapter.ScopeTitles)
+	if !hit || score == 0 {
+		t.Fatalf("expected title hit, got hit=%v score=%d", hit, score)
+	}
+	if snippet != "" {
+		t.Errorf("ScopeTitles must not produce a snippet, got %q", snippet)
+	}
+}
+
+// TestScoreMatch_ScopeAllSnippetEvenWithTitleHit locks in the widened ScopeAll
+// behavior: a note whose title ALSO matches now still gets a snippet as long
+// as the body has an occurrence too (previously the snippet was suppressed
+// whenever the title matched, even if the body also contained the query).
+func TestScoreMatch_ScopeAllSnippetEvenWithTitleHit(t *testing.T) {
+	content := []byte("apple is mentioned here in the body")
+	hit, score, snippet := scoreMatch("apple.md", nil, content, nil, nil, "apple", adapter.ScopeAll)
+	if !hit || score == 0 {
+		t.Fatalf("expected hit, got hit=%v score=%d", hit, score)
+	}
+	if snippet == "" {
+		t.Errorf("expected a snippet even though the title also matched")
 	}
 }
 
@@ -696,7 +784,7 @@ func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
 
 	m.CreateFile(ctx, "h.md", []byte("## Target Heading\nbody content"), "root")
 
-	results, err := m.SearchFilesWithTags(ctx, "Target", nil, adapter.ScopeHeadings)
+	results, err := m.SearchFilesWithTags(ctx, "Target", nil, adapter.ScopeHeadings, "")
 	if err != nil {
 		t.Fatalf("SearchFilesWithTags: %v", err)
 	}
@@ -705,5 +793,83 @@ func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
 	}
 	if results[0].Snippet != "" {
 		t.Errorf("ScopeHeadings must not produce snippet, got %q", results[0].Snippet)
+	}
+}
+
+// ---- Tier 3: type filter + alias-under-titles tests ----
+
+func TestAdapter_SearchFilesWithTags_TypeFilter(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "a.md", []byte("---\ntype: decision\n---\nbody"), "root")
+	m.CreateFile(ctx, "b.md", []byte("---\ntype: howto\n---\nbody"), "root")
+	m.CreateFile(ctx, "c.md", []byte("no frontmatter at all"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "", nil, adapter.ScopeAll, "decision")
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "a" {
+		t.Errorf("expected only 'a' (type=decision), got %+v", results)
+	}
+}
+
+// TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback simulates a legacy
+// row written before the note_type attribute existed: NoteType is empty even
+// though the content's frontmatter has a type. The filter must still match by
+// parsing frontmatter on the fly (mirrors the existing tags/headings lazy
+// fallback).
+func TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	fm, err := m.CreateFile(ctx, "legacy.md", []byte("---\ntype: decision\n---\nbody"), "root")
+	if err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+	// Simulate a pre-type-feature row.
+	m.files[fm.ID].Type = ""
+
+	results, err := m.SearchFilesWithTags(ctx, "", nil, adapter.ScopeAll, "decision")
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected lazy type fallback to find 1 result, got %d", len(results))
+	}
+}
+
+func TestAdapter_SearchFilesWithTags_TypeFilter_NoMatch(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "a.md", []byte("---\ntype: decision\n---\nbody"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "", nil, adapter.ScopeAll, "howto")
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for non-matching type, got %d", len(results))
+	}
+}
+
+// TestAdapter_SearchFilesWithTags_AliasHitUnderScopeTitles covers the alias
+// scoring component reachable from SearchFilesWithTags: an alias-only match
+// (the query never appears in the title) must still hit under ScopeTitles.
+func TestAdapter_SearchFilesWithTags_AliasHitUnderScopeTitles(t *testing.T) {
+	m := NewAdapter(nil, "user1", "")
+	ctx := context.Background()
+
+	m.CreateFile(ctx, "note.md", []byte("---\naliases: [Nickname]\n---\nbody"), "root")
+	m.CreateFile(ctx, "other.md", []byte("body mentions Nickname too"), "root")
+
+	results, err := m.SearchFilesWithTags(ctx, "Nickname", nil, adapter.ScopeTitles, "")
+	if err != nil {
+		t.Fatalf("SearchFilesWithTags: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "note" {
+		t.Errorf("expected alias match under ScopeTitles to find only 'note', got %+v", results)
 	}
 }

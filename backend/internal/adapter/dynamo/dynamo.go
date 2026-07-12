@@ -207,6 +207,9 @@ type FileItem struct {
 	Starred      bool              `dynamodbav:"starred"`
 	Tags         []string          `dynamodbav:"tags,omitempty"`
 	Headings     []string          `dynamodbav:"headings,omitempty"`
+	Aliases      []string          `dynamodbav:"aliases,omitempty"`
+	NoteType     string            `dynamodbav:"note_type,omitempty"`
+	Status       string            `dynamodbav:"status,omitempty"`
 	Links        []adapter.LinkRef `dynamodbav:"links,omitempty"`
 	Content      []byte            `dynamodbav:"content,omitempty"`
 	BodyS3Key    string            `dynamodbav:"body_s3_key,omitempty"`
@@ -283,6 +286,9 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 				Starred:      item.Starred,
 				Tags:         item.Tags,
 				Headings:     item.Headings,
+				Aliases:      item.Aliases,
+				Type:         item.NoteType,
+				Status:       item.Status,
 			})
 		}
 	}
@@ -331,6 +337,9 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 			Parents:      item.Parents,
 			Starred:      item.Starred,
 			Tags:         item.Tags,
+			Aliases:      item.Aliases,
+			Type:         item.NoteType,
+			Status:       item.Status,
 			Links:        item.Links,
 		},
 		Content:     item.Content,
@@ -417,12 +426,17 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return nil, err
 	}
 
+	meta, _, _ := markdown.ParseNoteMeta(content)
+
 	f.Content = inline
 	f.ModifiedTime = time.Now()
 	f.ETag = uuid.New().String()
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
 	f.Headings = markdown.ExtractHeadings(content)
+	f.Aliases = meta.Aliases
+	f.Type = meta.Type
+	f.Status = meta.Status
 
 	f.Links, err = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
 		return m.scanUserItems(ctx)
@@ -445,6 +459,9 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Starred:      f.Starred,
 		Tags:         f.Tags,
 		Headings:     f.Headings,
+		Aliases:      f.Aliases,
+		NoteType:     f.Type,
+		Status:       f.Status,
 		Links:        f.Links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
@@ -516,6 +533,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 	id := uuid.New().String()
 	tags := markdown.ExtractTags(content)
 	headings := markdown.ExtractHeadings(content)
+	noteMeta, _, _ := markdown.ParseNoteMeta(content)
 
 	links, err := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
 		return m.scanUserItems(ctx)
@@ -534,6 +552,9 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 			ETag:         uuid.New().String(),
 			Parents:      []string{targetFolderID},
 			Tags:         tags,
+			Aliases:      noteMeta.Aliases,
+			Type:         noteMeta.Type,
+			Status:       noteMeta.Status,
 			Links:        links,
 		},
 		Content: inline,
@@ -553,6 +574,9 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		Parents:      f.Parents,
 		Tags:         tags,
 		Headings:     headings,
+		Aliases:      noteMeta.Aliases,
+		NoteType:     noteMeta.Type,
+		Status:       noteMeta.Status,
 		Links:        links,
 		Content:      inline,
 		BodyS3Key:    s3Key,
@@ -661,36 +685,106 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// matchesScope checks whether a file matches query under the given scope.
-// Returns (hit bool, snippet string). Snippet is non-empty only on a body match in ScopeAll.
-// Must not mutate inputs; callers may pass aliased backing arrays while holding RLock.
-func matchesScope(name string, content []byte, headings []string, query string, scope adapter.SearchScope) (bool, string) {
-	switch scope {
-	case adapter.ScopeTitles:
-		return containsIgnoreCase(name, query), ""
-	case adapter.ScopeHeadings:
-		// Prefer stored headings; fall back to on-the-fly extraction.
-		hs := headings
-		if len(hs) == 0 && len(content) > 0 {
-			hs = markdown.ExtractHeadings(content)
-		}
-		for _, h := range hs {
-			if containsIgnoreCase(h, query) {
-				return true, ""
-			}
-		}
-		return false, ""
-	default: // ScopeAll
-		nameHit := containsIgnoreCase(name, query)
-		bodyHit := containsIgnoreCase(string(content), query)
-		if !nameHit && !bodyHit {
-			return false, ""
-		}
-		if bodyHit && !nameHit {
-			return true, makeSnippet(content, query, 60)
-		}
-		return true, ""
+// itemNoteType returns the note's type, lazily parsing frontmatter when
+// noteType is empty and content is available (mirrors itemAliases).
+func itemNoteType(noteType string, content []byte) string {
+	if noteType != "" {
+		return noteType
 	}
+	if len(content) == 0 {
+		return ""
+	}
+	meta, _, _ := markdown.ParseNoteMeta(content)
+	return meta.Type
+}
+
+// scoreMatch reports whether the item matches query under scope, with a
+// relevance score and optional body snippet. Pure; must not mutate inputs;
+// callers may pass aliased backing arrays while holding RLock. Callers must
+// not invoke this with an empty query — SearchFilesWithTags skips the
+// text-match step entirely when query == "".
+//
+// Score components (each computed once, then combined per scope below):
+//   - title: contains query → +100; exact title (minus .md) → +50 more.
+//   - alias: any alias contains query → +80; any alias exactly equals query → +40 more.
+//   - heading: any heading contains query → +40 (stored headings preferred,
+//     falling back to on-the-fly extraction when unset).
+//   - tag: any tag contains query → +30.
+//   - body: 10 points per occurrence of query, capped at 5 occurrences (+50 max).
+func scoreMatch(name string, aliases []string, content []byte, headings, tags []string, query string, scope adapter.SearchScope) (hit bool, score int, snippet string) {
+	titleScore := 0
+	if containsIgnoreCase(name, query) {
+		titleScore = 100
+		if strings.EqualFold(strings.TrimSuffix(name, mdExt), query) {
+			titleScore += 50
+		}
+	}
+
+	aliasContains, aliasExact := false, false
+	for _, a := range aliases {
+		if containsIgnoreCase(a, query) {
+			aliasContains = true
+		}
+		if strings.EqualFold(a, query) {
+			aliasExact = true
+		}
+	}
+	aliasScore := 0
+	if aliasContains {
+		aliasScore += 80
+	}
+	if aliasExact {
+		aliasScore += 40
+	}
+
+	if scope == adapter.ScopeTitles {
+		s := titleScore + aliasScore
+		return s > 0, s, ""
+	}
+
+	// Prefer stored headings; fall back to on-the-fly extraction. Shared by
+	// ScopeHeadings and ScopeAll.
+	hs := headings
+	if len(hs) == 0 && len(content) > 0 {
+		hs = markdown.ExtractHeadings(content)
+	}
+	headingScore := 0
+	for _, h := range hs {
+		if containsIgnoreCase(h, query) {
+			headingScore = 40
+			break
+		}
+	}
+
+	if scope == adapter.ScopeHeadings {
+		return headingScore > 0, headingScore, ""
+	}
+
+	// ScopeAll
+	tagScore := 0
+	for _, t := range tags {
+		if containsIgnoreCase(t, query) {
+			tagScore = 30
+			break
+		}
+	}
+
+	n := strings.Count(strings.ToLower(string(content)), strings.ToLower(query))
+	cappedN := n
+	if cappedN > 5 {
+		cappedN = 5
+	}
+	bodyScore := 10 * cappedN
+
+	total := titleScore + aliasScore + headingScore + tagScore + bodyScore
+	if total == 0 {
+		return false, 0, ""
+	}
+	snip := ""
+	if n > 0 {
+		snip = makeSnippet(content, query, 60)
+	}
+	return true, total, snip
 }
 
 // makeSnippet extracts a ±window-byte context around the first occurrence of
@@ -883,6 +977,11 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		ETag:         uuid.New().String(),
 		Parents:      orig.Parents,
 		Tags:         orig.Tags,
+		Headings:     orig.Headings,
+		Aliases:      orig.Aliases,
+		NoteType:     orig.NoteType,
+		Status:       orig.Status,
+		Links:        orig.Links,
 		Content:      dupContent,
 		TTL:          m.itemTTL(),
 	}
@@ -910,6 +1009,9 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		Parents:      item.Parents,
 		Starred:      item.Starred,
 		Tags:         item.Tags,
+		Aliases:      item.Aliases,
+		Type:         item.NoteType,
+		Status:       item.Status,
 	}, nil
 }
 
@@ -970,6 +1072,7 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 	if etag != "" && f.ETag != etag {
 		return nil, adapter.ErrPreconditionFailed
 	}
+	meta, _, _ := markdown.ParseNoteMeta(content)
 	f.Content = content
 	f.ModifiedTime = time.Now()
 	f.ViewedTime = f.ModifiedTime
@@ -977,6 +1080,9 @@ func (m *Adapter) saveFileMap(_ context.Context, fileID string, content []byte, 
 	f.Size = int64(len(content))
 	f.Tags = markdown.ExtractTags(content)
 	f.Headings = markdown.ExtractHeadings(content)
+	f.Aliases = meta.Aliases
+	f.Type = meta.Type
+	f.Status = meta.Status
 	f.Links, _ = resolveLinksLazy(content, f.Links, func() ([]FileItem, error) {
 		return m.mapItems(), nil
 	})
@@ -997,6 +1103,7 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 	links, _ := resolveLinksLazy(content, nil, func() ([]FileItem, error) {
 		return m.mapItems(), nil
 	})
+	meta, _, _ := markdown.ParseNoteMeta(content)
 	f := &adapter.File{
 		FileMetadata: adapter.FileMetadata{
 			ID:           id,
@@ -1008,6 +1115,9 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 			Parents:      []string{folderID},
 			Tags:         markdown.ExtractTags(content),
 			Headings:     markdown.ExtractHeadings(content),
+			Aliases:      meta.Aliases,
+			Type:         meta.Type,
+			Status:       meta.Status,
 			Links:        links,
 		},
 		Content:     content,
@@ -1144,6 +1254,11 @@ func (m *Adapter) duplicateFileMap(ctx context.Context, fileID string) (*adapter
 			ETag:         uuid.New().String(),
 			Parents:      orig.Parents,
 			Tags:         orig.Tags,
+			Headings:     orig.Headings,
+			Aliases:      orig.Aliases,
+			Type:         orig.Type,
+			Status:       orig.Status,
+			Links:        orig.Links,
 		},
 		Content:     newContent,
 		CreatedTime: now,
@@ -1204,6 +1319,9 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		Starred:      item.Starred,
 		Tags:         item.Tags,
 		Headings:     item.Headings,
+		Aliases:      item.Aliases,
+		Type:         item.NoteType,
+		Status:       item.Status,
 	}, nil
 }
 
@@ -1247,6 +1365,9 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		Starred:      item.Starred,
 		Tags:         item.Tags,
 		Headings:     item.Headings,
+		Aliases:      item.Aliases,
+		Type:         item.NoteType,
+		Status:       item.Status,
 	}, nil
 }
 
@@ -1380,6 +1501,9 @@ func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID strin
 		Starred:      item.Starred,
 		Tags:         item.Tags,
 		Headings:     item.Headings,
+		Aliases:      item.Aliases,
+		Type:         item.NoteType,
+		Status:       item.Status,
 	}, nil
 }
 
@@ -1540,6 +1664,9 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 					Starred:      item.Starred,
 					Tags:         item.Tags,
 					Headings:     item.Headings,
+					Aliases:      item.Aliases,
+					Type:         item.NoteType,
+					Status:       item.Status,
 				})
 			}
 		}
@@ -1607,6 +1734,9 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 			Starred:      item.Starred,
 			Tags:         item.Tags,
 			Headings:     item.Headings,
+			Aliases:      item.Aliases,
+			Type:         item.NoteType,
+			Status:       item.Status,
 		})
 	}
 
@@ -1693,20 +1823,21 @@ func (m *Adapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, e
 
 // SearchFiles searches for files matching the query (delegates to SearchFilesWithTags).
 func (m *Adapter) SearchFiles(ctx context.Context, query string) ([]adapter.FileMetadata, error) {
-	return m.SearchFilesWithTags(ctx, query, nil, adapter.ScopeAll)
+	return m.SearchFilesWithTags(ctx, query, nil, adapter.ScopeAll, "")
 }
 
-// SearchFilesWithTags searches by text query AND all provided tags (AND semantics).
+// SearchFilesWithTags searches by text query AND all provided tags (AND semantics),
+// optionally restricted to a single note type.
 // scope restricts the text match to title, headings, or all fields.
-// Items with no stored tags/headings are checked via on-the-fly extraction (lazy fallback).
-func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []string, scope adapter.SearchScope) ([]adapter.FileMetadata, error) {
+// Items with no stored tags/headings/type are checked via on-the-fly extraction (lazy fallback).
+func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []string, scope adapter.SearchScope, noteType string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
 	}
 
 	if m.client == nil {
-		return m.searchFilesWithTagsMap(ctx, query, tags, scope)
+		return m.searchFilesWithTagsMap(ctx, query, tags, scope, noteType)
 	}
 
 	items, err := m.scanUserItems(ctx)
@@ -1731,13 +1862,20 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			continue
 		}
 
+		// Type filter; lazy fallback for items with no stored NoteType
+		if noteType != "" && !strings.EqualFold(itemNoteType(item.NoteType, item.Content), noteType) {
+			continue
+		}
+
 		// Text match (skip if query is empty)
 		var snippet string
+		var score int
 		if query != "" {
-			hit, snip := matchesScope(item.Name, item.Content, item.Headings, query, scope)
+			hit, sc, snip := scoreMatch(item.Name, itemAliases(item), item.Content, item.Headings, item.Tags, query, scope)
 			if !hit {
 				continue
 			}
+			score = sc
 			snippet = snip
 		}
 
@@ -1764,6 +1902,10 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			Starred:      item.Starred,
 			Tags:         item.Tags,
 			Headings:     item.Headings,
+			Aliases:      item.Aliases,
+			Type:         item.NoteType,
+			Status:       item.Status,
+			Score:        score,
 			Snippet:      snippet,
 		})
 	}
@@ -1927,7 +2069,7 @@ func folderPathSegments(parents []string, parentOf map[string]string, folderName
 	return rev
 }
 
-func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags []string, scope adapter.SearchScope) ([]adapter.FileMetadata, error) {
+func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags []string, scope adapter.SearchScope, noteType string) ([]adapter.FileMetadata, error) {
 	targetFolderID := "root"
 	if m.BaseFolderID != "" {
 		targetFolderID = m.BaseFolderID
@@ -1952,12 +2094,26 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		if !m.isDescendant(f.Parents, targetFolderID, parentMap) {
 			continue
 		}
+
+		// Type filter; lazy fallback for items with no stored Type
+		if noteType != "" && !strings.EqualFold(itemNoteType(f.Type, f.Content), noteType) {
+			continue
+		}
+
 		var snippet string
+		var score int
 		if query != "" {
-			hit, snip := matchesScope(f.Name, f.Content, f.Headings, query, scope)
+			aliases := f.Aliases
+			if len(aliases) == 0 && len(f.Content) > 0 {
+				// Lazy: item predates aliases feature — extract on the fly for this query
+				meta, _, _ := markdown.ParseNoteMeta(f.Content)
+				aliases = meta.Aliases
+			}
+			hit, sc, snip := scoreMatch(f.Name, aliases, f.Content, f.Headings, f.Tags, query, scope)
 			if !hit {
 				continue
 			}
+			score = sc
 			snippet = snip
 		}
 		if len(tags) > 0 {
@@ -1972,6 +2128,7 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		meta := f.FileMetadata
 		meta.Name = fromStoredName(meta.Name)
 		meta.Snippet = snippet
+		meta.Score = score
 		files = append(files, meta)
 	}
 	return files, nil
@@ -2016,6 +2173,9 @@ func (m *Adapter) mapItems() []FileItem {
 			ModifiedTime: f.ModifiedTime,
 			CreatedTime:  f.CreatedTime,
 			Tags:         f.Tags,
+			Aliases:      f.Aliases,
+			NoteType:     f.Type,
+			Status:       f.Status,
 			Links:        f.Links,
 		})
 	}
@@ -2030,9 +2190,9 @@ func (m *Adapter) EnrichNoteLinks(ctx context.Context, noteID string, links []ad
 	if err != nil {
 		return nil, nil, err
 	}
-	byID, titleToID := buildLookupMaps(items)
-	enriched := enrichLinks(links, byID, titleToID)
-	backs := backlinksOf(noteID, items, byID, titleToID)
+	byID, titleToID, aliasToID := buildLookupMaps(items)
+	enriched := enrichLinks(links, byID, titleToID, aliasToID)
+	backs := backlinksOf(noteID, items, byID, titleToID, aliasToID)
 	return enriched, backs, nil
 }
 
@@ -2040,9 +2200,9 @@ func (m *Adapter) enrichNoteLinksMap(_ context.Context, noteID string, links []a
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	items := m.mapItems()
-	byID, titleToID := buildLookupMaps(items)
-	enriched := enrichLinks(links, byID, titleToID)
-	backs := backlinksOf(noteID, items, byID, titleToID)
+	byID, titleToID, aliasToID := buildLookupMaps(items)
+	enriched := enrichLinks(links, byID, titleToID, aliasToID)
+	backs := backlinksOf(noteID, items, byID, titleToID, aliasToID)
 	return enriched, backs, nil
 }
 
