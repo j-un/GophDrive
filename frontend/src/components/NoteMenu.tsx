@@ -111,7 +111,7 @@ export const NoteMenu: React.FC<NoteMenuProps> = ({
               <Star
                 size={16}
                 fill={isStarred ? "currentColor" : "none"}
-                style={{ color: isStarred ? "var(--yellow)" : "inherit" }}
+                style={{ color: isStarred ? "var(--star)" : "inherit" }}
               />
               {isStarred ? "Unstar" : "Star"}
             </button>
