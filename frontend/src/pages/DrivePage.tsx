@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import NoteList from "@/components/NoteList";
 import { Sidebar } from "@/components/Sidebar";
-import { ChevronRight, Home, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { getBreadcrumbs, isValidNoteId, BreadcrumbItem } from "@/lib/api";
+import styles from "./DrivePage.module.css";
 
 function NotesContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const folderIdParam = searchParams.get("folderId") || undefined;
+  const searchQuery = searchParams.get("q") || undefined;
 
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
     { id: "", name: "Home" },
@@ -16,6 +18,7 @@ function NotesContent() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [createNoteSignal, setCreateNoteSignal] = useState(0);
 
   const searchParamsStr = searchParams.toString();
   const tagFilter = useMemo(
@@ -23,6 +26,12 @@ function NotesContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchParamsStr],
   );
+
+  const canCreateNote = !searchQuery && tagFilter.length === 0;
+  const canCreateNoteRef = useRef(canCreateNote);
+  useEffect(() => {
+    canCreateNoteRef.current = canCreateNote;
+  });
 
   const fetchFolderInfo = async (id: string) => {
     if (!isValidNoteId(id)) {
@@ -61,15 +70,35 @@ function NotesContent() {
     }
   };
 
+  const triggerCreateNote = () => {
+    if (!canCreateNoteRef.current) return;
+    setCreateNoteSignal((v) => v + 1);
+  };
+
+  // ⌘N / Ctrl+N — start a new note, unless the user is typing somewhere else.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "n") return;
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || active?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      triggerCreateNote();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const pageTitle = searchQuery
+    ? `Search results for "${searchQuery}"`
+    : tagFilter.length > 0
+      ? `Tag: ${tagFilter.join(", ")}`
+      : breadcrumbs[breadcrumbs.length - 1]?.name || "Home";
+
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        width: "100vw",
-        overflow: "hidden",
-      }}
-    >
+    <div className={styles.wrapper}>
       <Sidebar
         onNavigate={handleNavigate}
         isOpen={sidebarOpen}
@@ -77,70 +106,56 @@ function NotesContent() {
         refreshTrigger={sidebarRefreshKey}
       />
 
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-        }}
-      >
-        <div
-          style={{
-            padding: "1rem",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            background: "var(--header-background)",
-          }}
+      <div className={styles.main}>
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+          style={{ margin: "12px 0 0 12px" }}
         >
-          <button
-            className="mobile-menu-btn"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              fontWeight: "bold",
-            }}
-          >
-            {breadcrumbs.map((bc, idx) => (
-              <React.Fragment key={idx}>
-                {idx > 0 && <ChevronRight size={16} style={{ opacity: 0.5 }} />}
-                <button
-                  onClick={() => handleNavigate(bc.id)}
-                  className="hover:underline"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    opacity: idx === breadcrumbs.length - 1 ? 1 : 0.7,
-                  }}
-                >
-                  {idx === 0 && <Home size={16} />}
-                  {bc.name}
-                </button>
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
+          <Menu size={20} strokeWidth={1.8} />
+        </button>
 
-        <NoteList
-          folderId={folderIdParam}
-          searchQuery={searchParams.get("q") || undefined}
-          tagFilter={tagFilter}
-          onAfterMutation={() => setSidebarRefreshKey((k) => k + 1)}
-        />
+        <div className={styles.column}>
+          <div className={styles.topRow}>
+            <div className={styles.breadcrumb}>
+              {breadcrumbs.map((bc, idx) => (
+                <React.Fragment key={idx}>
+                  {idx > 0 && <span className={styles.crumbSep}> / </span>}
+                  <button
+                    type="button"
+                    className={styles.crumbButton}
+                    onClick={() => handleNavigate(bc.id)}
+                  >
+                    {bc.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+
+            {canCreateNote && (
+              <button
+                type="button"
+                className={styles.newNoteBtn}
+                onClick={triggerCreateNote}
+              >
+                + New note
+                <span className={styles.keyChip}>⌘N</span>
+              </button>
+            )}
+          </div>
+
+          <h1 className={styles.title}>{pageTitle}</h1>
+
+          <NoteList
+            folderId={folderIdParam}
+            searchQuery={searchQuery}
+            tagFilter={tagFilter}
+            onAfterMutation={() => setSidebarRefreshKey((k) => k + 1)}
+            createNoteSignal={createNoteSignal}
+          />
+        </div>
       </div>
     </div>
   );

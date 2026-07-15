@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { mockNavigate } from "@/__mocks__/react-router";
-import { deleteFile } from "@/lib/api";
+import { createFolder, createNote, deleteFile } from "@/lib/api";
 import { getAllNotesLocal } from "@/lib/idb";
 import { useOffline } from "@/hooks/useOffline";
 
@@ -27,7 +27,7 @@ vi.mock("@/lib/api", () => ({
   renameNote: vi.fn().mockResolvedValue(undefined),
   starFile: vi.fn().mockResolvedValue(undefined),
   searchFiles: vi.fn().mockResolvedValue([]),
-  createNote: vi.fn(),
+  createNote: vi.fn().mockResolvedValue({ id: "note-new" }),
   createFolder: vi.fn().mockResolvedValue({ id: "folder-new" }),
 }));
 
@@ -56,13 +56,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("NoteList folder display", () => {
+describe("NoteList row list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useOffline).mockReturnValue(false);
   });
 
-  it("renders folders in Folders section and notes in Notes section", async () => {
+  it("renders folder rows and note rows for the current folder", async () => {
     mockListFiles.mockResolvedValueOnce([
       {
         id: "folder-1",
@@ -85,11 +85,9 @@ describe("NoteList folder display", () => {
 
     expect(await screen.findByText("My Folder")).toBeTruthy();
     expect(screen.getByText("Test Note")).toBeTruthy();
-    expect(screen.getByText("Folders")).toBeTruthy();
-    expect(screen.getByText("Notes")).toBeTruthy();
   });
 
-  it("navigates to /drive/?folderId=... when a folder card is clicked", async () => {
+  it("renders the folder row as a link to /drive/?folderId=...", async () => {
     mockListFiles.mockResolvedValueOnce([
       {
         id: "folder-1",
@@ -102,9 +100,127 @@ describe("NoteList folder display", () => {
     ]);
     render(<NoteList />);
 
-    fireEvent.click(await screen.findByText("My Folder"));
+    const link = await screen.findByRole("link", { name: /My Folder/ });
+    expect(link.getAttribute("href")).toBe("/drive/?folderId=folder-1");
+  });
 
-    expect(mockNavigate).toHaveBeenCalledWith("/drive/?folderId=folder-1");
+  it("renders the note row as a link to /note/?id=...", async () => {
+    render(<NoteList />);
+
+    const link = await screen.findByRole("link", { name: /Test Note/ });
+    expect(link.getAttribute("href")).toBe("/note/?id=note-1");
+  });
+
+  it("does not render a Refresh button", async () => {
+    render(<NoteList />);
+    await screen.findByText("Test Note");
+    expect(screen.queryByText("Refresh")).toBeNull();
+    expect(screen.queryByTitle("Refresh")).toBeNull();
+  });
+
+  it("renders a note's tags as separate links to /drive/?tag=... (not the note link)", async () => {
+    mockListFiles.mockResolvedValueOnce([
+      {
+        id: "note-1",
+        name: "Tagged Note",
+        mimeType: "application/vnd.google-apps.document",
+        parents: [],
+        modifiedTime: "2026-05-14T00:00:00Z",
+        starred: false,
+        tags: ["work"],
+      },
+    ]);
+    render(<NoteList />);
+
+    const tagLink = await screen.findByRole("link", { name: "#work" });
+    expect(tagLink.getAttribute("href")).toBe("/drive/?tag=work");
+
+    const noteLink = screen.getByRole("link", { name: /Tagged Note/ });
+    expect(noteLink.getAttribute("href")).toBe("/note/?id=note-1");
+  });
+
+  it("opens the note menu without navigating to the note", async () => {
+    render(<NoteList />);
+
+    await screen.findByText("Test Note");
+    fireEvent.click(screen.getByTitle("Options"));
+
+    expect(await screen.findByText("Delete")).toBeTruthy();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("shows a filled star for starred notes", async () => {
+    mockListFiles.mockResolvedValueOnce([
+      {
+        id: "note-1",
+        name: "Starred Note",
+        mimeType: "application/vnd.google-apps.document",
+        parents: [],
+        modifiedTime: "2026-05-14T00:00:00Z",
+        starred: true,
+      },
+    ]);
+    const { container } = render(<NoteList />);
+
+    await screen.findByText("Starred Note");
+    const star = container.querySelector("svg.lucide-star");
+    expect(star).toBeTruthy();
+    expect(star?.getAttribute("fill")).toBe("var(--star)");
+  });
+});
+
+describe("NoteList — new note flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useOffline).mockReturnValue(false);
+  });
+
+  it("opens the inline row and creates a note when createNoteSignal is bumped (DrivePage's + New note / ⌘N)", async () => {
+    mockListFiles.mockResolvedValueOnce([]);
+    const { rerender } = render(<NoteList createNoteSignal={0} />);
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+    // Simulates DrivePage incrementing the signal on button click or ⌘N.
+    rerender(<NoteList createNoteSignal={1} />);
+
+    const input = await screen.findByPlaceholderText("Note name...");
+    fireEvent.change(input, { target: { value: "My New Note" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(createNote).toHaveBeenCalledWith(
+        "My New Note",
+        "# My New Note",
+        undefined,
+      ),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-new");
+  });
+
+  it("does not open the inline row on initial mount", () => {
+    render(<NoteList createNoteSignal={0} />);
+    expect(screen.queryByPlaceholderText("Note name...")).toBeNull();
+  });
+});
+
+describe("NoteList — new folder flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useOffline).mockReturnValue(false);
+  });
+
+  it("creates a folder from the inline '+ New folder' row", async () => {
+    mockListFiles.mockResolvedValueOnce([]);
+    render(<NoteList />);
+
+    fireEvent.click(await screen.findByText("+ New folder"));
+    const input = screen.getByPlaceholderText("Folder name...");
+    fireEvent.change(input, { target: { value: "My Folder" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(createFolder).toHaveBeenCalledWith("My Folder", undefined),
+    );
   });
 });
 

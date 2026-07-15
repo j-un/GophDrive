@@ -1,0 +1,96 @@
+.wrapper {
+  display: flex;
+  height: 100vh;
+  /* `100%` (of <body>), not `100vw`: `100vw` is the full viewport width
+     *including* the vertical scrollbar's reserved gutter, so this box would
+     always be a few px wider than the actually visible content area — a
+     permanent horizontal scrollbar regardless of content. `100%` resolves
+     against <body>'s content box, which already excludes that gutter. */
+  width: 100%;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  /* Without this, a flex item's intrinsic min-width defaults to its
+     content's size rather than 0, so it can refuse to shrink below the
+     Sidebar rail + this column's combined width and force the row to
+     overflow horizontally at narrower viewports. */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.column {
+  box-sizing: border-box;
+  width: 720px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 88px 24px 64px;
+}
+
+.topRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.crumbButton {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.crumbSep {
+  padding: 0 4px;
+  color: var(--crumb-sep);
+}
+
+.newNoteBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 13.5px;
+  color: var(--foreground);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.keyChip {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.title {
+  margin: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
