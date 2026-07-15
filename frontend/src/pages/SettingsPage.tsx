@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, exportNotes } from "@/lib/api";
@@ -6,6 +6,29 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { APIKeysSection } from "@/components/APIKeysSection";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Loader2, ArrowLeft, Download } from "lucide-react";
+
+const sectionHeadingStyle: CSSProperties = {
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "1rem",
+};
+
+const sectionStyle: CSSProperties = {
+  padding: "1.75rem 0",
+  borderBottom: "1px solid var(--border)",
+};
+
+const lastSectionStyle: CSSProperties = {
+  padding: "1.75rem 0 0",
+};
+
+const rowLabelStyle: CSSProperties = {
+  color: "var(--text-secondary)",
+  fontSize: "0.9rem",
+};
 
 export default function SettingsPage() {
   const { user, loading, refreshUser } = useAuth();
@@ -58,7 +81,8 @@ export default function SettingsPage() {
       >
         <Loader2
           className="animate-spin"
-          style={{ color: "var(--muted-foreground)" }}
+          strokeWidth={1.8}
+          style={{ color: "var(--text-muted)" }}
         />
       </div>
     );
@@ -66,56 +90,52 @@ export default function SettingsPage() {
   return (
     <div
       style={{
-        padding: "2rem",
-        maxWidth: "800px",
+        width: "720px",
+        maxWidth: "100%",
         margin: "0 auto",
+        padding: "3rem 1.5rem 4rem",
         color: "var(--foreground)",
       }}
     >
       <div
         style={{
-          marginBottom: "2rem",
           display: "flex",
           alignItems: "center",
-          gap: "1rem",
+          gap: "0.75rem",
+          paddingBottom: "1.5rem",
+          borderBottom: "1px solid var(--border)",
         }}
       >
         <button
           onClick={() => navigate(-1)}
+          aria-label="Back"
           style={{
             background: "transparent",
-            border: "1px solid var(--border)",
+            border: "none",
             cursor: "pointer",
-            padding: "0.5rem",
+            padding: "0.375rem",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: "50%",
+            color: "var(--text-muted)",
           }}
         >
-          <ArrowLeft size={20} style={{ color: "var(--foreground)" }} />
+          <ArrowLeft size={20} strokeWidth={1.8} />
         </button>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: "bold" }}>Settings</h1>
+        <h1
+          style={{
+            fontSize: "26px",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            margin: 0,
+          }}
+        >
+          Settings
+        </h1>
       </div>
 
-      <div
-        style={{
-          background: "var(--card)",
-          padding: "1.5rem",
-          borderRadius: "0.5rem",
-          border: "1px solid var(--border)",
-          marginBottom: "2rem",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: "1.125rem",
-            fontWeight: 600,
-            marginBottom: "1rem",
-          }}
-        >
-          Appearance
-        </h2>
+      <section style={sectionStyle}>
+        <h2 style={sectionHeadingStyle}>Appearance</h2>
         <div
           style={{
             display: "flex",
@@ -123,32 +143,16 @@ export default function SettingsPage() {
             justifyContent: "space-between",
           }}
         >
-          <span style={{ color: "var(--muted-foreground)" }}>Theme</span>
+          <span style={rowLabelStyle}>Theme</span>
           <ThemeToggle />
         </div>
-      </div>
+      </section>
 
-      <div
-        style={{
-          background: "var(--card)",
-          padding: "1.5rem",
-          borderRadius: "0.5rem",
-          border: "1px solid var(--border)",
-          marginBottom: "2rem",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: "1.125rem",
-            fontWeight: 600,
-            marginBottom: "0.5rem",
-          }}
-        >
-          Export
-        </h2>
+      <section style={sectionStyle}>
+        <h2 style={sectionHeadingStyle}>Export</h2>
         <p
           style={{
-            color: "var(--muted-foreground)",
+            color: "var(--text-secondary)",
             fontSize: "0.875rem",
             marginBottom: "1rem",
           }}
@@ -171,9 +175,9 @@ export default function SettingsPage() {
           }}
         >
           {exporting ? (
-            <Loader2 size={16} className="animate-spin" />
+            <Loader2 size={16} strokeWidth={1.8} className="animate-spin" />
           ) : (
-            <Download size={16} />
+            <Download size={16} strokeWidth={1.8} />
           )}
           {exporting ? "Exporting..." : "Export all notes (.zip)"}
         </button>
@@ -188,27 +192,12 @@ export default function SettingsPage() {
             {exportError}
           </p>
         )}
-      </div>
+      </section>
 
       <APIKeysSection />
 
-      <div
-        style={{
-          background: "var(--card)",
-          padding: "1.5rem",
-          borderRadius: "0.5rem",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: "1.125rem",
-            fontWeight: 600,
-            marginBottom: "1rem",
-          }}
-        >
-          Account
-        </h2>
+      <section style={lastSectionStyle}>
+        <h2 style={sectionHeadingStyle}>Account</h2>
         <div
           style={{
             display: "grid",
@@ -217,14 +206,15 @@ export default function SettingsPage() {
             alignItems: "center",
           }}
         >
-          <span style={{ color: "var(--muted-foreground)" }}>User ID</span>
+          <span style={rowLabelStyle}>User ID</span>
           <code
             style={{
               background: "var(--muted)",
               color: "var(--foreground)",
               padding: "0.25rem 0.5rem",
               borderRadius: "0.25rem",
-              fontFamily: "monospace",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.875rem",
             }}
           >
             {user?.id}
@@ -250,7 +240,7 @@ export default function SettingsPage() {
             Logout
           </button>
         </div>
-      </div>
+      </section>
 
       <ConfirmDialog
         isOpen={showLogoutConfirm}
