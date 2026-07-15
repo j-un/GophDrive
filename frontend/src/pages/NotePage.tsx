@@ -1,21 +1,15 @@
-import React, {
-  useEffect,
-  useState,
+import {
+  Fragment,
   useCallback,
+  useEffect,
+  useMemo,
+  useState,
   Suspense,
   useRef,
 } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router";
-import {
-  Check,
-  Save,
-  Share2,
-  Home,
-  ChevronRight,
-  FileText,
-  Columns2,
-  Eye,
-} from "lucide-react";
+import { Check, Share2, ChevronLeft, Eye } from "lucide-react";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useOffline } from "@/hooks/useOffline";
@@ -32,18 +26,34 @@ import {
   LinkRef,
   BacklinkEntry,
 } from "@/lib/api";
-import { Editor, type EditorHandle } from "@/components/Editor";
+import { countChars } from "@/lib/countChars";
+import {
+  Editor,
+  type EditorHandle,
+  type SelectionInfo,
+} from "@/components/Editor";
 import { MarkdownToolbar } from "@/components/MarkdownToolbar";
 import { Preview } from "@/components/Preview";
+import { Sidebar } from "@/components/Sidebar";
 import { LockBanner } from "@/components/LockBanner";
 import { ConflictDialog } from "@/components/ConflictDialog";
 import { NoteMenu } from "@/components/NoteMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buildShareLink } from "@/lib/share";
+import styles from "./NotePage.module.css";
 
 interface RemoteData {
   content: string;
   etag: string;
+}
+
+/** Formats an ISO timestamp as a 24h `HH:MM` string for the save indicator. */
+function formatSavedTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function NoteContent() {
@@ -53,7 +63,10 @@ function NoteContent() {
 
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
-  const [modifiedTime, setModifiedTime] = useState<string | null>(null);
+  // Formatted HH:MM of the last successful save; initialized from the note's
+  // modifiedTime on load and refreshed on every successful save (see
+  // formatSavedTime below).
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [etag, setEtag] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,56 +82,26 @@ function NoteContent() {
   const [noteBacklinks, setNoteBacklinks] = useState<BacklinkEntry[]>([]);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
-  const [viewMode, setViewMode] = useState<"editor" | "split" | "preview">(
-    "split",
-  );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [selection, setSelection] = useState<SelectionInfo | null>(null);
+
+  // Zen mode: fades the rail + top bar out ~1s after the user starts typing
+  // in the editor; any mouse movement, Escape, or focus loss brings them
+  // back immediately. See handleEditorKeyDown / exitZenMode below.
+  const [isTyping, setIsTyping] = useState(false);
+  const isTypingRef = useRef(isTyping);
+  useEffect(() => {
+    isTypingRef.current = isTyping;
+  }, [isTyping]);
+  const typingTimerRef = useRef<number | null>(null);
 
   const isOffline = useOffline();
 
-  const editorScrollRef = useRef<HTMLDivElement>(null);
-  const previewScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncing = useRef(false);
   const copyTimerRef = useRef<number | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
   const noteLoadRef = useRef(0);
-
-  const handleEditorScroll = () => {
-    if (
-      isSyncing.current ||
-      !editorScrollRef.current ||
-      !previewScrollRef.current
-    )
-      return;
-    isSyncing.current = true;
-    const { scrollTop, scrollHeight, clientHeight } = editorScrollRef.current;
-    const scrollPercentage = scrollTop / (scrollHeight - clientHeight || 1);
-    const preview = previewScrollRef.current;
-    preview.scrollTop =
-      scrollPercentage * (preview.scrollHeight - preview.clientHeight);
-    setTimeout(() => {
-      isSyncing.current = false;
-    }, 50);
-  };
-
-  const handlePreviewScroll = () => {
-    if (
-      isSyncing.current ||
-      !editorScrollRef.current ||
-      !previewScrollRef.current
-    )
-      return;
-    isSyncing.current = true;
-    const { scrollTop, scrollHeight, clientHeight } = previewScrollRef.current;
-    const scrollPercentage = scrollTop / (scrollHeight - clientHeight || 1);
-    const editor = editorScrollRef.current;
-    editor.scrollTop =
-      scrollPercentage * (editor.scrollHeight - editor.clientHeight);
-    setTimeout(() => {
-      isSyncing.current = false;
-    }, 50);
-  };
+  const breadcrumbsRequestRef = useRef(0);
 
   useEffect(() => {
     if (!id) {
@@ -209,7 +192,9 @@ function NoteContent() {
         }>(res);
         setContent(data.content || "");
         setTitle(data.name || "Untitled Note");
-        if (data.modifiedTime) setModifiedTime(data.modifiedTime);
+        if (data.modifiedTime) {
+          setSavedAt(formatSavedTime(data.modifiedTime));
+        }
         setNoteLinks(data.links ?? []);
         setNoteBacklinks(data.backlinks ?? []);
 
@@ -247,19 +232,28 @@ function NoteContent() {
   }, [id, isOffline]);
 
   useEffect(() => {
-    if (parentId) {
-      getBreadcrumbs(parentId).then((crumbs) => {
-        setBreadcrumbs(crumbs);
-      });
-    } else {
+    if (!parentId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setBreadcrumbs([{ id: "", name: "Home" }]);
+      return;
     }
+    const requestId = ++breadcrumbsRequestRef.current;
+    getBreadcrumbs(parentId)
+      .then((crumbs) => {
+        if (requestId !== breadcrumbsRequestRef.current) return;
+        setBreadcrumbs(crumbs);
+      })
+      .catch((err) => {
+        if (requestId !== breadcrumbsRequestRef.current) return;
+        console.error("Failed to load breadcrumbs", err);
+        // Leave the previous breadcrumbs in place on failure.
+      });
   }, [parentId]);
 
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
     };
   }, []);
 
@@ -330,7 +324,7 @@ function NoteContent() {
         }
 
         const now = new Date().toISOString();
-        setModifiedTime(now);
+        setSavedAt(formatSavedTime(now));
         saveNoteLocal({
           id,
           content: newContent,
@@ -366,6 +360,61 @@ function NoteContent() {
   } = useAutoSave(content, saveNote, 2000, !loading && !error && !!id);
 
   useHeartbeat(id ?? "", !lockedBy && !loading && !error && !!id);
+
+  // Mirrors autoSaveError in a ref so handleEditorKeyDown (a stable callback
+  // with an empty dep array) can read the latest value without needing
+  // autoSaveError in its deps.
+  const autoSaveErrorRef = useRef(autoSaveError);
+  useEffect(() => {
+    autoSaveErrorRef.current = autoSaveError;
+  }, [autoSaveError]);
+
+  // ===== Zen mode =====
+  // First keystroke in the editor starts a 1s timer; when it fires, the rail
+  // and top bar fade out. Mouse movement, Escape, or the editor losing focus
+  // clear the timer and bring the UI back immediately.
+  const exitZenMode = useCallback(() => {
+    if (typingTimerRef.current !== null) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    if (isTypingRef.current) setIsTyping(false);
+  }, []);
+
+  const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent) => {
+    if (e.key === "Escape") return;
+    // A save error must stay visible, so don't let the rail/top bar fade
+    // out while one is showing.
+    if (autoSaveErrorRef.current) return;
+    if (isTypingRef.current || typingTimerRef.current !== null) return;
+    typingTimerRef.current = window.setTimeout(() => {
+      typingTimerRef.current = null;
+      setIsTyping(true);
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = () => exitZenMode();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitZenMode();
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [exitZenMode]);
+
+  // A save error appearing mid-typing must be visible immediately — exit
+  // zen mode as soon as one shows up. handleEditorKeyDown's
+  // autoSaveErrorRef check (above) then keeps zen mode from re-engaging
+  // while the error is still present.
+  useEffect(() => {
+    if (autoSaveError) exitZenMode();
+  }, [autoSaveError, exitZenMode]);
+
+  const charCount = useMemo(() => countChars(content), [content]);
 
   const handleKeepLocal = () => {
     if (!conflictRemote || !id) return;
@@ -481,6 +530,24 @@ function NoteContent() {
     }
   };
 
+  const handleShare = async () => {
+    if (!id) return;
+    if (!navigator.clipboard?.writeText) {
+      console.error("Clipboard API unavailable");
+      return;
+    }
+    const url = `${window.location.origin}/note/?id=${id}`;
+    try {
+      await navigator.clipboard.writeText(buildShareLink(title, url));
+    } catch (err) {
+      console.error("Failed to copy share link", err);
+      return;
+    }
+    setShareCopied(true);
+    if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setShareCopied(false), 1500);
+  };
+
   if (loading)
     return (
       <div
@@ -517,96 +584,63 @@ function NoteContent() {
       </div>
     );
 
+  let saveDotClass = styles.saveDot;
+  let saveLabel = savedAt ? `saved ${savedAt}` : "saved";
+  if (isSaving) {
+    saveDotClass = `${styles.saveDot} ${styles.saveDotSaving}`;
+  } else if (autoSaveError) {
+    saveDotClass = `${styles.saveDot} ${styles.saveDotError}`;
+    saveLabel = "error";
+  } else if (hasUnsavedChanges) {
+    saveDotClass = `${styles.saveDot} ${styles.saveDotUnsaved}`;
+    saveLabel = "unsaved";
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        background: "var(--background)",
-        color: "var(--foreground)",
-      }}
-    >
-      {/* Header */}
-      <header
-        className="note-header"
-        style={{
-          height: "auto",
-          minHeight: "3.5rem",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "1rem",
-          background: "var(--header-background)",
-          flexShrink: 0,
-          flexWrap: "wrap",
-          gap: "0.5rem",
-        }}
+    <div className={styles.root}>
+      <div
+        className={`${styles.sidebarWrap} ${isTyping ? styles.sidebarWrapZen : ""}`}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.25rem",
-            flex: 1,
-            minWidth: 0,
-          }}
+        <Sidebar
+          onNavigate={(folderId) =>
+            navigate(folderId ? `/drive/?folderId=${folderId}` : "/drive/")
+          }
+        />
+      </div>
+
+      <div className={styles.main}>
+        <header
+          className={`${styles.topbar} ${isTyping ? styles.topbarZen : ""}`}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-            }}
-            className="note-breadcrumbs"
-          >
+          <div className={styles.crumbs}>
+            <Link
+              to="/drive/"
+              className={styles.backBtn}
+              aria-label="Back to Drive"
+            >
+              <ChevronLeft size={15} strokeWidth={1.8} />
+            </Link>
+
             {breadcrumbs.map((bc, idx) => (
-              <React.Fragment key={idx}>
-                {idx > 0 && (
-                  <span style={{ opacity: 0.5 }}>
-                    <ChevronRight size={16} />
-                  </span>
-                )}
+              <Fragment key={idx}>
+                {idx > 0 && <span className={styles.crumbSep}>/</span>}
                 <Link
                   to={bc.id ? `/drive/?folderId=${bc.id}` : "/drive/"}
-                  className="hover:underline"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    textDecoration: "none",
-                    opacity: 0.7,
-                  }}
+                  className={styles.crumbLink}
                 >
-                  {bc.id === "" && <Home size={16} />}
-                  <span
-                    style={{
-                      fontSize: "1rem",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: "10rem",
-                    }}
-                  >
-                    {bc.name}
-                  </span>
+                  {bc.name}
                 </Link>
-              </React.Fragment>
+              </Fragment>
             ))}
 
-            <span style={{ opacity: 0.5 }}>
-              <ChevronRight size={16} />
-            </span>
+            <span className={styles.crumbSep}>/</span>
+
             {isEditingTitle ? (
               <input
                 type="text"
                 defaultValue={title}
                 autoFocus
+                className={styles.titleInput}
                 onBlur={(e) => handleTitleRename(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -615,346 +649,157 @@ function NoteContent() {
                     setIsEditingTitle(false);
                   }
                 }}
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  margin: 0,
-                  border: "1px solid var(--primary)",
-                  borderRadius: "0.25rem",
-                  padding: "0 0.25rem",
-                  background: "var(--background)",
-                  color: "var(--foreground)",
-                  maxWidth: "20rem",
-                }}
               />
             ) : (
-              <h1
+              <span
+                role="button"
+                tabIndex={lockedBy ? -1 : 0}
                 onClick={() => !lockedBy && setIsEditingTitle(true)}
+                onKeyDown={(e) => {
+                  if (lockedBy) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setIsEditingTitle(true);
+                  }
+                }}
                 title="Click to rename"
-                style={{
-                  fontWeight: "bold",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: "20rem",
-                  fontSize: "1rem",
-                  margin: 0,
-                  cursor: lockedBy ? "default" : "pointer",
-                  border: "1px solid transparent",
-                }}
-                onMouseEnter={(e) => {
-                  if (!lockedBy)
-                    e.currentTarget.style.textDecoration = "underline";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.textDecoration = "none";
-                }}
+                className={`${styles.noteTitle} ${!lockedBy ? styles.noteTitleEditable : ""}`}
               >
                 {title}
-              </h1>
+              </span>
             )}
           </div>
 
-          <div
-            className="note-header-meta"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-            }}
-          >
-            {isSaving ? (
+          <div className={styles.actions}>
+            {lockedBy && <span className={styles.readOnlyPill}>Read Only</span>}
+
+            <div className={styles.saveStatus} title={autoSaveError?.message}>
+              <span className={saveDotClass} />
               <span
-                style={{
-                  fontSize: "0.75rem",
-                  opacity: 0.5,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                }}
+                className={autoSaveError ? styles.saveLabelError : undefined}
               >
-                <Save size={12} /> Saving...
+                {saveLabel}
               </span>
-            ) : autoSaveError ? (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--destructive)",
-                  fontWeight: "bold",
-                }}
-                title={autoSaveError.message}
-              >
-                Save Failed
-              </span>
-            ) : hasUnsavedChanges ? (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  opacity: 0.5,
-                  color: "var(--warning)",
-                  fontWeight: 500,
-                }}
-              >
-                Unsaved
-              </span>
-            ) : (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  opacity: 0.5,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  color: "var(--success)",
-                }}
-              >
-                <Check size={12} /> Saved
-              </span>
-            )}
-            {modifiedTime && !isSaving && !hasUnsavedChanges && (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  opacity: 0.4,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Last modified:{" "}
-                {new Date(modifiedTime).toLocaleString(undefined, {
-                  year: "numeric",
-                  month: "numeric",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {lockedBy && (
-            <span
-              style={{
-                color: "var(--warning)",
-                fontSize: "0.875rem",
-                fontWeight: "bold",
-                background: "rgba(245,158,11,0.1)",
-                padding: "0.25rem 0.5rem",
-                borderRadius: "0.25rem",
-              }}
-            >
-              Read Only
-            </span>
-          )}
-          <div className="desktop-view-switcher">
+            </div>
+
             <button
-              className={`view-btn ${viewMode === "editor" ? "active" : ""}`}
-              onClick={() => setViewMode("editor")}
-              title="Editor"
-            >
-              <FileText size={16} />
-            </button>
-            <button
-              className={`view-btn ${viewMode === "split" ? "active" : ""}`}
-              onClick={() => setViewMode("split")}
-              title="Split"
-            >
-              <Columns2 size={16} />
-            </button>
-            <button
-              className={`view-btn ${viewMode === "preview" ? "active" : ""}`}
-              onClick={() => setViewMode("preview")}
+              type="button"
+              className={`${styles.actionBtn} ${previewOpen ? styles.actionBtnActive : ""}`}
+              aria-label={previewOpen ? "Edit" : "Preview"}
+              aria-pressed={previewOpen}
               title="Preview"
+              onClick={() => setPreviewOpen((v) => !v)}
             >
-              <Eye size={16} />
+              <Eye size={16} strokeWidth={1.8} />
             </button>
-          </div>
-          <button
-            className="btn"
-            style={{ background: "var(--card)", color: "var(--foreground)" }}
-            title={shareCopied ? "Copied!" : "Share (Copy Markdown link)"}
-            onClick={() => {
-              if (!id) return;
-              const url = `${window.location.origin}/note/?id=${id}`;
-              navigator.clipboard.writeText(buildShareLink(title, url));
-              setShareCopied(true);
-              if (copyTimerRef.current)
-                window.clearTimeout(copyTimerRef.current);
-              copyTimerRef.current = window.setTimeout(
-                () => setShareCopied(false),
-                1500,
-              );
-            }}
-          >
-            {shareCopied ? (
-              <>
-                <Check size={16} aria-hidden="true" /> Copied!
-              </>
-            ) : (
-              <Share2 size={16} />
-            )}
-          </button>
-          <span role="status" aria-live="polite" className="sr-only">
-            {shareCopied ? "Link copied" : ""}
-          </span>
-          <NoteMenu
-            isOpen={isMenuOpen}
-            onToggle={(e) => {
-              e.preventDefault();
-              setIsMenuOpen(!isMenuOpen);
-            }}
-            onClose={() => setIsMenuOpen(false)}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-            align="right"
-          />
-        </div>
-      </header>
 
-      <ConfirmDialog
-        isOpen={isDeleteDialogOpen}
-        title="Delete Note"
-        message={`Are you sure you want to delete "${title}"? This cannot be undone.`}
-        onConfirm={confirmDelete}
-        onCancel={() => setIsDeleteDialogOpen(false)}
-      />
+            <button
+              type="button"
+              className={styles.actionBtn}
+              title={shareCopied ? "Copied!" : "Share (Copy Markdown link)"}
+              onClick={handleShare}
+            >
+              {shareCopied ? (
+                <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+              ) : (
+                <Share2 size={16} strokeWidth={1.8} />
+              )}
+            </button>
+            <span role="status" aria-live="polite" className="sr-only">
+              {shareCopied ? "Link copied" : ""}
+            </span>
 
-      {lockedBy && lockExpires && (
-        <LockBanner userId={lockedBy} expiresAt={lockExpires} />
-      )}
-
-      {/* Mobile Tab Bar */}
-      <div className="editor-tab-bar">
-        <button
-          className={`editor-tab ${mobileTab === "edit" ? "active" : ""}`}
-          onClick={() => setMobileTab("edit")}
-        >
-          MARKDOWN
-        </button>
-        <button
-          className={`editor-tab ${mobileTab === "preview" ? "active" : ""}`}
-          onClick={() => setMobileTab("preview")}
-        >
-          PREVIEW
-        </button>
-      </div>
-
-      <div
-        className={`view-mode-${viewMode}`}
-        style={{ flex: 1, display: "flex", overflow: "hidden" }}
-      >
-        {/* Editor Pane */}
-        <div className={`editor-pane ${mobileTab !== "edit" ? "hidden" : ""}`}>
-          <MarkdownToolbar editorRef={editorRef} readOnly={!!lockedBy} />
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            ref={editorScrollRef}
-            onScroll={handleEditorScroll}
-          >
-            <Editor
-              ref={editorRef}
-              value={content}
-              onChange={setContent}
-              readOnly={!!lockedBy}
-              className="min-h-full rounded-none border-0"
+            <NoteMenu
+              isOpen={isMenuOpen}
+              onToggle={(e) => {
+                e.preventDefault();
+                setIsMenuOpen(!isMenuOpen);
+              }}
+              onClose={() => setIsMenuOpen(false)}
+              onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
+              align="right"
             />
           </div>
-        </div>
+        </header>
 
-        {/* Preview Pane */}
-        <div
-          className={`preview-pane ${mobileTab !== "preview" ? "hidden" : ""}`}
-        >
+        <ConfirmDialog
+          isOpen={isDeleteDialogOpen}
+          title="Delete Note"
+          message={`Are you sure you want to delete "${title}"? This cannot be undone.`}
+          onConfirm={confirmDelete}
+          onCancel={() => setIsDeleteDialogOpen(false)}
+        />
+
+        {lockedBy && lockExpires && (
+          <LockBanner userId={lockedBy} expiresAt={lockExpires} />
+        )}
+
+        {/* Lives outside .body so the mobile persistent bar (below 768px)
+            renders as a full-width row above the editor rather than as a
+            flex sibling of the editor/preview panes. The desktop floating
+            variant is unaffected — position:fixed ignores DOM placement. */}
+        {!previewOpen && (
+          <MarkdownToolbar
+            editorRef={editorRef}
+            selection={selection}
+            readOnly={!!lockedBy}
+            zen={isTyping}
+          />
+        )}
+
+        <div className={styles.body}>
           <div
-            style={{
-              background: "var(--card)",
-              padding: "0.25rem 1rem",
-              fontSize: "0.75rem",
-              fontFamily: "monospace",
-              opacity: 0.5,
-              borderBottom: "1px solid var(--border)",
-            }}
-            className="note-header-meta"
+            className={`${styles.editorPane} ${previewOpen ? styles.hidden : ""}`}
           >
-            PREVIEW
-          </div>
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            ref={previewScrollRef}
-            onScroll={handlePreviewScroll}
-          >
-            <div className="flex-1">
-              <Preview
-                markdown={content}
-                links={noteLinks}
-                className="h-full max-w-3xl mx-auto"
+            <div
+              className={styles.editorScroll}
+              onKeyDown={handleEditorKeyDown}
+              onBlur={exitZenMode}
+            >
+              <Editor
+                ref={editorRef}
+                value={content}
+                onChange={setContent}
+                readOnly={!!lockedBy}
+                onSelectionChange={setSelection}
               />
-              {noteBacklinks.length > 0 && (
-                <div
-                  style={{
-                    maxWidth: "48rem",
-                    margin: "0 auto",
-                    padding: "1rem",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <p
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      opacity: 0.5,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    Backlinks
-                  </p>
-                  <ul
-                    style={{
-                      listStyle: "none",
-                      padding: 0,
-                      margin: 0,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    {noteBacklinks.map((bl) => (
-                      <li key={bl.id}>
-                        <Link
-                          to={`/note/?id=${bl.id}`}
-                          style={{
-                            fontSize: "0.875rem",
-                            padding: "0.125rem 0.5rem",
-                            borderRadius: "0.25rem",
-                            background: "var(--card)",
-                            border: "1px solid var(--border)",
-                            color: "var(--foreground)",
-                            textDecoration: "none",
-                          }}
-                        >
-                          {bl.name}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            </div>
+          </div>
+
+          <div
+            className={`${styles.previewPane} ${previewOpen ? "" : styles.hidden}`}
+          >
+            <div className={styles.previewScroll}>
+              <div className={styles.previewColumn}>
+                <Preview
+                  markdown={content}
+                  links={noteLinks}
+                  className="h-full"
+                />
+                {noteBacklinks.length > 0 && (
+                  <div className={styles.backlinks}>
+                    <p className={styles.backlinksHeading}>Backlinks</p>
+                    <ul className={styles.backlinksList}>
+                      {noteBacklinks.map((bl) => (
+                        <li key={bl.id}>
+                          <Link
+                            to={`/note/?id=${bl.id}`}
+                            className={styles.backlinkChip}
+                          >
+                            {bl.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        <div className={styles.charCount}>{charCount} chars</div>
       </div>
 
       <ConflictDialog
