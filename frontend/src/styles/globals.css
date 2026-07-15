@@ -2,51 +2,76 @@
 @import "@fontsource-variable/geist-mono";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --primary: #0070f3;
+  --background: #fafaf9;
+  --foreground: #1b1b1a;
+  --primary: #3b6ea8;
   --primary-foreground: #ffffff;
-  --border: #e5e5e5;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --card: #ffffff;
-  --card-foreground: #171717;
-  --sidebar-background: #f9fafb;
-  --header-background: #f9fafb;
+  --border: #ececea;
+  --muted: #f0f0ee;
+  --muted-foreground: #6f6f6c;
+  --card: #fafaf9;
+  --card-foreground: #1b1b1a;
+  --sidebar-background: #fafaf9;
+  --header-background: #fafaf9;
   --font-sans: "Geist Variable", Arial, Helvetica, sans-serif;
   --font-mono: "Geist Mono Variable", monospace;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #171717;
+  --secondary: #f0f0ee;
+  --secondary-foreground: #1b1b1a;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --yellow: #eab308;
-  --success: #22c55e;
+  --star: #c9c9c5;
+  --success: #4da26a;
   --warning: #f59e0b;
+  --text-secondary: #6f6f6c;
+  --text-muted: #a3a3a0;
+  --text-faint: #c9c9c5;
+  --hover-bg: #f0f0ee;
+  --row-hover: #f4f4f2;
+  --selection: rgba(59, 110, 168, 0.18);
+  --toolbar-bg: #1b1b1a;
+  --toolbar-fg: #fafaf9;
+  --crumb-sep: #d6d6d3;
 }
 
 [data-theme="dark"] {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  --primary: #3291ff;
+  --background: #131315;
+  --foreground: #e6e6e3;
+  --primary: #7fa6dc;
   /* Slightly lighter blue for dark mode */
   --primary-foreground: #ffffff;
-  --border: #262626;
-  --muted: #171717;
-  --muted-foreground: #a3a3a3;
-  --card: #0a0a0a;
-  --card-foreground: #ededed;
-  --sidebar-background: #0a0a0a;
-  --header-background: #0a0a0a;
-  --secondary: #262626;
-  --secondary-foreground: #ededed;
-  --destructive: #7f1d1d;
+  --border: #26262a;
+  --muted: #1e1e22;
+  --muted-foreground: #8f8f8c;
+  --card: #131315;
+  --card-foreground: #e6e6e3;
+  --sidebar-background: #131315;
+  --header-background: #131315;
+  --secondary: #1e1e22;
+  --secondary-foreground: #e6e6e3;
+  --destructive: #ef4444;
   --destructive-foreground: #fef2f2;
-  --yellow: #facc15;
-  --success: #22c55e;
+  --star: #5c5c5a;
+  --success: #5fae7a;
   --warning: #f59e0b;
+  --text-secondary: #8f8f8c;
+  --text-muted: #5c5c5a;
+  --text-faint: #4a4a4e;
+  --hover-bg: #1e1e22;
+  --row-hover: #1e1e22;
+  --selection: rgba(127, 166, 220, 0.22);
+  --toolbar-bg: #26262a;
+  --toolbar-fg: #e6e6e3;
+  --crumb-sep: #3c3c40;
+}
+
+::selection {
+  background: var(--selection);
 }
 
 body {
+  /* No CSS reset is imported — kill the UA default 8px margin here, or the
+     100vh page wrappers overflow and force permanent scrollbars. */
+  margin: 0;
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
@@ -91,10 +116,16 @@ body {
   color: var(--muted-foreground);
 }
 
+/* Plain surface (blur/translucency removed for Quiet) */
+.glass {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
 /* Buttons */
 .btn {
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--card-foreground);
@@ -155,80 +186,12 @@ textarea {
   background: var(--foreground);
 }
 
-/* ===== Sidebar Responsive ===== */
-.sidebar {
-  width: 250px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: var(--sidebar-background);
-  color: var(--foreground);
-  transition: transform 0.3s ease;
-  flex-shrink: 0;
-}
-
-.sidebar-overlay {
-  display: none;
-}
-
 .mobile-menu-btn {
   display: none;
 }
 
-/* ===== Note Editor Tabs (Mobile) ===== */
-.editor-tab-bar {
-  display: none;
-}
-
-.editor-pane {
-  width: 50%;
-  border-right: 1px solid var(--border);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.preview-pane {
-  width: 50%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--background);
-}
-
 /* ===== Mobile Responsive (≤768px) ===== */
 @media (max-width: 768px) {
-  /* Sidebar: overlay slide-in */
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 50;
-    width: 280px;
-    transform: translateX(-100%);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .sidebar-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 40;
-  }
-
-  .sidebar-overlay.open {
-    display: block;
-  }
-
   .mobile-menu-btn {
     display: flex;
     align-items: center;
@@ -241,123 +204,10 @@ textarea {
     color: var(--foreground);
   }
 
-  /* Editor/Preview: tab switching */
-  .editor-tab-bar {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-    background: var(--card);
-  }
-
-  .editor-tab {
-    flex: 1;
-    padding: 0.625rem;
-    text-align: center;
-    font-size: 0.75rem;
-    font-family: monospace;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--muted-foreground);
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-  }
-
-  .editor-tab.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
-    font-weight: 600;
-  }
-
-  .editor-pane {
-    width: 100%;
-    border-right: none;
-  }
-
-  .preview-pane {
-    width: 100%;
-  }
-
-  .editor-pane.hidden,
-  .preview-pane.hidden {
-    display: none;
-  }
-
-  .note-header {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 0.25rem !important;
-  }
-
-  .note-breadcrumbs {
-    font-size: 0.8rem;
-  }
-
   /* Touch targets */
   .btn {
     min-height: 44px;
     min-width: 44px;
-  }
-}
-
-/* ===== Desktop View Modes ===== */
-@media (min-width: 769px) {
-  .view-mode-editor .preview-pane {
-    display: none !important;
-  }
-  .view-mode-editor .editor-pane {
-    width: 100% !important;
-    border-right: none;
-    display: flex !important;
-  }
-
-  .view-mode-preview .editor-pane {
-    display: none !important;
-  }
-  .view-mode-preview .preview-pane {
-    width: 100% !important;
-    display: flex !important;
-  }
-
-  .desktop-view-switcher {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    background: var(--muted);
-    padding: 2px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    margin: 0 0.5rem;
-  }
-
-  .view-btn {
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--muted-foreground);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-  }
-
-  .view-btn:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: var(--foreground);
-  }
-
-  .view-btn.active {
-    background: var(--card);
-    color: var(--primary);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  }
-}
-
-/* Hide switcher on mobile */
-@media (max-width: 768px) {
-  .desktop-view-switcher {
-    display: none;
   }
 }
 
@@ -371,55 +221,4 @@ textarea {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-/* ===== Markdown Toolbar (desktop default + mobile overrides) ===== */
-.md-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.375rem 0.5rem;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-}
-
-.md-toolbar button {
-  flex: 0 0 auto;
-  min-width: 32px;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  color: var(--foreground);
-  cursor: pointer;
-}
-
-.md-toolbar button:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--primary);
-}
-
-.md-toolbar button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.md-toolbar button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-@media (max-width: 768px) {
-  .md-toolbar {
-    padding: 0.5rem;
-    gap: 0.125rem;
-  }
-
-  .md-toolbar button {
-    min-width: 36px;
-    min-height: 36px;
-  }
 }
