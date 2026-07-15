@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router";
 import {
+  Search,
+  File,
   Folder,
   ChevronRight,
   Star,
@@ -19,6 +21,7 @@ import {
 } from "@/lib/api";
 import SearchInput from "./SearchInput";
 import { useLocalStorageBoolean } from "@/hooks/useLocalStorageBoolean";
+import styles from "./Sidebar.module.css";
 
 interface SidebarProps {
   onNavigate: (folderId?: string) => void;
@@ -35,10 +38,6 @@ export function Sidebar({
   onClose,
   refreshTrigger = 0,
 }: SidebarProps) {
-  const handleNavigate = (folderId?: string) => {
-    onNavigate(folderId);
-    onClose?.();
-  };
   const navigate = useNavigate();
   const [starredItems, setStarredItems] = useState<FileItem[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
@@ -48,6 +47,15 @@ export function Sidebar({
     RECENT_COLLAPSED_KEY,
     false,
   );
+  // Desktop rail hover/tap expansion. Independent of `isOpen`, which drives
+  // the mobile slide-in drawer only (see Sidebar.module.css breakpoints).
+  const [expanded, setExpanded] = useState(false);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  const starredSectionRef = useRef<HTMLDivElement>(null);
+  const recentSectionRef = useRef<HTMLDivElement>(null);
+  const tagsSectionRef = useRef<HTMLDivElement>(null);
 
   const loadRequestRef = useRef(0);
 
@@ -97,121 +105,295 @@ export function Sidebar({
     return () => document.removeEventListener("visibilitychange", refresh);
   }, []);
 
+  const handleNavigate = (folderId?: string) => {
+    onNavigate(folderId);
+    setExpanded(false);
+    onClose?.();
+  };
+
+  const openSearch = () => {
+    setExpanded(true);
+    searchWrapRef.current?.querySelector("input")?.focus();
+  };
+
+  // Cmd/Ctrl+K opens the panel and focuses search, regardless of hover
+  // state. The ref mirrors the loadFoldersRef pattern above so the listener
+  // is registered once but always calls the latest closure. Escape shares
+  // this listener to close the desktop overlay panel when it was opened
+  // without the pointer (e.g. via ⌘K or a rail button click while the
+  // cursor stayed in the editor) and mouseleave never fires.
+  const openSearchRef = useRef(openSearch);
+  useEffect(() => {
+    openSearchRef.current = openSearch;
+  });
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        openSearchRef.current();
+      } else if (e.key === "Escape") {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Clicking outside the rail/panel also closes the panel for the same
+  // pointer-never-left-the-panel reason Escape does. Scoped to `expanded`
+  // so the listener only exists while there's something to close.
+  useEffect(() => {
+    if (!expanded) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setExpanded(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [expanded]);
+
+  const openSection = (ref: React.RefObject<HTMLDivElement | null>) => {
+    setExpanded(true);
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  };
+
+  const handleNotesClick = () => {
+    handleNavigate();
+  };
+
+  const handleSettingsClick = () => {
+    setExpanded(false);
+    navigate("/settings/");
+    onClose?.();
+  };
+
+  // Touch devices have no hover: tapping the rail (outside a specific
+  // button, which stops propagation) toggles the panel open/closed.
+  const handleRailClick = () => {
+    setExpanded((v) => !v);
+  };
+
   return (
-    <>
+    <div
+      ref={rootRef}
+      className={styles.root}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+    >
       <div
-        className={`sidebar-overlay ${isOpen ? "open" : ""}`}
+        className={`${styles.overlay} ${isOpen ? styles.overlayOpen : ""}`}
         onClick={onClose}
       />
-      <div className={`sidebar ${isOpen ? "open" : ""}`}>
-        {/* Header */}
-        <div
-          style={{
-            padding: "1rem",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "1rem",
+
+      <nav
+        className={styles.rail}
+        data-testid="sidebar-rail"
+        onClick={handleRailClick}
+      >
+        <Link
+          to="/drive/"
+          className={styles.logo}
+          aria-label="GophDrive"
+          onClick={(e) => e.stopPropagation()}
+        >
+          G
+        </Link>
+        <button
+          type="button"
+          className={styles.railBtn}
+          aria-label="Search"
+          title="Search (⌘K)"
+          onClick={(e) => {
+            e.stopPropagation();
+            openSearch();
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.25rem",
-                fontWeight: "800",
-                letterSpacing: "-0.025em",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              GophDrive
-            </h2>
-          </div>
+          <Search size={17} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.railBtn} ${styles.railBtnActive}`}
+          aria-label="Notes"
+          title="Notes"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleNotesClick();
+          }}
+        >
+          <File size={17} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          className={styles.railBtn}
+          aria-label="Starred"
+          title="Starred"
+          onClick={(e) => {
+            e.stopPropagation();
+            openSection(starredSectionRef);
+          }}
+        >
+          <Star size={17} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          className={styles.railBtn}
+          aria-label="Recent"
+          title="Recent"
+          onClick={(e) => {
+            e.stopPropagation();
+            openSection(recentSectionRef);
+          }}
+        >
+          <Clock size={17} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          className={styles.railBtn}
+          aria-label="Tags"
+          title="Tags"
+          onClick={(e) => {
+            e.stopPropagation();
+            openSection(tagsSectionRef);
+          }}
+        >
+          <Hash size={17} strokeWidth={1.8} />
+        </button>
+        <div className={styles.spacer} />
+        <button
+          type="button"
+          className={styles.settingsBtn}
+          aria-label="Settings"
+          title="Settings"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleSettingsClick();
+          }}
+        >
+          <Settings size={17} strokeWidth={1.8} />
+        </button>
+      </nav>
+
+      <div
+        className={`${styles.panel} ${expanded ? styles.panelExpanded : ""} ${isOpen ? styles.panelMobileOpen : ""}`}
+        data-testid="sidebar-panel"
+      >
+        <div className={styles.panelSearch} ref={searchWrapRef}>
           <SearchInput />
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
+        <div className={styles.panelBody}>
           {/* Starred Section */}
-          <div style={{ marginBottom: "1rem" }}>
-            <div
-              style={{
-                padding: "0.5rem",
-                fontSize: "0.75rem",
-                fontWeight: "bold",
-                color: "var(--muted-foreground)",
-                textTransform: "uppercase",
-              }}
-            >
-              Starred
-            </div>
+          <div ref={starredSectionRef} className={styles.section}>
+            <div className={styles.sectionHeading}>Starred</div>
             {loading ? (
               Array.from({ length: 2 }).map((_, i) => (
-                <div
-                  key={`skeleton-star-${i}`}
-                  className="animate-pulse"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    margin: "0.25rem 0",
-                    borderRadius: "0.25rem",
-                    background: "var(--muted)",
-                  }}
-                >
+                <div key={`skeleton-star-${i}`} className={styles.skeletonRow}>
+                  <div className={styles.skeletonDot} />
                   <div
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      borderRadius: "50%",
-                      background: "var(--border)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: "60%",
-                      height: "12px",
-                      borderRadius: "4px",
-                      background: "var(--border)",
-                    }}
+                    className={styles.skeletonBar}
+                    style={{ width: "60%" }}
                   />
                 </div>
               ))
             ) : starredItems.length === 0 ? (
-              <div
-                style={{
-                  padding: "0.5rem",
-                  fontSize: "0.8rem",
-                  opacity: 0.5,
-                  fontStyle: "italic",
-                }}
-              >
-                Nothing starred
-              </div>
+              <div className={styles.emptyState}>Nothing starred</div>
             ) : (
-              <div className="animate-fade-in">
-                {starredItems.map((item) => {
-                  const isFolder =
-                    item.mimeType === "application/vnd.google-apps.folder";
+              starredItems.map((item) => {
+                const isFolder =
+                  item.mimeType === "application/vnd.google-apps.folder";
+                const handleClick = () => {
+                  if (isFolder) {
+                    handleNavigate(item.id);
+                  } else {
+                    navigate(`/note/?id=${item.id}`);
+                    setExpanded(false);
+                    onClose?.();
+                  }
+                };
+                return (
+                  <div
+                    key={`starred-${item.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={handleClick}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleClick();
+                      }
+                    }}
+                    className={styles.row}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        starFile(item.id, !item.starred)
+                          .then(() => loadFolders())
+                          .catch((err: Error) => {
+                            console.error("Failed to toggle star", err);
+                            alert(err.message || "Failed to toggle star");
+                          });
+                      }}
+                      className={styles.starToggle}
+                      aria-label={`Unstar ${item.name}`}
+                      title="Unstar"
+                    >
+                      <Star size={16} fill="var(--star)" color="var(--star)" />
+                    </button>
+                    {isFolder ? (
+                      <Folder size={14} className={styles.rowIcon} />
+                    ) : (
+                      <FileText size={14} className={styles.rowIcon} />
+                    )}
+                    <span className={styles.rowText}>{item.name}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Recent Section */}
+          <div ref={recentSectionRef} className={styles.section}>
+            <button
+              type="button"
+              onClick={() => setRecentCollapsed((v) => !v)}
+              aria-expanded={!recentCollapsed}
+              aria-controls="sidebar-recent-list"
+              className={styles.sectionToggle}
+            >
+              <ChevronRight
+                size={14}
+                className={`${styles.chevron} ${!recentCollapsed ? styles.chevronExpanded : ""}`}
+              />
+              <Clock size={14} className={styles.headingIcon} /> Recent
+            </button>
+            <div id="sidebar-recent-list" hidden={recentCollapsed}>
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={`skeleton-recent-${i}`}
+                    className={styles.skeletonRow}
+                  >
+                    <div className={styles.skeletonDot} />
+                    <div
+                      className={styles.skeletonBar}
+                      style={{ width: "80%" }}
+                    />
+                  </div>
+                ))
+              ) : recentFiles.length === 0 ? (
+                <div className={styles.emptyState}>No recent files</div>
+              ) : (
+                recentFiles.map((file) => {
                   const handleClick = () => {
-                    if (isFolder) {
-                      handleNavigate(item.id);
-                    } else {
-                      navigate(`/note/?id=${item.id}`);
-                      onClose?.();
-                    }
+                    navigate(`/note/?id=${file.id}`);
+                    setExpanded(false);
+                    onClose?.();
                   };
                   return (
                     <div
-                      key={`starred-${item.id}`}
+                      key={`recent-${file.id}`}
                       role="button"
                       tabIndex={0}
                       onClick={handleClick}
@@ -221,298 +403,57 @@ export function Sidebar({
                           handleClick();
                         }
                       }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        padding: "0.5rem",
-                        borderRadius: "0.25rem",
-                        cursor: "pointer",
-                        background: "transparent",
-                        color: "var(--foreground)",
-                      }}
-                      className="hover:bg-[var(--muted)]"
+                      className={styles.row}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          starFile(item.id, !item.starred)
-                            .then(() => loadFolders())
-                            .catch((err: Error) => {
-                              console.error("Failed to toggle star", err);
-                              alert(err.message || "Failed to toggle star");
-                            });
-                        }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: 0,
-                          display: "flex",
-                          flexShrink: 0,
-                        }}
-                        aria-label={`Unstar ${item.name}`}
-                        title="Unstar"
-                      >
-                        <Star
-                          size={16}
-                          fill="var(--yellow)"
-                          color="var(--yellow)"
-                        />
-                      </button>
-                      {isFolder ? (
-                        <Folder
-                          size={14}
-                          style={{ flexShrink: 0, opacity: 0.7 }}
-                        />
-                      ) : (
-                        <FileText
-                          size={14}
-                          style={{ flexShrink: 0, opacity: 0.7 }}
-                        />
-                      )}
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: "0.9rem",
-                          flex: 1,
-                        }}
-                      >
-                        {item.name}
-                      </span>
+                      <FileText size={16} className={styles.rowIcon} />
+                      <span className={styles.rowText}>{file.name}</span>
                     </div>
                   );
-                })}
-              </div>
-            )}
-            <div
-              style={{
-                borderBottom: "1px solid var(--border)",
-                margin: "0.5rem 0",
-              }}
-            />
-          </div>
-
-          {/* Recent Section */}
-          <div style={{ marginBottom: "1rem" }}>
-            <button
-              type="button"
-              onClick={() => setRecentCollapsed((v) => !v)}
-              aria-expanded={!recentCollapsed}
-              aria-controls="sidebar-recent-list"
-              style={{
-                width: "100%",
-                background: "none",
-                border: "none",
-                padding: "0.5rem",
-                fontSize: "0.75rem",
-                fontWeight: "bold",
-                color: "var(--muted-foreground)",
-                textTransform: "uppercase",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <ChevronRight
-                size={14}
-                style={{
-                  transform: recentCollapsed ? "rotate(0deg)" : "rotate(90deg)",
-                  transition: "transform 0.15s ease",
-                }}
-              />
-              <Clock size={14} /> Recent
-            </button>
-            <div id="sidebar-recent-list" hidden={recentCollapsed}>
-              {loading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    key={`skeleton-recent-${i}`}
-                    className="animate-pulse"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem",
-                      margin: "0.25rem 0",
-                      borderRadius: "0.25rem",
-                      background: "var(--muted)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "16px",
-                        height: "16px",
-                        borderRadius: "4px",
-                        background: "var(--border)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div
-                      style={{
-                        width: "80%",
-                        height: "12px",
-                        borderRadius: "4px",
-                        background: "var(--border)",
-                      }}
-                    />
-                  </div>
-                ))
-              ) : recentFiles.length === 0 ? (
-                <div
-                  style={{
-                    padding: "0.5rem",
-                    fontSize: "0.8rem",
-                    opacity: 0.5,
-                    fontStyle: "italic",
-                  }}
-                >
-                  No recent files
-                </div>
-              ) : (
-                <div className="animate-fade-in">
-                  {recentFiles.map((file) => (
-                    <div
-                      key={`recent-${file.id}`}
-                      onClick={() => {
-                        navigate(`/note/?id=${file.id}`);
-                        onClose?.();
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        padding: "0.5rem",
-                        borderRadius: "0.25rem",
-                        cursor: "pointer",
-                        color: "var(--foreground)",
-                      }}
-                      className="hover:bg-[var(--muted)]"
-                    >
-                      <FileText
-                        size={16}
-                        color="var(--primary)"
-                        style={{ flexShrink: 0 }}
-                      />
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: "0.9rem",
-                        }}
-                      >
-                        {file.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                })
               )}
             </div>
-            <div
-              style={{
-                borderBottom: "1px solid var(--border)",
-                margin: "0.5rem 0",
-              }}
-            />
           </div>
 
           {/* Tags Section */}
           {tags.length > 0 && (
-            <div style={{ marginBottom: "1rem" }}>
-              <div
-                style={{
-                  padding: "0.5rem",
-                  fontSize: "0.75rem",
-                  fontWeight: "bold",
-                  color: "var(--muted-foreground)",
-                  textTransform: "uppercase",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                }}
-              >
-                <Hash size={14} /> Tags
+            <div ref={tagsSectionRef} className={styles.section}>
+              <div className={styles.sectionHeading}>
+                <Hash size={14} className={styles.headingIcon} /> Tags
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.375rem",
-                  padding: "0 0.5rem 0.5rem",
-                }}
-              >
+              <div className={styles.tagList}>
                 {tags.map((tag) => (
                   <Link
                     key={tag.name}
                     to={`/drive/?tag=${encodeURIComponent(tag.name)}`}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      padding: "0.125rem 0.5rem",
-                      borderRadius: "9999px",
-                      fontSize: "0.75rem",
-                      background: "var(--muted)",
-                      color: "var(--foreground)",
-                      textDecoration: "none",
-                      whiteSpace: "nowrap",
+                    className={styles.tagChip}
+                    onClick={() => {
+                      setExpanded(false);
+                      onClose?.();
                     }}
-                    onClick={() => onClose?.()}
                   >
                     #{tag.name}
-                    <span style={{ opacity: 0.6, fontSize: "0.65rem" }}>
-                      {tag.count}
-                    </span>
+                    <span className={styles.tagCount}>{tag.count}</span>
                   </Link>
                 ))}
               </div>
-              <div
-                style={{
-                  borderBottom: "1px solid var(--border)",
-                  margin: "0.5rem 0",
-                }}
-              />
             </div>
           )}
         </div>
 
-        <div
-          style={{ padding: "0.75rem", borderTop: "1px solid var(--border)" }}
-        >
+        {/* Settings is reachable from the rail on desktop; the rail is
+            hidden on mobile (≤768px), so the panel carries its own entry
+            there (CSS-gated, see .panelMobileFooter). */}
+        <div className={styles.panelMobileFooter}>
           <button
-            onClick={() => navigate("/settings/")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.75rem",
-              width: "100%",
-              padding: "0.5rem",
-              borderRadius: "0.375rem",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--muted-foreground)",
-              transition: "background-color 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--muted)";
-              e.currentTarget.style.color = "var(--foreground)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--muted-foreground)";
-            }}
+            type="button"
+            onClick={handleSettingsClick}
+            className={styles.mobileSettingsBtn}
           >
-            <Settings size={18} />
+            <Settings size={18} strokeWidth={1.8} />
             <span>Settings</span>
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
