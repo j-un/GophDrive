@@ -56,7 +56,7 @@ function HomeContent() {
             textDecoration: "none",
           }}
         >
-          <LogIn size={18} />
+          <LogIn size={18} strokeWidth={1.8} />
           Login with Google
         </a>
         <a
@@ -69,11 +69,12 @@ function HomeContent() {
             alignItems: "center",
             gap: "0.5rem",
             textDecoration: "none",
-            background: "var(--muted)",
-            opacity: 0.9,
+            background: "transparent",
+            color: "var(--foreground)",
+            borderColor: "var(--border)",
           }}
         >
-          <LogIn size={18} />
+          <LogIn size={18} strokeWidth={1.8} />
           Try Demo Mode
         </a>
       </div>
@@ -82,7 +83,7 @@ function HomeContent() {
 
   return (
     <main className={styles.main}>
-      <div className={`${styles.card} glass`}>
+      <div className={styles.content}>
         <div className={styles.logoContainer}>
           <img
             src="/icon-512x512.png"
@@ -94,58 +95,31 @@ function HomeContent() {
           />
         </div>
         <h1 className={styles.title}>GophDrive</h1>
-        <p
-          style={{ opacity: 0.6, marginBottom: "1.5rem", textAlign: "center" }}
-        >
+        <p className={styles.subtitle}>
           Serverless Markdown Notes — Synced via Google Drive
         </p>
 
         <div className={styles.statusContainer}>
           {error ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "1rem",
-                opacity: 0.6,
-              }}
-            >
-              <AlertCircle size={16} />
-              <span style={{ fontSize: "0.75rem" }}>
+            <div className={styles.statusRow}>
+              <AlertCircle size={16} strokeWidth={1.8} />
+              <span className={styles.statusText}>
                 Wasm: {error.message} (preview disabled)
               </span>
             </div>
           ) : isReady ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "1rem",
-              }}
-            >
-              <CheckCircle size={16} style={{ color: "var(--success)" }} />
-              <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>
-                Core Module Active
-              </span>
+            <div className={styles.statusRow}>
+              <CheckCircle
+                size={16}
+                strokeWidth={1.8}
+                style={{ color: "var(--success)" }}
+              />
+              <span className={styles.statusText}>Core Module Active</span>
             </div>
           ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "1rem",
-              }}
-            >
-              <div
-                className={styles.spinner}
-                style={{ width: "16px", height: "16px", borderWidth: "2px" }}
-              ></div>
-              <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
-                Loading Wasm...
-              </span>
+            <div className={styles.statusRow}>
+              <div className={`${styles.spinner} ${styles.spinnerSmall}`}></div>
+              <span className={styles.statusText}>Loading Wasm...</span>
             </div>
           )}
 
@@ -156,14 +130,18 @@ function HomeContent() {
 
         <div className={styles.infoSection}>
           <div className={styles.infoItem}>
-            <ShieldCheck size={16} className={styles.infoIcon} />
+            <ShieldCheck
+              size={16}
+              strokeWidth={1.8}
+              className={styles.infoIcon}
+            />
             <p className={styles.infoText}>
               This service is invite-only. Only Google accounts approved by the
               administrator can log in.
             </p>
           </div>
           <div className={styles.infoItem}>
-            <Code2 size={16} className={styles.infoIcon} />
+            <Code2 size={16} strokeWidth={1.8} className={styles.infoIcon} />
             <p className={styles.infoText}>
               This is a self-hosted instance of{" "}
               <a
@@ -189,10 +167,10 @@ export default function Home() {
     <Suspense
       fallback={
         <main className={styles.main}>
-          <div className={`${styles.card} glass`}>
+          <div className={styles.content}>
             <div className={styles.loadingWrapper}>
               <div className={styles.spinner}></div>
-              <p className="opacity-60">Loading...</p>
+              <p className={styles.loadingText}>Loading...</p>
             </div>
           </div>
           <Footer />

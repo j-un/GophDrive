@@ -8,6 +8,8 @@
   padding: 1rem;
 }
 
+/* Kept for TermsPage / PrivacyPage, which still reference `${styles.card} glass`.
+   HomePage no longer uses this — see `.content` below. */
 .card {
   padding: 2rem;
   border-radius: 1rem;
@@ -15,6 +17,15 @@
   max-width: 480px;
   text-align: center;
   /* Glass effect handled by global .glass class */
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
 }
 
 .logoContainer {
@@ -30,11 +41,15 @@
 .title {
   font-size: 2rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.subtitle {
+  color: var(--text-secondary);
   margin-bottom: 1.5rem;
-  background: linear-gradient(to right, var(--primary), #a78bfa);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  text-align: center;
 }
 
 .statusContainer {
@@ -42,21 +57,20 @@
   flex-direction: column;
   gap: 1.5rem;
   align-items: center;
+  width: 100%;
 }
 
-.iconWrapper {
-  width: 4rem;
-  height: 4rem;
-  background: var(--success);
-  /* Opacity should be handled if possible, or use a new var. For now let's use a hardcoded rgba match or similar if I can't derive it. Actually I can use color-mix if I want but let's just stick to the hex for the bg if I don't have a muted success var. */
-  /* Reverting to rgba for bg for now but using var for color */
-  background: rgba(34, 197, 94, 0.1);
-  border-radius: 50%;
+.statusRow {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-  color: var(--success);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+}
+
+.statusText {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
 .loadingWrapper {
@@ -64,6 +78,10 @@
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+}
+
+.loadingText {
+  color: var(--text-secondary);
 }
 
 .spinner {
@@ -76,32 +94,22 @@
   margin: 0 auto;
 }
 
+.spinnerSmall {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.errorBox {
-  color: var(--destructive);
-  background: rgba(239, 68, 68, 0.1);
-  padding: 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-}
-
-.code {
-  font-family: monospace;
-  display: block;
-  margin-top: 0.5rem;
-  word-break: break-all;
-}
-
 .divider {
   border: none;
   border-top: 1px solid var(--border);
   margin: 1.5rem 0 1rem;
-  opacity: 0.5;
 }
 
 .infoSection {
@@ -120,13 +128,13 @@
 .infoIcon {
   flex-shrink: 0;
   margin-top: 2px;
-  opacity: 0.5;
+  color: var(--text-muted);
 }
 
 .infoText {
   font-size: 0.75rem;
   line-height: 1.5;
-  opacity: 0.5;
+  color: var(--text-muted);
   margin: 0;
 }
 
