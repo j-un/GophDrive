@@ -1,23 +1,29 @@
-import React, {
+import {
   forwardRef,
-  useEffect,
+  useCallback,
   useImperativeHandle,
+  useMemo,
   useRef,
-  useState,
 } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import type { TransactionSpec } from "@codemirror/state";
 
-import { useTheme } from "@/components/ThemeProvider";
+import { quietEditorExtensions } from "@/lib/editorTheme";
+
+export type SelectionInfo = {
+  from: number;
+  to: number;
+  empty: boolean;
+};
 
 export type EditorHandle = {
   runCommand(fn: (state: EditorState) => TransactionSpec): void;
   focus(): void;
+  getView(): EditorView | null;
 };
 
 interface EditorProps {
@@ -25,19 +31,19 @@ interface EditorProps {
   onChange: (value: string) => void;
   className?: string;
   readOnly?: boolean;
+  onSelectionChange?: (sel: SelectionInfo) => void;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { value, onChange, className, readOnly = false },
+  { value, onChange, className, readOnly = false, onSelectionChange },
   ref,
 ) {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
   const viewRef = useRef<EditorView | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Hold `onSelectionChange` in a ref so the CodeMirror update listener always
+  // calls the latest callback without needing to rebuild extensions.
+  const selectionCbRef = useRef<EditorProps["onSelectionChange"]>(undefined);
+  selectionCbRef.current = onSelectionChange;
 
   useImperativeHandle(
     ref,
@@ -51,22 +57,43 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       focus() {
         viewRef.current?.focus();
       },
+      getView() {
+        return viewRef.current;
+      },
     }),
     [],
   );
 
-  const handleChange = React.useCallback(
+  const handleChange = useCallback(
     (val: string) => {
       onChange(val);
     },
     [onChange],
   );
 
+  // Extensions are stable across renders — the selection listener reads the
+  // callback from a ref so we don't churn the extension array.
+  const extensions = useMemo(
+    () => [
+      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      EditorView.lineWrapping,
+      ...quietEditorExtensions,
+      EditorView.updateListener.of((update) => {
+        if (!update.selectionSet && !update.docChanged) return;
+        const cb = selectionCbRef.current;
+        if (!cb) return;
+        const main = update.state.selection.main;
+        cb({ from: main.from, to: main.to, empty: main.empty });
+      }),
+    ],
+    [],
+  );
+
   return (
     <div
-      className={`rounded-lg border border-[var(--border)] ${className || ""}`}
+      className={className}
       style={{
-        backgroundColor: "var(--card)",
+        backgroundColor: "var(--background)",
         display: "flex",
         flexDirection: "column",
       }}
@@ -75,16 +102,13 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         value={value}
         height="auto"
         minHeight="100%"
-        className="text-base font-mono flex-1"
-        extensions={[
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
-          EditorView.lineWrapping,
-        ]}
+        className="flex-1"
+        extensions={extensions}
         onChange={handleChange}
         onCreateEditor={(v) => {
           viewRef.current = v;
         }}
-        theme={mounted && resolvedTheme === "dark" ? oneDark : undefined}
+        theme="none"
         readOnly={readOnly}
         basicSetup={{
           lineNumbers: false,
