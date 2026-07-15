@@ -1,6 +1,6 @@
 .preview {
   padding: 1rem;
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--font-sans), sans-serif;
   line-height: 1.75;
   color: var(--foreground);
 }
