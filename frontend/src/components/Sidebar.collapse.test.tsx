@@ -5,6 +5,7 @@ import {
   waitFor,
   fireEvent,
   act,
+  within,
 } from "@testing-library/react";
 
 vi.mock("@/lib/api", () => ({
@@ -50,7 +51,17 @@ const NOTE_ITEM: FileItem = {
 const renderSidebar = (props: { refreshTrigger?: number } = {}) =>
   render(<Sidebar onNavigate={() => {}} {...props} />);
 
-const getRecentButton = () => screen.getByRole("button", { name: /recent/i });
+const getRail = () => screen.getByTestId("sidebar-rail");
+const getPanel = () => screen.getByTestId("sidebar-panel");
+
+// Hover-expand the rail so the overlay panel is showing, mirroring what a
+// real desktop user does before interacting with Starred/Recent/Tags.
+const expandPanel = () => {
+  fireEvent.mouseEnter(getRail());
+};
+
+const getRecentButton = () =>
+  within(getPanel()).getByRole("button", { name: /recent/i });
 
 const getRecentList = () => {
   const list = document.getElementById("sidebar-recent-list");
@@ -65,6 +76,7 @@ describe("Sidebar Recent section collapsible", () => {
 
   it("shows recent note names by default and hides them after toggling", async () => {
     renderSidebar();
+    expandPanel();
 
     expect(await screen.findByText("MySecretNote")).toBeTruthy();
     expect(getRecentButton().getAttribute("aria-expanded")).toBe("true");
@@ -85,6 +97,7 @@ describe("Sidebar Recent section collapsible", () => {
     window.localStorage.setItem("sidebar:recent:collapsed", "true");
 
     renderSidebar();
+    expandPanel();
 
     await waitFor(() => {
       expect(getRecentButton().getAttribute("aria-expanded")).toBe("false");
@@ -96,6 +109,7 @@ describe("Sidebar Recent section collapsible", () => {
     window.localStorage.setItem("sidebar:recent:collapsed", "true");
 
     renderSidebar();
+    expandPanel();
 
     await waitFor(() => {
       expect(getRecentButton().getAttribute("aria-controls")).toBe(
@@ -187,5 +201,152 @@ describe("Sidebar Starred section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unstar StarredNote" }));
     await waitFor(() => expect(starFile).toHaveBeenCalled());
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Sidebar Recent section keyboard access", () => {
+  beforeEach(() => {
+    // A prior describe block leaves "sidebar:recent:collapsed" in
+    // localStorage; clear it so the Recent row is visible by default here.
+    window.localStorage.clear();
+    mockNavigate.mockClear();
+  });
+
+  it("activates a recent row via Enter, matching Starred row semantics", async () => {
+    renderSidebar();
+    expandPanel();
+
+    const row = await within(getPanel()).findByRole("button", {
+      name: "MySecretNote",
+    });
+    expect(row.getAttribute("tabIndex")).toBe("0");
+
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=n1");
+  });
+
+  it("activates a recent row via Space", async () => {
+    renderSidebar();
+    expandPanel();
+
+    const row = await within(getPanel()).findByRole("button", {
+      name: "MySecretNote",
+    });
+    fireEvent.keyDown(row, { key: " " });
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=n1");
+  });
+});
+
+describe("Sidebar icon rail", () => {
+  it("shows an icon button for each rail action", () => {
+    renderSidebar();
+    const rail = getRail();
+    expect(within(rail).getByRole("button", { name: "Search" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Notes" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Starred" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Recent" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Tags" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Settings" })).toBeTruthy();
+  });
+
+  it("navigates to /drive/ when the logo is clicked", () => {
+    renderSidebar();
+    expect(
+      screen.getByRole("link", { name: "GophDrive" }).getAttribute("href"),
+    ).toBe("/drive/");
+  });
+});
+
+describe("Sidebar hover expansion", () => {
+  it("expands the overlay panel on rail hover and collapses on mouse leave", () => {
+    renderSidebar();
+    const rail = getRail();
+    const panel = getPanel();
+
+    expect(panel.className).not.toMatch(/panelExpanded/);
+
+    fireEvent.mouseEnter(rail);
+    expect(panel.className).toMatch(/panelExpanded/);
+
+    fireEvent.mouseLeave(rail);
+    expect(panel.className).not.toMatch(/panelExpanded/);
+  });
+
+  it("keeps the panel expanded while the pointer moves onto the panel itself", () => {
+    renderSidebar();
+    const rail = getRail();
+    const panel = getPanel();
+
+    fireEvent.mouseEnter(rail);
+    expect(panel.className).toMatch(/panelExpanded/);
+
+    fireEvent.mouseEnter(panel);
+    expect(panel.className).toMatch(/panelExpanded/);
+  });
+
+  it("opens the panel and reveals starred content when the Starred rail button is clicked", async () => {
+    vi.mocked(listStarred).mockResolvedValueOnce([NOTE_ITEM]);
+    renderSidebar();
+    await screen.findByText("StarredNote");
+
+    const panel = getPanel();
+    expect(panel.className).not.toMatch(/panelExpanded/);
+
+    fireEvent.click(within(getRail()).getByRole("button", { name: "Starred" }));
+
+    expect(panel.className).toMatch(/panelExpanded/);
+  });
+});
+
+describe("Sidebar Cmd+K shortcut", () => {
+  it("expands the panel and focuses the search input", async () => {
+    renderSidebar();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    const input = screen.getByPlaceholderText("Search...");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(getPanel().className).toMatch(/panelExpanded/);
+  });
+
+  it("also responds to Ctrl+K", async () => {
+    renderSidebar();
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+
+    const input = screen.getByPlaceholderText("Search...");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+});
+
+describe("Sidebar panel dismissal without the pointer", () => {
+  it("closes on Escape even when the panel was opened via Cmd+K (pointer never left it)", () => {
+    renderSidebar();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(getPanel().className).toMatch(/panelExpanded/);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(getPanel().className).not.toMatch(/panelExpanded/);
+  });
+
+  it("closes on a click outside the rail and panel", () => {
+    renderSidebar();
+
+    fireEvent.mouseEnter(getRail());
+    expect(getPanel().className).toMatch(/panelExpanded/);
+
+    fireEvent.mouseDown(document.body);
+    expect(getPanel().className).not.toMatch(/panelExpanded/);
+  });
+
+  it("stays open when the outside-click check fires on the panel itself", () => {
+    renderSidebar();
+
+    fireEvent.mouseEnter(getRail());
+    expect(getPanel().className).toMatch(/panelExpanded/);
+
+    fireEvent.mouseDown(getPanel());
+    expect(getPanel().className).toMatch(/panelExpanded/);
   });
 });

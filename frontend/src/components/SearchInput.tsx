@@ -44,7 +44,7 @@ export default function SearchInput() {
       <Search
         size={18}
         className="text-[var(--muted-foreground)] flex-shrink-0"
-        strokeWidth={2.5}
+        strokeWidth={1.8}
       />
       <input
         type="text"
