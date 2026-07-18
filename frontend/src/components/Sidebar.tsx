@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router";
 import {
-  Search,
   File,
   Folder,
   ChevronRight,
+  ChevronLeft,
+  PanelLeftOpen,
   Star,
   Settings,
   FileText,
@@ -31,6 +32,7 @@ interface SidebarProps {
 }
 
 const RECENT_COLLAPSED_KEY = "sidebar:recent:collapsed";
+const SIDEBAR_COLLAPSED_KEY = "sidebar:collapsed";
 
 export function Sidebar({
   onNavigate,
@@ -47,15 +49,22 @@ export function Sidebar({
     RECENT_COLLAPSED_KEY,
     false,
   );
-  // Desktop rail hover/tap expansion. Independent of `isOpen`, which drives
-  // the mobile slide-in drawer only (see Sidebar.module.css breakpoints).
-  const [expanded, setExpanded] = useState(false);
+  // Desktop rail/panel collapse. Persisted so it survives page navigation
+  // (the sidebar remounts on every route change). Independent of `isOpen`,
+  // which drives the mobile slide-in drawer only (see Sidebar.module.css
+  // breakpoints).
+  const [collapsed, setCollapsed] = useLocalStorageBoolean(
+    SIDEBAR_COLLAPSED_KEY,
+    false,
+  );
+  // Bumped to trigger a focus effect on the search input. A plain `.focus()`
+  // call from `openSearch` doesn't work here because the panel can be
+  // `display: none` (collapsed) at the moment ⌘K fires — an element can't
+  // receive focus while it isn't rendered, so focusing has to wait for the
+  // post-expand render via an effect instead.
+  const [searchFocusSignal, setSearchFocusSignal] = useState(0);
 
-  const rootRef = useRef<HTMLDivElement>(null);
   const searchWrapRef = useRef<HTMLDivElement>(null);
-  const starredSectionRef = useRef<HTMLDivElement>(null);
-  const recentSectionRef = useRef<HTMLDivElement>(null);
-  const tagsSectionRef = useRef<HTMLDivElement>(null);
 
   const loadRequestRef = useRef(0);
 
@@ -107,21 +116,24 @@ export function Sidebar({
 
   const handleNavigate = (folderId?: string) => {
     onNavigate(folderId);
-    setExpanded(false);
+    // Desktop: the sidebar stays open after navigating (it's a persistent
+    // rail now, not a hover overlay). Mobile: still closes the drawer.
     onClose?.();
   };
 
   const openSearch = () => {
-    setExpanded(true);
-    searchWrapRef.current?.querySelector("input")?.focus();
+    setCollapsed(false);
+    setSearchFocusSignal((s) => s + 1);
   };
 
-  // Cmd/Ctrl+K opens the panel and focuses search, regardless of hover
-  // state. The ref mirrors the loadFoldersRef pattern above so the listener
-  // is registered once but always calls the latest closure. Escape shares
-  // this listener to close the desktop overlay panel when it was opened
-  // without the pointer (e.g. via ⌘K or a rail button click while the
-  // cursor stayed in the editor) and mouseleave never fires.
+  useEffect(() => {
+    if (searchFocusSignal === 0) return;
+    searchWrapRef.current?.querySelector("input")?.focus();
+  }, [searchFocusSignal]);
+
+  // Cmd/Ctrl+K expands the panel and focuses search regardless of current
+  // collapsed state. The ref mirrors the loadFoldersRef pattern above so
+  // the listener is registered once but always calls the latest closure.
   const openSearchRef = useRef(openSearch);
   useEffect(() => {
     openSearchRef.current = openSearch;
@@ -131,133 +143,49 @@ export function Sidebar({
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         openSearchRef.current();
-      } else if (e.key === "Escape") {
-        setExpanded(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Clicking outside the rail/panel also closes the panel for the same
-  // pointer-never-left-the-panel reason Escape does. Scoped to `expanded`
-  // so the listener only exists while there's something to close.
-  useEffect(() => {
-    if (!expanded) return;
-    const handlePointerDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setExpanded(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [expanded]);
-
-  const openSection = (ref: React.RefObject<HTMLDivElement | null>) => {
-    setExpanded(true);
-    ref.current?.scrollIntoView?.({ block: "nearest" });
-  };
-
   const handleNotesClick = () => {
     handleNavigate();
   };
 
   const handleSettingsClick = () => {
-    setExpanded(false);
     navigate("/settings/");
     onClose?.();
   };
 
-  // Touch devices have no hover: tapping the rail (outside a specific
-  // button, which stops propagation) toggles the panel open/closed.
-  const handleRailClick = () => {
-    setExpanded((v) => !v);
-  };
-
   return (
-    <div
-      ref={rootRef}
-      className={styles.root}
-      onMouseEnter={() => setExpanded(true)}
-      onMouseLeave={() => setExpanded(false)}
-    >
+    <div className={`${styles.root} ${collapsed ? styles.rootCollapsed : ""}`}>
       <div
         className={`${styles.overlay} ${isOpen ? styles.overlayOpen : ""}`}
         onClick={onClose}
       />
 
-      <nav
-        className={styles.rail}
-        data-testid="sidebar-rail"
-        onClick={handleRailClick}
-      >
-        <Link
-          to="/drive/"
-          className={styles.logo}
-          aria-label="GophDrive"
-          onClick={(e) => e.stopPropagation()}
-        >
-          G
-        </Link>
+      {/* Rendered at all times (not just when collapsed) so its layout is
+          established before the CSS display toggle; only visible via
+          `.rootCollapsed .rail { display: flex }` at desktop widths. */}
+      <nav className={styles.rail} data-testid="sidebar-rail">
         <button
           type="button"
           className={styles.railBtn}
-          aria-label="Search"
-          title="Search (⌘K)"
-          onClick={(e) => {
-            e.stopPropagation();
-            openSearch();
-          }}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          onClick={() => setCollapsed(false)}
         >
-          <Search size={17} strokeWidth={1.8} />
+          <PanelLeftOpen size={17} strokeWidth={1.8} />
         </button>
         <button
           type="button"
           className={`${styles.railBtn} ${styles.railBtnActive}`}
           aria-label="Notes"
           title="Notes"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleNotesClick();
-          }}
+          onClick={handleNotesClick}
         >
           <File size={17} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={styles.railBtn}
-          aria-label="Starred"
-          title="Starred"
-          onClick={(e) => {
-            e.stopPropagation();
-            openSection(starredSectionRef);
-          }}
-        >
-          <Star size={17} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={styles.railBtn}
-          aria-label="Recent"
-          title="Recent"
-          onClick={(e) => {
-            e.stopPropagation();
-            openSection(recentSectionRef);
-          }}
-        >
-          <Clock size={17} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={styles.railBtn}
-          aria-label="Tags"
-          title="Tags"
-          onClick={(e) => {
-            e.stopPropagation();
-            openSection(tagsSectionRef);
-          }}
-        >
-          <Hash size={17} strokeWidth={1.8} />
         </button>
         <div className={styles.spacer} />
         <button
@@ -265,26 +193,45 @@ export function Sidebar({
           className={styles.settingsBtn}
           aria-label="Settings"
           title="Settings"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSettingsClick();
-          }}
+          onClick={handleSettingsClick}
         >
           <Settings size={17} strokeWidth={1.8} />
         </button>
       </nav>
 
+      {/* Rendered at all times (not just when expanded) because the mobile
+          drawer depends on this element already being in the DOM to
+          translateX it into view; only hidden via
+          `.rootCollapsed .panel { display: none }` at desktop widths. */}
       <div
-        className={`${styles.panel} ${expanded ? styles.panelExpanded : ""} ${isOpen ? styles.panelMobileOpen : ""}`}
+        className={`${styles.panel} ${isOpen ? styles.panelMobileOpen : ""}`}
         data-testid="sidebar-panel"
       >
+        <div className={styles.panelHeader}>
+          <Link
+            to="/drive/"
+            className={styles.panelLogo}
+            aria-label="GophDrive"
+          >
+            G
+          </Link>
+          <button
+            type="button"
+            className={styles.collapseBtn}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            onClick={() => setCollapsed(true)}
+          >
+            <ChevronLeft size={17} strokeWidth={1.8} />
+          </button>
+        </div>
         <div className={styles.panelSearch} ref={searchWrapRef}>
           <SearchInput />
         </div>
 
         <div className={styles.panelBody}>
           {/* Starred Section */}
-          <div ref={starredSectionRef} className={styles.section}>
+          <div className={styles.section}>
             <div className={styles.sectionHeading}>Starred</div>
             {loading ? (
               Array.from({ length: 2 }).map((_, i) => (
@@ -307,7 +254,6 @@ export function Sidebar({
                     handleNavigate(item.id);
                   } else {
                     navigate(`/note/?id=${item.id}`);
-                    setExpanded(false);
                     onClose?.();
                   }
                 };
@@ -354,7 +300,7 @@ export function Sidebar({
           </div>
 
           {/* Recent Section */}
-          <div ref={recentSectionRef} className={styles.section}>
+          <div className={styles.section}>
             <button
               type="button"
               onClick={() => setRecentCollapsed((v) => !v)}
@@ -388,7 +334,6 @@ export function Sidebar({
                 recentFiles.map((file) => {
                   const handleClick = () => {
                     navigate(`/note/?id=${file.id}`);
-                    setExpanded(false);
                     onClose?.();
                   };
                   return (
@@ -416,7 +361,7 @@ export function Sidebar({
 
           {/* Tags Section */}
           {tags.length > 0 && (
-            <div ref={tagsSectionRef} className={styles.section}>
+            <div className={styles.section}>
               <div className={styles.sectionHeading}>
                 <Hash size={14} className={styles.headingIcon} /> Tags
               </div>
@@ -426,10 +371,7 @@ export function Sidebar({
                     key={tag.name}
                     to={`/drive/?tag=${encodeURIComponent(tag.name)}`}
                     className={styles.tagChip}
-                    onClick={() => {
-                      setExpanded(false);
-                      onClose?.();
-                    }}
+                    onClick={() => onClose?.()}
                   >
                     #{tag.name}
                     <span className={styles.tagCount}>{tag.count}</span>
@@ -440,10 +382,10 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Settings is reachable from the rail on desktop; the rail is
-            hidden on mobile (≤768px), so the panel carries its own entry
-            there (CSS-gated, see .panelMobileFooter). */}
-        <div className={styles.panelMobileFooter}>
+        {/* Always visible now that the panel is a persistent column rather
+            than a hover overlay; previously mobile-only because the rail
+            (with its own Settings entry) was hidden ≤768px. */}
+        <div className={styles.panelFooter}>
           <button
             type="button"
             onClick={handleSettingsClick}

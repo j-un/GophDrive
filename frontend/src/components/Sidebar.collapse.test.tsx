@@ -48,17 +48,23 @@ const NOTE_ITEM: FileItem = {
   size: 0,
 };
 
-const renderSidebar = (props: { refreshTrigger?: number } = {}) =>
-  render(<Sidebar onNavigate={() => {}} {...props} />);
+const renderSidebar = (
+  props: {
+    refreshTrigger?: number;
+    isOpen?: boolean;
+    onClose?: () => void;
+  } = {},
+) => render(<Sidebar onNavigate={() => {}} {...props} />);
 
 const getRail = () => screen.getByTestId("sidebar-rail");
 const getPanel = () => screen.getByTestId("sidebar-panel");
+const getRoot = (container: HTMLElement) => container.firstChild as HTMLElement;
 
-// Hover-expand the rail so the overlay panel is showing, mirroring what a
-// real desktop user does before interacting with Starred/Recent/Tags.
-const expandPanel = () => {
-  fireEvent.mouseEnter(getRail());
-};
+// The mobile backdrop has no data-testid; it's the only element whose CSS
+// Module class name contains "overlay" (base class is always applied, so
+// this matches whether or not `.overlayOpen` is also present).
+const getOverlay = () =>
+  document.querySelector('[class*="overlay"]') as HTMLElement;
 
 const getRecentButton = () =>
   within(getPanel()).getByRole("button", { name: /recent/i });
@@ -69,14 +75,16 @@ const getRecentList = () => {
   return list as HTMLElement;
 };
 
-describe("Sidebar Recent section collapsible", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
+// Isolate the new `sidebar:collapsed` key (and any other sidebar state)
+// between tests; individual describes below still call `.clear()` or
+// `.setItem()` themselves where the ordering matters for readability.
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
+describe("Sidebar Recent section collapsible", () => {
   it("shows recent note names by default and hides them after toggling", async () => {
     renderSidebar();
-    expandPanel();
 
     expect(await screen.findByText("MySecretNote")).toBeTruthy();
     expect(getRecentButton().getAttribute("aria-expanded")).toBe("true");
@@ -97,7 +105,6 @@ describe("Sidebar Recent section collapsible", () => {
     window.localStorage.setItem("sidebar:recent:collapsed", "true");
 
     renderSidebar();
-    expandPanel();
 
     await waitFor(() => {
       expect(getRecentButton().getAttribute("aria-expanded")).toBe("false");
@@ -109,7 +116,6 @@ describe("Sidebar Recent section collapsible", () => {
     window.localStorage.setItem("sidebar:recent:collapsed", "true");
 
     renderSidebar();
-    expandPanel();
 
     await waitFor(() => {
       expect(getRecentButton().getAttribute("aria-controls")).toBe(
@@ -202,19 +208,27 @@ describe("Sidebar Starred section", () => {
     await waitFor(() => expect(starFile).toHaveBeenCalled());
     expect(mockNavigate).not.toHaveBeenCalled();
   });
+
+  it("keeps the sidebar expanded after navigating via a starred note (no longer auto-collapses)", async () => {
+    vi.mocked(listStarred).mockResolvedValueOnce([NOTE_ITEM]);
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+    await screen.findByText("StarredNote");
+
+    fireEvent.click(screen.getByText("StarredNote"));
+
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-1");
+    expect(root.className).not.toMatch(/rootCollapsed/);
+  });
 });
 
 describe("Sidebar Recent section keyboard access", () => {
   beforeEach(() => {
-    // A prior describe block leaves "sidebar:recent:collapsed" in
-    // localStorage; clear it so the Recent row is visible by default here.
-    window.localStorage.clear();
     mockNavigate.mockClear();
   });
 
   it("activates a recent row via Enter, matching Starred row semantics", async () => {
     renderSidebar();
-    expandPanel();
 
     const row = await within(getPanel()).findByRole("button", {
       name: "MySecretNote",
@@ -227,7 +241,6 @@ describe("Sidebar Recent section keyboard access", () => {
 
   it("activates a recent row via Space", async () => {
     renderSidebar();
-    expandPanel();
 
     const row = await within(getPanel()).findByRole("button", {
       name: "MySecretNote",
@@ -237,18 +250,7 @@ describe("Sidebar Recent section keyboard access", () => {
   });
 });
 
-describe("Sidebar icon rail", () => {
-  it("shows an icon button for each rail action", () => {
-    renderSidebar();
-    const rail = getRail();
-    expect(within(rail).getByRole("button", { name: "Search" })).toBeTruthy();
-    expect(within(rail).getByRole("button", { name: "Notes" })).toBeTruthy();
-    expect(within(rail).getByRole("button", { name: "Starred" })).toBeTruthy();
-    expect(within(rail).getByRole("button", { name: "Recent" })).toBeTruthy();
-    expect(within(rail).getByRole("button", { name: "Tags" })).toBeTruthy();
-    expect(within(rail).getByRole("button", { name: "Settings" })).toBeTruthy();
-  });
-
+describe("Sidebar branding link", () => {
   it("navigates to /drive/ when the logo is clicked", () => {
     renderSidebar();
     expect(
@@ -257,56 +259,79 @@ describe("Sidebar icon rail", () => {
   });
 });
 
-describe("Sidebar hover expansion", () => {
-  it("expands the overlay panel on rail hover and collapses on mouse leave", () => {
-    renderSidebar();
-    const rail = getRail();
-    const panel = getPanel();
-
-    expect(panel.className).not.toMatch(/panelExpanded/);
-
-    fireEvent.mouseEnter(rail);
-    expect(panel.className).toMatch(/panelExpanded/);
-
-    fireEvent.mouseLeave(rail);
-    expect(panel.className).not.toMatch(/panelExpanded/);
+describe("Sidebar icon rail (collapsed)", () => {
+  beforeEach(() => {
+    window.localStorage.setItem("sidebar:collapsed", "true");
   });
 
-  it("keeps the panel expanded while the pointer moves onto the panel itself", () => {
+  it("shows Expand sidebar, Notes, and Settings on the rail", () => {
     renderSidebar();
     const rail = getRail();
-    const panel = getPanel();
-
-    fireEvent.mouseEnter(rail);
-    expect(panel.className).toMatch(/panelExpanded/);
-
-    fireEvent.mouseEnter(panel);
-    expect(panel.className).toMatch(/panelExpanded/);
+    expect(
+      within(rail).getByRole("button", { name: "Expand sidebar" }),
+    ).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Notes" })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "Settings" })).toBeTruthy();
   });
 
-  it("opens the panel and reveals starred content when the Starred rail button is clicked", async () => {
-    vi.mocked(listStarred).mockResolvedValueOnce([NOTE_ITEM]);
+  it("no longer has separate Search/Starred/Recent/Tags rail buttons", () => {
     renderSidebar();
-    await screen.findByText("StarredNote");
+    const rail = getRail();
+    expect(within(rail).queryByRole("button", { name: "Search" })).toBeNull();
+    expect(within(rail).queryByRole("button", { name: "Starred" })).toBeNull();
+    expect(within(rail).queryByRole("button", { name: "Recent" })).toBeNull();
+    expect(within(rail).queryByRole("button", { name: "Tags" })).toBeNull();
+  });
+});
 
-    const panel = getPanel();
-    expect(panel.className).not.toMatch(/panelExpanded/);
+describe("Sidebar collapse/expand toggle", () => {
+  it("collapses on 'Collapse sidebar' click, persists to localStorage, and expands again on 'Expand sidebar'", () => {
+    const { container } = renderSidebar();
+    const root = getRoot(container);
 
-    fireEvent.click(within(getRail()).getByRole("button", { name: "Starred" }));
+    expect(root.className).not.toMatch(/rootCollapsed/);
 
-    expect(panel.className).toMatch(/panelExpanded/);
+    fireEvent.click(
+      within(getPanel()).getByRole("button", { name: "Collapse sidebar" }),
+    );
+
+    expect(root.className).toMatch(/rootCollapsed/);
+    expect(window.localStorage.getItem("sidebar:collapsed")).toBe("true");
+
+    fireEvent.click(
+      within(getRail()).getByRole("button", { name: "Expand sidebar" }),
+    );
+
+    expect(root.className).not.toMatch(/rootCollapsed/);
+    expect(window.localStorage.getItem("sidebar:collapsed")).toBe("false");
+  });
+
+  it("starts collapsed when sidebar:collapsed=true is set before mount", () => {
+    window.localStorage.setItem("sidebar:collapsed", "true");
+
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+
+    expect(root.className).toMatch(/rootCollapsed/);
+  });
+
+  it("defaults to expanded when no sidebar:collapsed key is present", () => {
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+
+    expect(root.className).not.toMatch(/rootCollapsed/);
+    expect(window.localStorage.getItem("sidebar:collapsed")).toBe("false");
   });
 });
 
 describe("Sidebar Cmd+K shortcut", () => {
-  it("expands the panel and focuses the search input", async () => {
+  it("focuses the search input", async () => {
     renderSidebar();
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
 
     const input = screen.getByPlaceholderText("Search...");
     await waitFor(() => expect(document.activeElement).toBe(input));
-    expect(getPanel().className).toMatch(/panelExpanded/);
   });
 
   it("also responds to Ctrl+K", async () => {
@@ -317,36 +342,53 @@ describe("Sidebar Cmd+K shortcut", () => {
     const input = screen.getByPlaceholderText("Search...");
     await waitFor(() => expect(document.activeElement).toBe(input));
   });
-});
 
-describe("Sidebar panel dismissal without the pointer", () => {
-  it("closes on Escape even when the panel was opened via Cmd+K (pointer never left it)", () => {
-    renderSidebar();
+  it("expands from a collapsed state and focuses the search input", async () => {
+    window.localStorage.setItem("sidebar:collapsed", "true");
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+    expect(root.className).toMatch(/rootCollapsed/);
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
-    expect(getPanel().className).toMatch(/panelExpanded/);
+
+    await waitFor(() => expect(root.className).not.toMatch(/rootCollapsed/));
+    const input = screen.getByPlaceholderText("Search...");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+});
+
+describe("Sidebar persistence (no dismiss-on-away behavior)", () => {
+  it("does not collapse on Escape", () => {
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+    expect(root.className).not.toMatch(/rootCollapsed/);
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(getPanel().className).not.toMatch(/panelExpanded/);
+
+    expect(root.className).not.toMatch(/rootCollapsed/);
   });
 
-  it("closes on a click outside the rail and panel", () => {
-    renderSidebar();
-
-    fireEvent.mouseEnter(getRail());
-    expect(getPanel().className).toMatch(/panelExpanded/);
+  it("does not collapse on a mousedown outside the panel", () => {
+    const { container } = renderSidebar();
+    const root = getRoot(container);
+    expect(root.className).not.toMatch(/rootCollapsed/);
 
     fireEvent.mouseDown(document.body);
-    expect(getPanel().className).not.toMatch(/panelExpanded/);
+
+    expect(root.className).not.toMatch(/rootCollapsed/);
   });
+});
 
-  it("stays open when the outside-click check fires on the panel itself", () => {
-    renderSidebar();
+describe("Sidebar mobile drawer independence from desktop collapse", () => {
+  it("shows the drawer (panelMobileOpen) and calls onClose on overlay click, even while desktop-collapsed", () => {
+    window.localStorage.setItem("sidebar:collapsed", "true");
+    const onClose = vi.fn();
+    render(<Sidebar onNavigate={() => {}} isOpen={true} onClose={onClose} />);
 
-    fireEvent.mouseEnter(getRail());
-    expect(getPanel().className).toMatch(/panelExpanded/);
+    expect(getPanel().className).toMatch(/panelMobileOpen/);
 
-    fireEvent.mouseDown(getPanel());
-    expect(getPanel().className).toMatch(/panelExpanded/);
+    fireEvent.click(getOverlay());
+
+    expect(onClose).toHaveBeenCalled();
   });
 });
