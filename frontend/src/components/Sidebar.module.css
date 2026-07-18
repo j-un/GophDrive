@@ -1,8 +1,25 @@
-/* ===== Icon rail (desktop) + hover/tap overlay panel ===== */
+/* ===== Icon rail (desktop, collapsed) + persistent panel (desktop, expanded) ===== */
 
 .root {
   flex-shrink: 0;
   height: 100%;
+}
+
+/* Width (and the collapse transition) only applies at desktop widths: on
+   mobile .root has no intrinsic width of its own — the drawer (.panel) is
+   `position: fixed` and floats above the page, so giving .root a width
+   there would reserve dead space in the DrivePage/NotePage flex layout. */
+@media (min-width: 769px) {
+  .root {
+    box-sizing: border-box;
+    width: 250px;
+    overflow: hidden;
+    transition: width 200ms ease;
+  }
+
+  .rootCollapsed {
+    width: 56px;
+  }
 }
 
 /* Mobile-only backdrop; toggled via .overlayOpen inside the ≤768px block. */
@@ -23,7 +40,11 @@
   height: 100%;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
-  display: flex;
+  /* Rendered in the DOM at all times (Sidebar.tsx never conditionally
+     mounts it), but only ever shown when the sidebar is collapsed on
+     desktop — see `.rootCollapsed .rail` below. Hidden by default so it
+     doesn't sit stacked behind the expanded panel. */
+  display: none;
   flex-direction: column;
   align-items: center;
   padding: 18px 0;
@@ -31,7 +52,13 @@
   background: var(--background);
 }
 
-.logo {
+@media (min-width: 769px) {
+  .rootCollapsed .rail {
+    display: flex;
+  }
+}
+
+.panelLogo {
   width: 26px;
   height: 26px;
   border-radius: 7px;
@@ -42,7 +69,6 @@
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
-  margin-bottom: 18px;
   flex-shrink: 0;
   text-decoration: none;
   cursor: pointer;
@@ -97,7 +123,7 @@
   color: var(--foreground);
 }
 
-/* ===== Overlay panel (Search / Starred / Recent / Tags) ===== */
+/* ===== Panel (Search / Starred / Recent / Tags) ===== */
 
 .panel {
   /* Same reasoning as .rail above: no global box-sizing reset exists, so
@@ -105,32 +131,65 @@
      rule forever (panelSearch/panelBody already carry their own padding
      today, but they're separate boxes and don't inflate .panel itself). */
   box-sizing: border-box;
-  position: fixed;
-  top: 0;
-  left: 56px;
+  /* Flowed in-page (not `position: fixed`) at desktop widths — this is now
+     a permanent column next to the rail, pushing DrivePage/NotePage content
+     over rather than floating above it. A fixed width (not 100%) keeps text
+     from reflowing/wrapping mid-transition while .root's width animates
+     during collapse/expand. The ≤768px block below re-applies `fixed` for
+     the mobile drawer, which still needs to float above the page. */
   width: 250px;
-  height: 100vh;
+  height: 100%;
   background: var(--background);
   border-right: 1px solid var(--border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  z-index: 50;
-  transform: translateX(-8px);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    transform 200ms ease-out,
-    opacity 200ms ease-out;
 }
 
-/* Scoped to desktop widths so `isOpen` (mobile drawer control) never
-   interacts with the hover/tap expansion state, and vice versa. */
+/* Rendered in the DOM at all times (Sidebar.tsx never conditionally mounts
+   it) because the mobile drawer below depends on this same element already
+   existing so it can translateX it into view. On desktop it's just hidden
+   outright when collapsed — no slide animation, the rail takes its place
+   instead. Scoped to desktop widths so `isOpen` (mobile drawer control)
+   never interacts with the collapsed state, and vice versa. */
 @media (min-width: 769px) {
-  .panelExpanded {
-    transform: translateX(0);
-    opacity: 1;
-    pointer-events: auto;
+  .rootCollapsed .panel {
+    display: none;
+  }
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px;
+}
+
+.collapseBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.collapseBtn:hover {
+  background: var(--hover-bg);
+  color: var(--foreground);
+}
+
+/* Meaningless in the mobile drawer (there's no rail to collapse into), and
+   without this the header would show a dead button that does nothing
+   useful for a touch user. */
+@media (max-width: 768px) {
+  .collapseBtn {
+    display: none;
   }
 }
 
@@ -297,10 +356,14 @@
   font-size: 11px;
 }
 
-/* Settings is available via the rail on desktop; the panel's own entry is
-   mobile-only (rail is hidden ≤768px). */
-.panelMobileFooter {
-  display: none;
+/* Settings lives here whenever the panel itself is visible (desktop
+   expanded, or the mobile drawer); the rail carries its own Settings entry
+   for when the panel is hidden (desktop collapsed). */
+.panelFooter {
+  display: block;
+  border-top: 1px solid var(--border);
+  padding: 10px;
+  flex-shrink: 0;
 }
 
 .mobileSettingsBtn {
@@ -322,7 +385,13 @@
   color: var(--foreground);
 }
 
-/* ===== Mobile (≤768px): slide-in drawer, rail hidden ===== */
+/* ===== Mobile (≤768px): slide-in drawer, rail hidden =====
+   The base .rail/.panel rules above dropped their `display: none` /
+   `position: fixed` handling in favor of the desktop-only collapse (rail
+   shown/panel hidden via `.rootCollapsed`, gated to 769px+). The drawer
+   still needs its own fixed-position, off-canvas-by-default behavior
+   regardless of `.rootCollapsed`, so that piece is re-declared here rather
+   than shared — `.rootCollapsed` must never reach into this block. */
 @media (max-width: 768px) {
   .rail {
     display: none;
@@ -345,23 +414,18 @@
   }
 
   .panel {
+    position: fixed;
+    top: 0;
     left: 0;
     width: 280px;
+    height: 100vh;
+    z-index: 50;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
     transform: translateX(-100%);
-    opacity: 1;
-    pointer-events: auto;
     transition: transform 300ms ease;
   }
 
   .panelMobileOpen {
     transform: translateX(0);
-  }
-
-  .panelMobileFooter {
-    display: block;
-    border-top: 1px solid var(--border);
-    padding: 10px;
-    flex-shrink: 0;
   }
 }
