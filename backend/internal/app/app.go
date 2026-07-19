@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
@@ -87,6 +88,9 @@ func NewApp(ctx context.Context) *App {
 	}
 	googleClientSecret, err := resolver.GetSecret(ctx, googleClientSecretParam)
 	if err != nil {
+		if !devMode {
+			panic(fmt.Sprintf("failed to resolve Google client secret from %q: %v", googleClientSecretParam, err))
+		}
 		log.Printf("WARNING: failed to resolve GOOGLE_CLIENT_SECRET: %v", err)
 	}
 
@@ -96,8 +100,17 @@ func NewApp(ctx context.Context) *App {
 	}
 	jwtSecret, err := resolver.GetSecret(ctx, jwtSecretParam)
 	if err != nil {
+		if !devMode {
+			panic(fmt.Sprintf("failed to resolve JWT secret from %q: %v", jwtSecretParam, err))
+		}
 		log.Printf("WARNING: failed to resolve JWT_SECRET: %v", err)
-		jwtSecret = "default-dev-secret"
+	}
+	// The old "default-dev-secret" fallback used to paper over an empty
+	// jwtSecret in dev; without it a misconfigured .env silently signs with
+	// an empty HMAC key, which surfaces later as opaque "invalid session"
+	// errors. Shout loudly here so the cause is unmistakable in the logs.
+	if devMode && jwtSecret == "" {
+		log.Printf("WARNING: JWT_SECRET is empty; sessions will be signed with an empty HMAC key (dev mode)")
 	}
 
 	apiGatewaySecretParam := os.Getenv("API_GATEWAY_SECRET_PARAM")
@@ -106,6 +119,9 @@ func NewApp(ctx context.Context) *App {
 	}
 	apiGatewaySecret, err := resolver.GetSecret(ctx, apiGatewaySecretParam)
 	if err != nil {
+		if !devMode {
+			panic(fmt.Sprintf("failed to resolve API Gateway secret from %q: %v", apiGatewaySecretParam, err))
+		}
 		log.Printf("WARNING: failed to resolve API_GATEWAY_SECRET: %v", err)
 	}
 
@@ -203,7 +219,14 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 	}
 
 	if os.Getenv("DEV_MODE") != "true" {
-		if getRequestHeader(req, "X-Origin-Verify") != app.apiGatewaySecret {
+		// Constant-time compare avoids a timing oracle on the shared secret.
+		// The empty-string short-circuit is belt-and-suspenders — fail-closed
+		// bootstrap already refuses to start with an empty apiGatewaySecret
+		// in production, but subtle.ConstantTimeCompare("", "") returns 1
+		// (equal), so if that guarantee ever slips this line still fails
+		// closed instead of accepting a header-less request.
+		header := getRequestHeader(req, "X-Origin-Verify")
+		if app.apiGatewaySecret == "" || subtle.ConstantTimeCompare([]byte(header), []byte(app.apiGatewaySecret)) != 1 {
 			fmt.Printf("Security Block: Missing or invalid X-Origin-Verify header\n")
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusForbidden,

@@ -168,6 +168,23 @@ func (m *Adapter) getFileItem(ctx context.Context, fileID string) (*FileItem, er
 	return &item, nil
 }
 
+// getOwnedFileItem is the ownership-scoped variant of getFileItem. Every
+// by-id operation that returns row content or drives a mutation must go
+// through this helper — a new method that forgets it re-opens the
+// cross-tenant IDOR MoveFile has always guarded against. Foreign rows are
+// mapped to ErrNotFound so the caller cannot distinguish "missing" from
+// "belongs to someone else".
+func (m *Adapter) getOwnedFileItem(ctx context.Context, fileID string) (*FileItem, error) {
+	item, err := m.getFileItem(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if item.UserID != m.userID {
+		return nil, adapter.ErrNotFound
+	}
+	return item, nil
+}
+
 // scanUserItems returns every FileItem owned by the adapter's user, walking
 // every page of a DynamoDB scan. Without this, a single Scan caps at 1MB and
 // missing data goes silently undetected — see scan.go for details.
@@ -300,21 +317,8 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 		return m.getFileMap(ctx, fileID)
 	}
 
-	out, err := m.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: getTableName(),
-		Key: map[string]types.AttributeValue{
-			"pk": &types.AttributeValueMemberS{Value: fileID},
-		},
-	})
+	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
-		return nil, err
-	}
-	if out.Item == nil {
-		return nil, adapter.ErrNotFound
-	}
-
-	var item FileItem
-	if err := attributevalue.UnmarshalMap(out.Item, &item); err != nil {
 		return nil, err
 	}
 
@@ -363,7 +367,10 @@ func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 		return err
 	}
 	updateExpr := "SET viewed_time = :v"
-	values := map[string]types.AttributeValue{":v": nowAV}
+	values := map[string]types.AttributeValue{
+		":v":   nowAV,
+		":uid": &types.AttributeValueMemberS{Value: m.userID},
+	}
 	var names map[string]string
 	// For demo users, viewing a note also refreshes its 60-minute TTL so an
 	// active read-only session doesn't lose notes mid-use. Real users have no
@@ -378,8 +385,12 @@ func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: fileID},
 		},
-		UpdateExpression:          aws.String(updateExpr),
-		ConditionExpression:       aws.String("attribute_exists(pk)"),
+		UpdateExpression: aws.String(updateExpr),
+		// user_id guard blocks cross-tenant TTL contamination: a demo caller
+		// touching another user's note would otherwise silently rewrite the
+		// victim's ttl attribute. Failing the condition falls through to the
+		// existing best-effort no-op below.
+		ConditionExpression:       aws.String("attribute_exists(pk) AND user_id = :uid"),
 		ExpressionAttributeValues: values,
 		ExpressionAttributeNames:  names,
 	})
@@ -900,7 +911,14 @@ func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
 		return m.deleteFileMap(ctx, fileID)
 	}
 
-	// Find children for recursive delete.
+	// Ownership guard on the read side (short-circuits cross-tenant callers
+	// before we scan children or attempt writes).
+	if _, err := m.getOwnedFileItem(ctx, fileID); err != nil {
+		return err
+	}
+
+	// Find children for recursive delete. scanUserItems is already scoped to
+	// m.userID, so a foreign folder pk here would surface no children.
 	items, err := m.scanUserItems(ctx)
 	if err != nil {
 		return err
@@ -922,14 +940,24 @@ func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
 		}
 	}
 
-	// 2. Delete the item itself
+	// Atomic ownership on the write side (defense-in-depth): even if a race
+	// invalidates the read-side guard, the row is only deleted when user_id
+	// still matches.
 	_, err = m.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: getTableName(),
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: fileID},
 		},
+		ConditionExpression: aws.String("attribute_exists(pk) AND user_id = :uid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":uid": &types.AttributeValueMemberS{Value: m.userID},
+		},
 	})
 	if err != nil {
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return adapter.ErrNotFound
+		}
 		return err
 	}
 	return nil
@@ -948,7 +976,7 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 	// be silently truncated to an empty body on copy. Phase 3 doesn't write
 	// such rows, but the helper means a future "duplicate also copies the
 	// S3 object" implementation has only one place to extend.
-	orig, err := m.getFileItem(ctx, fileID)
+	orig, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
@@ -1281,7 +1309,7 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 	// Read the raw row so we re-PUT every attribute, including any
 	// future-Phase BodyS3Key, instead of going through GetFile (which
 	// strips spillover state).
-	item, err := m.getFileItem(ctx, fileID)
+	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
@@ -1300,11 +1328,21 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return nil, err
 	}
 
+	// Atomic ownership guard on the write: catches any race where the row's
+	// owner changed between our read and this PutItem.
 	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: getTableName(),
-		Item:      av,
+		TableName:           getTableName(),
+		Item:                av,
+		ConditionExpression: aws.String("attribute_exists(pk) AND user_id = :uid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":uid": &types.AttributeValueMemberS{Value: m.userID},
+		},
 	})
 	if err != nil {
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return nil, adapter.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -1331,7 +1369,7 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 	}
 
 	// See RenameFile for why this reads the raw FileItem rather than GetFile.
-	item, err := m.getFileItem(ctx, fileID)
+	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
@@ -1346,11 +1384,20 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		return nil, err
 	}
 
+	// Atomic ownership guard (see RenameFile).
 	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: getTableName(),
-		Item:      av,
+		TableName:           getTableName(),
+		Item:                av,
+		ConditionExpression: aws.String("attribute_exists(pk) AND user_id = :uid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":uid": &types.AttributeValueMemberS{Value: m.userID},
+		},
 	})
 	if err != nil {
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return nil, adapter.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -1412,12 +1459,9 @@ func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID strin
 		return m.moveFileMap(ctx, fileID, newParentID)
 	}
 
-	item, err := m.getFileItem(ctx, fileID)
+	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
-	}
-	if item.UserID != m.userID {
-		return nil, adapter.ErrNotFound
 	}
 
 	resolvedParentID := newParentID
@@ -1434,12 +1478,9 @@ func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID strin
 	}
 
 	if resolvedParentID != "root" {
-		dest, err := m.getFileItem(ctx, resolvedParentID)
+		dest, err := m.getOwnedFileItem(ctx, resolvedParentID)
 		if err != nil {
 			return nil, err
-		}
-		if dest.UserID != m.userID {
-			return nil, adapter.ErrNotFound
 		}
 		if dest.MIMEType != "application/vnd.google-apps.folder" {
 			return nil, adapter.ErrInvalidMove
