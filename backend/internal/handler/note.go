@@ -301,6 +301,13 @@ func (h *NoteHandler) DeleteNote(ctx context.Context, req events.APIGatewayProxy
 
 	err = storage.DeleteFile(ctx, id)
 	if err != nil {
+		// Idempotent on missing/other-tenant: return 204 whether the row was
+		// truly absent or belonged to another user. Preserves the pre-guard
+		// success semantics of DeleteFile on a missing pk while blocking the
+		// cross-tenant delete at the adapter layer.
+		if errors.Is(err, adapter.ErrNotFound) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNoContent}, nil
+		}
 		if errors.Is(err, adapter.ErrUnauthorized) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Storage authentication failed. Please login again."}, nil
 		}

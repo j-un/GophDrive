@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -14,6 +15,17 @@ import (
 	"github.com/jun/gophdrive/backend/internal/adapter/dynamo"
 	"github.com/jun/gophdrive/backend/internal/handler"
 )
+
+// TestMain defaults DEV_MODE=true for every test in this file so the
+// production-only X-Origin-Verify gate doesn't need a per-test header dance.
+// Tests that specifically exercise production bootstrap (fail-closed panic,
+// constant-time compare) override this with t.Setenv.
+func TestMain(m *testing.M) {
+	if err := os.Setenv("DEV_MODE", "true"); err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
 
 const csrfFrontendURL = "http://localhost:5173"
 
@@ -671,6 +683,71 @@ func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
 	got := req.Headers["Cookie"]
 	if !strings.Contains(got, "prior=1") || !strings.Contains(got, "session_token=tok-lower") {
 		t.Errorf("lowercase cookie not preserved: got %q", got)
+	}
+}
+
+// NewApp must fail-closed in production (DEV_MODE!="true") when SSM cannot
+// return a required secret — a warn-and-continue path would let a public
+// fallback JWT secret sign forgeable sessions or leave the X-Origin-Verify
+// gate accepting the empty string. The panic matches the existing SDK-config
+// panic precedent at cmd/api init.
+func TestNewApp_ProductionPanicsOnMissingSecrets(t *testing.T) {
+	// Force prod mode and point the first secret (Google client secret) at a
+	// nonexistent SSM param. Real AWS credentials are not configured in the
+	// test env, so the SSM call will fail fast and NewApp must panic.
+	t.Setenv("DEV_MODE", "")
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "/nonexistent/google-client-secret")
+	t.Setenv("JWT_SECRET_PARAM", "/nonexistent/jwt-secret")
+	t.Setenv("API_GATEWAY_SECRET_PARAM", "/nonexistent/api-gateway-secret")
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected NewApp to panic when SSM cannot resolve a secret in production mode")
+		}
+		// Assert the panic is from *secret resolution*, not an unrelated
+		// nil-deref or SDK error. Without this, a future regression could
+		// panic for the wrong reason and this test would silently pass.
+		msg := fmt.Sprint(r)
+		if !strings.Contains(msg, "failed to resolve") {
+			t.Fatalf("panic message %q does not indicate secret resolution failure", msg)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*1e9) // 30s upper bound
+	defer cancel()
+	_ = NewApp(ctx)
+}
+
+// In DEV_MODE, NewApp must NOT panic even when the EnvResolver cannot find
+// the expected env vars — local dev must remain runnable so a broken .env
+// surfaces as a downstream error rather than a cold-start crash.
+func TestNewApp_DevModeDoesNotPanicOnMissingSecrets(t *testing.T) {
+	t.Setenv("DEV_MODE", "true")
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+	// Ensure param overrides and their resolved env vars are unset so the
+	// EnvResolver returns an error for each secret.
+	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
+	t.Setenv("JWT_SECRET_PARAM", "")
+	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("API_GATEWAY_SECRET", "")
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("NewApp panicked in DEV_MODE: %v", r)
+		}
+	}()
+
+	app := NewApp(context.Background())
+	if app == nil {
+		t.Fatal("expected non-nil App in DEV_MODE")
 	}
 }
 
