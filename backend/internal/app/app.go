@@ -58,8 +58,14 @@ func getRequestHeader(req events.APIGatewayProxyRequest, name string) string {
 	return ""
 }
 
-// NewApp initializes the application dependencies.
-func NewApp(ctx context.Context) *App {
+// NewApp initializes the application with the default secret resolver
+// (EnvResolver in DEV_MODE, SSM Parameter Store otherwise).
+func NewApp(ctx context.Context) *App { return NewAppWithResolver(ctx, nil) }
+
+// NewAppWithResolver initializes the application dependencies using the
+// given secret resolver. A nil resolver means "select the default resolver"
+// (EnvResolver in DEV_MODE, SSM Parameter Store otherwise).
+func NewAppWithResolver(ctx context.Context, resolver secret.Resolver) *App {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		panic(fmt.Sprintf("unable to load SDK config, %v", err))
@@ -73,13 +79,14 @@ func NewApp(ctx context.Context) *App {
 	}
 
 	// ---------- Secret Resolver ----------
-	var resolver secret.Resolver
-	if devMode {
-		resolver = secret.NewEnvResolver()
-		fmt.Println("Using EnvResolver (DEV_MODE=true)")
-	} else {
-		resolver = secret.NewSSMResolver(ssm.NewFromConfig(cfg))
-		fmt.Println("Using SSMResolver (SSM Parameter Store)")
+	if resolver == nil {
+		if devMode {
+			resolver = secret.NewEnvResolver()
+			fmt.Println("Using EnvResolver (DEV_MODE=true)")
+		} else {
+			resolver = secret.NewSSMResolver(ssm.NewFromConfig(cfg))
+			fmt.Println("Using SSMResolver (SSM Parameter Store)")
+		}
 	}
 
 	googleClientSecretParam := os.Getenv("GOOGLE_CLIENT_SECRET_PARAM")

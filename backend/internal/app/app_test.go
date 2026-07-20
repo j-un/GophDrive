@@ -686,40 +686,83 @@ func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
 	}
 }
 
-// NewApp must fail-closed in production (DEV_MODE!="true") when SSM cannot
-// return a required secret — a warn-and-continue path would let a public
-// fallback JWT secret sign forgeable sessions or leave the X-Origin-Verify
-// gate accepting the empty string. The panic matches the existing SDK-config
-// panic precedent at cmd/api init.
-func TestNewApp_ProductionPanicsOnMissingSecrets(t *testing.T) {
-	// Force prod mode and point the first secret (Google client secret) at a
-	// nonexistent SSM param. Real AWS credentials are not configured in the
-	// test env, so the SSM call will fail fast and NewApp must panic.
+// fakeResolver fails exactly one secret (by SSM param name) and resolves all others.
+type fakeResolver struct{ failName string }
+
+func (f *fakeResolver) GetSecret(_ context.Context, name string) (string, error) {
+	if name == f.failName {
+		return "", fmt.Errorf("simulated resolution failure for %s", name)
+	}
+	return "resolved-" + name, nil
+}
+
+// NewAppWithResolver must fail-closed in production (DEV_MODE!="true") when
+// the resolver cannot return a required secret — a warn-and-continue path
+// would let a public fallback JWT secret sign forgeable sessions or leave
+// the X-Origin-Verify gate accepting the empty string. The panic matches the
+// existing SDK-config panic precedent at cmd/api init. Secrets are fetched
+// in order Google -> JWT -> API Gateway, and fakeResolver fails exactly one
+// param name, so each row below genuinely exercises its own branch.
+func TestNewAppWithResolver_ProductionPanicsPerSecret(t *testing.T) {
+	tests := []struct {
+		name          string
+		failParam     string
+		wantSubstring string
+	}{
+		{"google", "/gophdrive/google-client-secret", "Google client secret"},
+		{"jwt", "/gophdrive/jwt-secret", "JWT secret"},
+		{"api-gateway", "/gophdrive/api-gateway-secret", "API Gateway secret"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEV_MODE", "")
+			t.Setenv("AWS_REGION", "us-east-1")
+			t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+			t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+			// Blank the *_PARAM overrides so the default param paths apply.
+			t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
+			t.Setenv("JWT_SECRET_PARAM", "")
+			t.Setenv("API_GATEWAY_SECRET_PARAM", "")
+
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("expected NewAppWithResolver to panic when the resolver cannot resolve a secret in production mode")
+				}
+				msg := fmt.Sprint(r)
+				if !strings.Contains(msg, tc.wantSubstring) {
+					t.Fatalf("panic message %q does not contain expected substring %q", msg, tc.wantSubstring)
+				}
+			}()
+
+			_ = NewAppWithResolver(context.Background(), &fakeResolver{failName: tc.failParam})
+		})
+	}
+}
+
+// Positive control for TestNewAppWithResolver_ProductionPanicsPerSecret:
+// when every secret resolves, NewAppWithResolver must not panic in
+// production mode.
+func TestNewAppWithResolver_AllSecretsResolve_NoPanic(t *testing.T) {
 	t.Setenv("DEV_MODE", "")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
-	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "/nonexistent/google-client-secret")
-	t.Setenv("JWT_SECRET_PARAM", "/nonexistent/jwt-secret")
-	t.Setenv("API_GATEWAY_SECRET_PARAM", "/nonexistent/api-gateway-secret")
+	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
+	t.Setenv("JWT_SECRET_PARAM", "")
+	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
 
 	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("expected NewApp to panic when SSM cannot resolve a secret in production mode")
-		}
-		// Assert the panic is from *secret resolution*, not an unrelated
-		// nil-deref or SDK error. Without this, a future regression could
-		// panic for the wrong reason and this test would silently pass.
-		msg := fmt.Sprint(r)
-		if !strings.Contains(msg, "failed to resolve") {
-			t.Fatalf("panic message %q does not indicate secret resolution failure", msg)
+		if r := recover(); r != nil {
+			t.Fatalf("NewAppWithResolver panicked despite all secrets resolving: %v", r)
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*1e9) // 30s upper bound
-	defer cancel()
-	_ = NewApp(ctx)
+	app := NewAppWithResolver(context.Background(), &fakeResolver{failName: "/never"})
+	if app == nil {
+		t.Fatal("expected non-nil App")
+	}
 }
 
 // In DEV_MODE, NewApp must NOT panic even when the EnvResolver cannot find
