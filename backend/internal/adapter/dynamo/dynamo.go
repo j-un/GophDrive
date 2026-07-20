@@ -44,11 +44,21 @@ func getTableName() *string {
 	return aws.String(name)
 }
 
+// DDBClient is the subset of *dynamodb.Client methods used by Adapter and
+// Provider. Follows the secret.SSMClient pattern so tests can inject a fake.
+type DDBClient interface {
+	ddbScanner
+	GetItem(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	UpdateItem(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
+}
+
 // Adapter implements adapter.StorageAdapter.
 // If client is nil, it uses in-memory map (for tests).
 // If client is set, it uses DynamoDB (for dev mode persistence).
 type Adapter struct {
-	client *dynamodb.Client
+	client DDBClient
 	userID string
 
 	// Fallback for tests
@@ -239,7 +249,11 @@ type FileItem struct {
 	ViewedTime time.Time `dynamodbav:"viewed_time,omitempty"`
 }
 
-func NewAdapter(client *dynamodb.Client, userID string, baseFolderID string) *Adapter {
+// NewAdapter returns an Adapter backed by DynamoDB when client is non-nil,
+// or an in-memory map when client is nil (for tests). Callers wanting the
+// in-memory fallback must pass a literal untyped nil — a nil-typed
+// *dynamodb.Client would satisfy DDBClient and bypass the fallback.
+func NewAdapter(client DDBClient, userID string, baseFolderID string) *Adapter {
 	return &Adapter{
 		client:       client,
 		userID:       userID,
@@ -1615,12 +1629,17 @@ func (m *Adapter) moveFileMap(ctx context.Context, fileID string, newParentID st
 // per-user adapter cache lets the in-memory fallback retain state across
 // calls within a single test or Lambda invocation.
 type Provider struct {
-	client *dynamodb.Client
+	client DDBClient
 	stores map[string]*Adapter
 	mu     sync.Mutex
 }
 
-func NewProvider(client *dynamodb.Client) *Provider {
+// NewProvider returns a Provider whose per-user adapters are backed by
+// DynamoDB when client is non-nil, or an in-memory map when client is nil
+// (for tests). Callers wanting the in-memory fallback must pass a literal
+// untyped nil — a nil-typed *dynamodb.Client would satisfy DDBClient and
+// bypass the fallback.
+func NewProvider(client DDBClient) *Provider {
 	return &Provider{
 		client: client,
 		stores: make(map[string]*Adapter),
