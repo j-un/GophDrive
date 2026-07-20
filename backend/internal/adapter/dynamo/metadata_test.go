@@ -9,7 +9,7 @@ import (
 // aliases, type, status parsed from frontmatter must surface on the returned
 // FileMetadata and round-trip through GetFile.
 func TestCreateFile_PersistsFrontmatterMeta(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	body := "---\ntype: decision\nstatus: active\naliases:\n  - Auth\n  - Login\n---\n# Auth Design"
@@ -43,7 +43,7 @@ func TestCreateFile_PersistsFrontmatterMeta(t *testing.T) {
 // the incoming content — not from the previously-fetched file — so removing or
 // changing frontmatter is reflected on the next read.
 func TestSaveFile_ReExtractsMetaFromNewContent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	initial := "---\ntype: draft\nstatus: wip\naliases: [Foo]\n---\nbody"
@@ -80,7 +80,7 @@ func TestSaveFile_ReExtractsMetaFromNewContent(t *testing.T) {
 // note has no frontmatter: aliases/type/status stay empty, and omitempty means
 // no attribute is written.
 func TestCreateFile_NoFrontmatter_LeavesMetaEmpty(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	created, err := m.CreateFile(ctx, "Plain", []byte("# just a title"), "root")
@@ -106,7 +106,7 @@ func TestCreateFile_NoFrontmatter_LeavesMetaEmpty(t *testing.T) {
 // carries aliases, type, status, headings, and links — matching the original
 // byte-for-byte since the copy shares content.
 func TestDuplicateFile_CopiesMetaAndDerivedFields(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create a target so the source's [[wiki-link]] is resolved.

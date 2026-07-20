@@ -76,7 +76,7 @@ func newAuthHandler(t *testing.T, deps handler.AuthHandlerDeps) *handler.AuthHan
 		deps.JWTSecret = "test-secret"
 	}
 	if deps.StorageProvider == nil {
-		deps.StorageProvider = dynamo.NewProvider(nil)
+		deps.StorageProvider = dynamo.NewMemoryProvider()
 	}
 	if deps.FrontendURL == "" {
 		deps.FrontendURL = "http://test"
@@ -542,7 +542,7 @@ func TestAuthHandler_GetUser_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger:       &fakeExchanger{},
 		Verifier:        &fakeVerifier{},

@@ -10,13 +10,13 @@ import (
 func TestAdapter_Export_NestedPaths(t *testing.T) {
 	ctx := context.Background()
 
-	root := NewAdapter(nil, "user1", "")
+	root := NewMemoryAdapter("user1", "")
 	base, err := root.CreateFolder(ctx, "MyNotes", []string{"root"})
 	if err != nil {
 		t.Fatalf("CreateFolder base: %v", err)
 	}
 
-	a := NewAdapter(nil, "user1", base.ID)
+	a := NewMemoryAdapter("user1", base.ID)
 	sub, err := a.CreateFolder(ctx, "Sub", []string{base.ID})
 	if err != nil {
 		t.Fatalf("CreateFolder sub: %v", err)
@@ -56,7 +56,7 @@ func TestAdapter_Export_NestedPaths(t *testing.T) {
 func TestAdapter_Export_NoBaseFolder(t *testing.T) {
 	ctx := context.Background()
 
-	a := NewAdapter(nil, "user1", "")
+	a := NewMemoryAdapter("user1", "")
 	folder, err := a.CreateFolder(ctx, "Loose", []string{"root"})
 	if err != nil {
 		t.Fatalf("CreateFolder: %v", err)
@@ -89,7 +89,7 @@ func TestAdapter_Export_NoBaseFolder(t *testing.T) {
 func TestAdapter_Export_FoldersAreNotEntries(t *testing.T) {
 	ctx := context.Background()
 
-	a := NewAdapter(nil, "user1", "")
+	a := NewMemoryAdapter("user1", "")
 	if _, err := a.CreateFolder(ctx, "EmptyFolder", []string{"root"}); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestAdapter_Export_FoldersAreNotEntries(t *testing.T) {
 // Notes with BodyS3Key set live in S3 — read isn't wired yet, so they must
 // not be silently exported with empty content.
 func TestAdapter_Export_SkipsSpilloverRows(t *testing.T) {
-	a := NewAdapter(nil, "user1", "")
+	a := NewMemoryAdapter("user1", "")
 
 	items := []FileItem{
 		{ID: "f1", Name: "inline.md", MIMEType: "text/markdown", Parents: []string{"root"}, Content: []byte("body")},
@@ -126,7 +126,7 @@ func TestAdapter_Export_SkipsSpilloverRows(t *testing.T) {
 
 // A corrupt parent chain (cycle) must not hang the export.
 func TestAdapter_Export_CycleSafe(t *testing.T) {
-	a := NewAdapter(nil, "user1", "")
+	a := NewMemoryAdapter("user1", "")
 
 	items := []FileItem{
 		{ID: "fa", Name: "A", MIMEType: "application/vnd.google-apps.folder", Parents: []string{"fb"}},

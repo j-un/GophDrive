@@ -55,11 +55,14 @@ type DDBClient interface {
 }
 
 // Adapter implements adapter.StorageAdapter.
-// If client is nil, it uses in-memory map (for tests).
-// If client is set, it uses DynamoDB (for dev mode persistence).
+// When inMemory is true the adapter uses an in-memory map (for tests); when
+// false it drives DynamoDB via client. The flag — rather than a nil-client
+// check — is authoritative so a live client can never accidentally opt into
+// the fallback path.
 type Adapter struct {
-	client DDBClient
-	userID string
+	client   DDBClient
+	inMemory bool
+	userID   string
 
 	// Fallback for tests
 	files map[string]*adapter.File
@@ -109,7 +112,7 @@ func (m *Adapter) checkItemLimit(ctx context.Context) error {
 }
 
 func (m *Adapter) countUserItems(ctx context.Context) (int, error) {
-	if m.client == nil {
+	if m.inMemory {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
 		return len(m.files), nil
@@ -249,13 +252,31 @@ type FileItem struct {
 	ViewedTime time.Time `dynamodbav:"viewed_time,omitempty"`
 }
 
-// NewAdapter returns an Adapter backed by DynamoDB when client is non-nil,
-// or an in-memory map when client is nil (for tests). Callers wanting the
-// in-memory fallback must pass a literal untyped nil — a nil-typed
-// *dynamodb.Client would satisfy DDBClient and bypass the fallback.
+// NewAdapter returns an Adapter backed by DynamoDB via client. Passing a nil
+// interface delegates to NewMemoryAdapter (legacy path — new tests should
+// call NewMemoryAdapter directly). A nil-typed *dynamodb.Client would satisfy
+// DDBClient without being a nil interface and would incorrectly drive real
+// DynamoDB calls; production callers must construct the client via
+// dynamodb.NewFromConfig(cfg).
 func NewAdapter(client DDBClient, userID string, baseFolderID string) *Adapter {
+	if client == nil {
+		return NewMemoryAdapter(userID, baseFolderID)
+	}
 	return &Adapter{
 		client:       client,
+		userID:       userID,
+		files:        make(map[string]*adapter.File),
+		BaseFolderID: baseFolderID,
+	}
+}
+
+// NewMemoryAdapter returns an Adapter backed by an in-memory map. Preferred
+// over NewAdapter(nil, ...) in tests: the fallback is opt-in structurally
+// (inMemory=true) rather than inferred from a nil client, so a live client
+// can never accidentally trip the in-memory branch.
+func NewMemoryAdapter(userID string, baseFolderID string) *Adapter {
+	return &Adapter{
+		inMemory:     true,
 		userID:       userID,
 		files:        make(map[string]*adapter.File),
 		BaseFolderID: baseFolderID,
@@ -272,7 +293,7 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 		}
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.listFilesMap(ctx, targetFolderID)
 	}
 
@@ -327,7 +348,7 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 }
 
 func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.getFileMap(ctx, fileID)
 	}
 
@@ -372,7 +393,7 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 // deleted between read and touch) is treated as a no-op rather than an error.
 func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 	now := time.Now()
-	if m.client == nil {
+	if m.inMemory {
 		return m.touchViewedMap(fileID, now)
 	}
 
@@ -432,7 +453,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return nil, fmt.Errorf("content too large (max %d bytes)", maxContentSize)
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.saveFileMap(ctx, fileID, content, etag)
 	}
 
@@ -533,7 +554,7 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 		}
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.createFileMap(ctx, name, content, targetFolderID)
 	}
 
@@ -644,7 +665,7 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 		}
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.createFolderMap(ctx, name, targetParents)
 	}
 
@@ -855,7 +876,7 @@ func makeSnippet(content []byte, query string, window int) string {
 }
 
 func (m *Adapter) EnsureRootFolder(ctx context.Context, name string) (string, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.ensureRootFolderMap(ctx, name)
 	}
 
@@ -921,7 +942,7 @@ func (m *Adapter) createRootFolder(ctx context.Context, name string) (string, er
 }
 
 func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
-	if m.client == nil {
+	if m.inMemory {
 		return m.deleteFileMap(ctx, fileID)
 	}
 
@@ -982,7 +1003,7 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		return nil, err
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.duplicateFileMap(ctx, fileID)
 	}
 
@@ -1316,7 +1337,7 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return nil, fmt.Errorf("name too long (max %d characters)", maxTitleLength)
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.renameFileMap(ctx, fileID, newName)
 	}
 
@@ -1378,7 +1399,7 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 }
 
 func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (*adapter.FileMetadata, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.setStarredMap(ctx, fileID, starred)
 	}
 
@@ -1469,7 +1490,7 @@ func (m *Adapter) renameFileMap(ctx context.Context, fileID string, newName stri
 }
 
 func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID string) (*adapter.FileMetadata, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.moveFileMap(ctx, fileID, newParentID)
 	}
 
@@ -1625,24 +1646,37 @@ func (m *Adapter) moveFileMap(ctx context.Context, fileID string, newParentID st
 
 // Provider implements adapter.StorageProvider backed by DynamoDB.
 //
-// When client is nil, adapters use an in-memory map (used by tests). The
-// per-user adapter cache lets the in-memory fallback retain state across
+// When inMemory is true, GetAdapter hands out in-memory adapters (used by
+// tests). The per-user adapter cache lets that fallback retain state across
 // calls within a single test or Lambda invocation.
 type Provider struct {
-	client DDBClient
-	stores map[string]*Adapter
-	mu     sync.Mutex
+	client   DDBClient
+	inMemory bool
+	stores   map[string]*Adapter
+	mu       sync.Mutex
 }
 
 // NewProvider returns a Provider whose per-user adapters are backed by
-// DynamoDB when client is non-nil, or an in-memory map when client is nil
-// (for tests). Callers wanting the in-memory fallback must pass a literal
-// untyped nil — a nil-typed *dynamodb.Client would satisfy DDBClient and
-// bypass the fallback.
+// DynamoDB via client. Passing a nil interface delegates to
+// NewMemoryProvider (legacy path — new tests should call NewMemoryProvider
+// directly). See NewAdapter's doc comment for the typed-nil caveat.
 func NewProvider(client DDBClient) *Provider {
+	if client == nil {
+		return NewMemoryProvider()
+	}
 	return &Provider{
 		client: client,
 		stores: make(map[string]*Adapter),
+	}
+}
+
+// NewMemoryProvider returns a Provider whose GetAdapter hands out in-memory
+// adapters. Preferred over NewProvider(nil) in tests — same rationale as
+// NewMemoryAdapter.
+func NewMemoryProvider() *Provider {
+	return &Provider{
+		inMemory: true,
+		stores:   make(map[string]*Adapter),
 	}
 }
 
@@ -1652,7 +1686,11 @@ func (p *Provider) GetAdapter(ctx context.Context, userID, baseFolderID string) 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.stores[userID]; !ok {
-		p.stores[userID] = NewAdapter(p.client, userID, baseFolderID)
+		if p.inMemory {
+			p.stores[userID] = NewMemoryAdapter(userID, baseFolderID)
+		} else {
+			p.stores[userID] = NewAdapter(p.client, userID, baseFolderID)
+		}
 	} else {
 		p.stores[userID].BaseFolderID = baseFolderID
 	}
@@ -1687,7 +1725,7 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 		targetFolderID = m.BaseFolderID
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.listStarredMap(ctx)
 	}
 
@@ -1754,7 +1792,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 		targetFolderID = m.BaseFolderID
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.listRecentMap(ctx, limit)
 	}
 
@@ -1896,7 +1934,7 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 		targetFolderID = m.BaseFolderID
 	}
 
-	if m.client == nil {
+	if m.inMemory {
 		return m.searchFilesWithTagsMap(ctx, query, tags, scope, noteType)
 	}
 
@@ -1991,7 +2029,7 @@ func hasAllTags(itemTags, required []string) bool {
 
 // ListAllTags returns distinct tags across the user's notes with occurrence counts.
 func (m *Adapter) ListAllTags(ctx context.Context) ([]adapter.TagCount, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.listAllTagsMap(ctx)
 	}
 
@@ -2029,7 +2067,7 @@ func (m *Adapter) ListAllTags(ctx context.Context) ([]adapter.TagCount, error) {
 // are skipped — the spillover read path isn't wired yet, so quietly returning
 // empty content would be worse than omitting the note.
 func (m *Adapter) Export(ctx context.Context) ([]adapter.ExportEntry, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.exportMap(ctx)
 	}
 
@@ -2243,7 +2281,7 @@ func (m *Adapter) mapItems() []FileItem {
 }
 
 func (m *Adapter) EnrichNoteLinks(ctx context.Context, noteID string, links []adapter.LinkRef) ([]adapter.LinkRef, []adapter.BacklinkEntry, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.enrichNoteLinksMap(ctx, noteID, links)
 	}
 	items, err := m.scanUserItems(ctx)
@@ -2267,7 +2305,7 @@ func (m *Adapter) enrichNoteLinksMap(_ context.Context, noteID string, links []a
 }
 
 func (m *Adapter) Graph(ctx context.Context) ([]adapter.GraphNode, error) {
-	if m.client == nil {
+	if m.inMemory {
 		return m.graphMap(ctx)
 	}
 	items, err := m.scanUserItems(ctx)

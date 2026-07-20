@@ -11,7 +11,7 @@ import (
 // Opening a note (TouchViewed) must move it to the front of RECENT, even when
 // other notes were created/modified more recently.
 func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	a, err := m.CreateFile(ctx, "a.md", []byte("# A"), "root")
@@ -57,7 +57,7 @@ func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
 // TouchViewed must not alter ETag or ModifiedTime, so it can never trigger a
 // false conflict on the optimistic-concurrency save path.
 func TestTouchViewed_DoesNotChangeETagOrModifiedTime(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	created, err := m.CreateFile(ctx, "note.md", []byte("# hi"), "root")
@@ -88,7 +88,7 @@ func TestTouchViewed_DoesNotChangeETagOrModifiedTime(t *testing.T) {
 
 // Touching a note that no longer exists is a no-op, not an error.
 func TestTouchViewed_MissingNoteIsNoop(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	if err := m.TouchViewed(context.Background(), "does-not-exist"); err != nil {
 		t.Fatalf("TouchViewed on missing note should be a no-op, got %v", err)
 	}

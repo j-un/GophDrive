@@ -13,7 +13,7 @@ import (
 // observable contract so the spillover path lands cleanly later.
 
 func TestRouteBody_SmallContentStaysInline(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	body := []byte("hello world")
 
 	inline, key, err := m.routeBody(context.Background(), body)
@@ -29,7 +29,7 @@ func TestRouteBody_SmallContentStaysInline(t *testing.T) {
 }
 
 func TestRouteBody_AtBoundaryStaysInline(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	body := make([]byte, inlineSizeLimit)
 
 	inline, key, err := m.routeBody(context.Background(), body)
@@ -45,7 +45,7 @@ func TestRouteBody_AtBoundaryStaysInline(t *testing.T) {
 }
 
 func TestRouteBody_OverBoundaryReturnsErrPayloadTooLarge(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	body := make([]byte, inlineSizeLimit+1)
 
 	_, _, err := m.routeBody(context.Background(), body)

@@ -9,7 +9,7 @@ import (
 )
 
 func TestResolveLinks_NewNote(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create target note first.
@@ -37,7 +37,7 @@ func TestResolveLinks_NewNote(t *testing.T) {
 }
 
 func TestResolveLinks_Unresolved(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Does Not Exist]]"), "root")
@@ -51,7 +51,7 @@ func TestResolveLinks_Unresolved(t *testing.T) {
 }
 
 func TestResolveLinks_CarryForwardOnResave(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create target, then link to it.
@@ -79,7 +79,7 @@ func TestResolveLinks_CarryForwardOnResave(t *testing.T) {
 }
 
 func TestResolveLinks_LateTargetCreation(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create source with unresolved link.
@@ -106,7 +106,7 @@ func TestResolveLinks_LateTargetCreation(t *testing.T) {
 }
 
 func TestEnrichNoteLinks_Backlinks(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	target, _ := m.CreateFile(ctx, "Core", []byte("# Core"), "root")
@@ -127,7 +127,7 @@ func TestEnrichNoteLinks_Backlinks(t *testing.T) {
 }
 
 func TestEnrichNoteLinks_CurrentTitle(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	target, _ := m.CreateFile(ctx, "Auth Design", []byte("# Auth"), "root")
@@ -147,7 +147,7 @@ func TestEnrichNoteLinks_CurrentTitle(t *testing.T) {
 }
 
 func TestGraph_Basic(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	a, _ := m.CreateFile(ctx, "A", []byte("[[B]]"), "root")
@@ -188,7 +188,7 @@ func TestGraph_Basic(t *testing.T) {
 // newer same-titled note exists must keep the original targetId rather than
 // silently re-resolving to the newer note.
 func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	a, _ := m.CreateFile(ctx, "API", []byte("# API v1"), "root")
@@ -219,7 +219,7 @@ func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
 // frontmatter aliases include "X" is the target of [[X]] when no note is
 // literally named X.
 func TestResolveLinks_AliasResolution(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	target, err := m.CreateFile(ctx, "Auth Design",
@@ -243,7 +243,7 @@ func TestResolveLinks_AliasResolution(t *testing.T) {
 // TestResolveLinks_ExactNameBeatsAlias asserts a same-titled note wins over
 // another note that lists the token as an alias.
 func TestResolveLinks_ExactNameBeatsAlias(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Note A carries "Payments" as an alias; note B is literally named
@@ -265,7 +265,7 @@ func TestResolveLinks_ExactNameBeatsAlias(t *testing.T) {
 // ambiguity rule applies within the alias bucket: two notes sharing the same
 // alias resolve to the most-recently-modified one.
 func TestResolveLinks_AliasCollision_MostRecentWins(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	older, _ := m.CreateFile(ctx, "A",
@@ -286,7 +286,7 @@ func TestResolveLinks_AliasCollision_MostRecentWins(t *testing.T) {
 // resolved to note A, adding a new note that aliases the token must not
 // silently redirect an unchanged link.
 func TestResolveLinks_CarryForwardBeatsAliasReResolution(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	target, _ := m.CreateFile(ctx, "Original", []byte("# Original"), "root")
@@ -334,7 +334,7 @@ func TestResolveLinks_LegacyItemAliasFallback(t *testing.T) {
 // paths must apply read-time enrichment so the late target's inbound link is
 // visible identically through GET /notes/{id} and GET /graph.
 func TestBacklinks_ParityWithGraph_LateTarget(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Source links to a target that does not exist yet → unresolved at write.

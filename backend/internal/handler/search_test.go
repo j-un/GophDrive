@@ -14,7 +14,7 @@ import (
 )
 
 func TestSearch_Success(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -44,7 +44,7 @@ func TestSearch_Success(t *testing.T) {
 }
 
 func TestSearch_EmptyQuery(t *testing.T) {
-	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	searchReq := makeRequest("GET", "/search", "")
@@ -59,7 +59,7 @@ func TestSearch_EmptyQuery(t *testing.T) {
 }
 
 func TestSearch_NoResults(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -75,7 +75,7 @@ func TestSearch_NoResults(t *testing.T) {
 }
 
 func TestSearch_TagFilter_Single(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -100,7 +100,7 @@ func TestSearch_TagFilter_Single(t *testing.T) {
 }
 
 func TestSearch_TagFilter_AndSemantics(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -120,7 +120,7 @@ func TestSearch_TagFilter_AndSemantics(t *testing.T) {
 }
 
 func TestSearch_TagFilter_CaseInsensitive(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -138,7 +138,7 @@ func TestSearch_TagFilter_CaseInsensitive(t *testing.T) {
 }
 
 func TestSearch_TagFilter_QueryAndTagCombined(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -159,7 +159,7 @@ func TestSearch_TagFilter_QueryAndTagCombined(t *testing.T) {
 }
 
 func TestSearch_TagOnly_NoQuery(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -178,7 +178,7 @@ func TestSearch_TagOnly_NoQuery(t *testing.T) {
 }
 
 func TestSearch_TagFilter_ReturnsEmptyArrayNotNull(t *testing.T) {
-	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	req := makeRequest("GET", "/search", "")
@@ -190,7 +190,7 @@ func TestSearch_TagFilter_ReturnsEmptyArrayNotNull(t *testing.T) {
 }
 
 func TestSearch_Unauthorized(t *testing.T) {
-	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	req := events.APIGatewayProxyRequest{
@@ -204,7 +204,7 @@ func TestSearch_Unauthorized(t *testing.T) {
 }
 
 func TestSearch_LimitAndSort(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -235,7 +235,7 @@ func TestSearch_LimitAndSort(t *testing.T) {
 }
 
 func TestSearch_BodyMatchHasSnippet(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -259,7 +259,7 @@ func TestSearch_BodyMatchHasSnippet(t *testing.T) {
 }
 
 func TestSearch_TitleMatchHasNoSnippet(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -283,7 +283,7 @@ func TestSearch_TitleMatchHasNoSnippet(t *testing.T) {
 }
 
 func TestSearch_ScopeHeadings(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -310,7 +310,7 @@ func TestSearch_ScopeHeadings(t *testing.T) {
 }
 
 func TestSearch_ScopeTitles(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -331,7 +331,7 @@ func TestSearch_ScopeTitles(t *testing.T) {
 }
 
 func TestSearch_InvalidScopeFallsBackToAll(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -350,7 +350,7 @@ func TestSearch_InvalidScopeFallsBackToAll(t *testing.T) {
 }
 
 func TestSearch_ScopeAllExplicit(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -369,7 +369,7 @@ func TestSearch_ScopeAllExplicit(t *testing.T) {
 }
 
 func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -393,7 +393,7 @@ func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
 // must outrank a body-only match even when the title match is the OLDER note
 // (previously results were sorted purely by ModifiedTime desc).
 func TestSearch_RankedOrder(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -425,7 +425,7 @@ func TestSearch_RankedOrder(t *testing.T) {
 // TestSearch_DateFilter covers both modifiedAfter and modifiedBefore as a
 // half-open [after, before) window.
 func TestSearch_DateFilter(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -462,7 +462,7 @@ func TestSearch_DateFilter(t *testing.T) {
 }
 
 func TestSearch_InvalidDateParam(t *testing.T) {
-	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	req := makeRequest("GET", "/search", "")
@@ -480,7 +480,7 @@ func TestSearch_InvalidDateParam(t *testing.T) {
 // insufficient" rule: modifiedAfter/modifiedBefore must not satisfy the
 // "at least one of q/tag/type" requirement by themselves.
 func TestSearch_DateOnly_NoQueryTagType(t *testing.T) {
-	searchH := handler.NewSearchHandler(dynamo.NewProvider(nil), "test-secret")
+	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	req := makeRequest("GET", "/search", "")
@@ -497,7 +497,7 @@ func TestSearch_DateOnly_NoQueryTagType(t *testing.T) {
 // TestSearch_TypeFilter verifies the 'type' query param reaches the adapter
 // and is observable in the filtered results (no q/tag needed).
 func TestSearch_TypeFilter(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
