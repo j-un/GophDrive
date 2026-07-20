@@ -33,7 +33,7 @@ const csrfFrontendURL = "http://localhost:5173"
 // apiGatewaySecret is intentionally empty so the X-Origin-Verify gate passes
 // (both sides are "" → condition false → not blocked).
 func newCSRFTestApp() *App {
-	p := dynamo.NewProvider(nil)
+	p := dynamo.NewMemoryProvider()
 	store := apikey.NewInMemoryStore()
 	return &App{
 		noteHandler:   handler.NewNoteHandler(p, "csrf-secret"),
@@ -196,7 +196,7 @@ type apiKeyTestApp struct {
 }
 
 // newAPIKeyTestApp constructs a minimal App wired for API key tests.
-// dynamo.NewProvider(nil) uses the in-memory map backend (no real DynamoDB).
+// dynamo.NewMemoryProvider() uses the in-memory map backend (no real DynamoDB).
 // apiGatewaySecret is intentionally left empty so the X-Origin-Verify gate
 // passes (both sides are "" → condition is false → not blocked).
 func newAPIKeyTestApp(userID, baseFolderID, jwtSecret string) apiKeyTestApp {
@@ -206,7 +206,7 @@ func newAPIKeyTestApp(userID, baseFolderID, jwtSecret string) apiKeyTestApp {
 	hash := apikey.HashKey(plain)
 	store.Issue(context.Background(), userID, baseFolderID, hash, plain[:8]) //nolint:errcheck
 
-	p := dynamo.NewProvider(nil)
+	p := dynamo.NewMemoryProvider()
 	app := &App{
 		noteHandler:   handler.NewNoteHandler(p, jwtSecret),
 		searchHandler: handler.NewSearchHandler(p, jwtSecret),
@@ -255,7 +255,7 @@ func TestAPIKey_WrongKey(t *testing.T) {
 
 func TestAPIKey_Unconfigured(t *testing.T) {
 	// An empty Store means no key is configured; a junk bearer should still fail JWT parse.
-	p := dynamo.NewProvider(nil)
+	p := dynamo.NewMemoryProvider()
 	emptyApp := &App{
 		noteHandler:   handler.NewNoteHandler(p, "test-secret"),
 		searchHandler: handler.NewSearchHandler(p, "test-secret"),
@@ -564,7 +564,7 @@ func TestAPIKey_RevokedKeyReturns401(t *testing.T) {
 	hash := apikey.HashKey(plain)
 	store.Issue(context.Background(), "revoked-sub", "", hash, plain[:8]) //nolint:errcheck
 
-	p := dynamo.NewProvider(nil)
+	p := dynamo.NewMemoryProvider()
 	app := &App{
 		noteHandler:   handler.NewNoteHandler(p, jwtSecret),
 		searchHandler: handler.NewSearchHandler(p, jwtSecret),
@@ -608,7 +608,7 @@ func TestAPIKey_RevokedKeyReturns401(t *testing.T) {
 func TestAPIKey_RequiresOriginVerify(t *testing.T) {
 	const gateway = "test-gw-secret"
 	store := apikey.NewInMemoryStore()
-	p := dynamo.NewProvider(nil)
+	p := dynamo.NewMemoryProvider()
 	gatedApp := &App{
 		noteHandler:      handler.NewNoteHandler(p, "test-secret"),
 		searchHandler:    handler.NewSearchHandler(p, "test-secret"),
@@ -686,11 +686,27 @@ func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
 	}
 }
 
-// fakeResolver fails exactly one secret (by SSM param name) and resolves all others.
+// setProdEnv forces production mode (DEV_MODE unset) with hermetic fake AWS
+// credentials and blanks the three *_PARAM overrides so the default SSM
+// param paths apply. Shared by the NewAppWithResolver panic/no-panic tests
+// below to avoid duplicating the same seven t.Setenv calls.
+func setProdEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("DEV_MODE", "")
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
+	t.Setenv("JWT_SECRET_PARAM", "")
+	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
+}
+
+// fakeResolver fails the secret named failName and resolves all others. An
+// empty failName means "never fail" — used for the all-secrets-resolve case.
 type fakeResolver struct{ failName string }
 
 func (f *fakeResolver) GetSecret(_ context.Context, name string) (string, error) {
-	if name == f.failName {
+	if f.failName != "" && name == f.failName {
 		return "", fmt.Errorf("simulated resolution failure for %s", name)
 	}
 	return "resolved-" + name, nil
@@ -716,14 +732,7 @@ func TestNewAppWithResolver_ProductionPanicsPerSecret(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("DEV_MODE", "")
-			t.Setenv("AWS_REGION", "us-east-1")
-			t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-			t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
-			// Blank the *_PARAM overrides so the default param paths apply.
-			t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
-			t.Setenv("JWT_SECRET_PARAM", "")
-			t.Setenv("API_GATEWAY_SECRET_PARAM", "")
+			setProdEnv(t)
 
 			defer func() {
 				r := recover()
@@ -745,13 +754,7 @@ func TestNewAppWithResolver_ProductionPanicsPerSecret(t *testing.T) {
 // when every secret resolves, NewAppWithResolver must not panic in
 // production mode.
 func TestNewAppWithResolver_AllSecretsResolve_NoPanic(t *testing.T) {
-	t.Setenv("DEV_MODE", "")
-	t.Setenv("AWS_REGION", "us-east-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
-	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
-	t.Setenv("JWT_SECRET_PARAM", "")
-	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
+	setProdEnv(t)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -759,7 +762,7 @@ func TestNewAppWithResolver_AllSecretsResolve_NoPanic(t *testing.T) {
 		}
 	}()
 
-	app := NewAppWithResolver(context.Background(), &fakeResolver{failName: "/never"})
+	app := NewAppWithResolver(context.Background(), &fakeResolver{})
 	if app == nil {
 		t.Fatal("expected non-nil App")
 	}
