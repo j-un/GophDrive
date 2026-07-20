@@ -11,7 +11,7 @@ import (
 )
 
 func TestAdapter_CreateAndListFiles(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create a file in root
@@ -40,7 +40,7 @@ func TestAdapter_CreateAndListFiles(t *testing.T) {
 }
 
 func TestAdapter_GetFile_NotFound(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	_, err := m.GetFile(ctx, "nonexistent-id")
@@ -50,7 +50,7 @@ func TestAdapter_GetFile_NotFound(t *testing.T) {
 }
 
 func TestAdapter_SaveFile_ETagMatch(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
@@ -73,7 +73,7 @@ func TestAdapter_SaveFile_ETagMatch(t *testing.T) {
 }
 
 func TestAdapter_SaveFile_ETagMismatch(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
@@ -85,7 +85,7 @@ func TestAdapter_SaveFile_ETagMismatch(t *testing.T) {
 }
 
 func TestAdapter_CreateFolder(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	folder, err := m.CreateFolder(ctx, "MyFolder", []string{"root"})
@@ -101,7 +101,7 @@ func TestAdapter_CreateFolder(t *testing.T) {
 }
 
 func TestAdapter_EnsureRootFolder_Idempotent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	id1, err := m.EnsureRootFolder(ctx, "GophDrive")
@@ -120,7 +120,7 @@ func TestAdapter_EnsureRootFolder_Idempotent(t *testing.T) {
 }
 
 func TestAdapter_DuplicateFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	orig, _ := m.CreateFile(ctx, "orig.md", []byte("content"), "root")
@@ -144,7 +144,7 @@ func TestAdapter_DuplicateFile(t *testing.T) {
 }
 
 func TestAdapter_RenameFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Test renaming a file
@@ -174,7 +174,7 @@ func TestAdapter_RenameFile(t *testing.T) {
 }
 
 func TestAdapter_MoveFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create: root → folderA → folderB
@@ -230,7 +230,7 @@ func TestAdapter_MoveFile(t *testing.T) {
 }
 
 func TestAdapter_MoveFile_CycleRejected(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Build: root → parent → child
@@ -258,7 +258,7 @@ func TestAdapter_MoveFile_CycleRejected(t *testing.T) {
 }
 
 func TestAdapter_MoveFile_ResolvesBaseFolder(t *testing.T) {
-	m := NewAdapter(nil, "user1", "base-folder-1")
+	m := NewMemoryAdapter("user1", "base-folder-1")
 	ctx := context.Background()
 
 	note, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
@@ -274,7 +274,7 @@ func TestAdapter_MoveFile_ResolvesBaseFolder(t *testing.T) {
 }
 
 func TestAdapter_SetStarred(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
@@ -299,7 +299,7 @@ func TestAdapter_SetStarred(t *testing.T) {
 }
 
 func TestAdapter_ListStarred(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	f1, _ := m.CreateFile(ctx, "starred.md", []byte("a"), "root")
@@ -319,7 +319,7 @@ func TestAdapter_ListStarred(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "hello-world.md", []byte("greeting"), "root")
@@ -344,7 +344,7 @@ func TestAdapter_SearchFiles(t *testing.T) {
 
 func TestAdapter_DeleteFile_Recursive(t *testing.T) {
 	// Setup in-memory adapter
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// 1. Create Parent Folder
@@ -391,7 +391,7 @@ func TestAdapter_DeleteFile_Recursive(t *testing.T) {
 }
 
 func TestAdapter_ListRecent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create files with different modified times (simulated by sequence)
@@ -414,7 +414,7 @@ func TestAdapter_ListRecent(t *testing.T) {
 }
 
 func TestAdapter_CreateFile_InvalidParent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	_, err := m.CreateFile(ctx, "note.md", []byte("content"), "nonexistent-folder-id")
@@ -427,7 +427,7 @@ func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
 	ctx := context.Background()
 
 	// "root" must be accepted without a DB entry
-	m1 := NewAdapter(nil, "user1", "")
+	m1 := NewMemoryAdapter("user1", "")
 	f1, err := m1.CreateFile(ctx, "note.md", []byte("x"), "root")
 	if err != nil {
 		t.Fatalf("Expected no error for root parentId, got %v", err)
@@ -437,7 +437,7 @@ func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
 	}
 
 	// BaseFolderID must be accepted even though it has no entry in m.files
-	m2 := NewAdapter(nil, "user1", "my-base-folder")
+	m2 := NewMemoryAdapter("user1", "my-base-folder")
 	f2, err := m2.CreateFile(ctx, "note.md", []byte("x"), "my-base-folder")
 	if err != nil {
 		t.Fatalf("Expected no error for BaseFolderID parentId, got %v", err)
@@ -448,7 +448,7 @@ func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
 }
 
 func TestAdapter_CreateFolder_InvalidParent(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	_, err := m.CreateFolder(ctx, "NewFolder", []string{"nonexistent-folder-id"})
@@ -460,7 +460,7 @@ func TestAdapter_CreateFolder_InvalidParent(t *testing.T) {
 func TestAdapter_CreateFolder_SentinelParentsAllowed(t *testing.T) {
 	ctx := context.Background()
 
-	m1 := NewAdapter(nil, "user1", "")
+	m1 := NewMemoryAdapter("user1", "")
 	f1, err := m1.CreateFolder(ctx, "F", []string{"root"})
 	if err != nil {
 		t.Fatalf("Expected no error for root parentId, got %v", err)
@@ -469,7 +469,7 @@ func TestAdapter_CreateFolder_SentinelParentsAllowed(t *testing.T) {
 		t.Error("Expected non-nil folder with ID for root parentId")
 	}
 
-	m2 := NewAdapter(nil, "user1", "base-folder-abc")
+	m2 := NewMemoryAdapter("user1", "base-folder-abc")
 	f2, err := m2.CreateFolder(ctx, "F", []string{"base-folder-abc"})
 	if err != nil {
 		t.Fatalf("Expected no error for BaseFolderID parentId, got %v", err)
@@ -480,7 +480,7 @@ func TestAdapter_CreateFolder_SentinelParentsAllowed(t *testing.T) {
 }
 
 func TestAdapter_CreateFile_NonFolderParentRejected(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	note, _ := m.CreateFile(ctx, "note.md", []byte("x"), "root")
@@ -491,7 +491,7 @@ func TestAdapter_CreateFile_NonFolderParentRejected(t *testing.T) {
 }
 
 func TestAdapter_CreateFolder_NonFolderParentRejected(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	note, _ := m.CreateFile(ctx, "note.md", []byte("x"), "root")
@@ -502,7 +502,7 @@ func TestAdapter_CreateFolder_NonFolderParentRejected(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles_BodyMatchHasSnippet(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "body.md", []byte("the quick brown fox jumped"), "root")
@@ -568,7 +568,7 @@ func TestMakeSnippet(t *testing.T) {
 // ---- Tier 2: headings tests ----
 
 func TestAdapter_Headings_StoredOnWrite(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	fm, err := m.CreateFile(ctx, "h.md", []byte("## Background\ntext\n## Decision\nchoice"), "root")
@@ -590,7 +590,7 @@ func TestAdapter_Headings_StoredOnWrite(t *testing.T) {
 }
 
 func TestAdapter_Headings_UpdatedOnSave(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	fm, _ := m.CreateFile(ctx, "h.md", []byte("## Old Heading\ntext"), "root")
@@ -610,7 +610,7 @@ func TestAdapter_Headings_UpdatedOnSave(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles_ScopeHeadings(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "a.md", []byte("## Decision\nsome text"), "root")
@@ -630,7 +630,7 @@ func TestAdapter_SearchFiles_ScopeHeadings(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles_ScopeTitles(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "decision-note.md", []byte("## Background\ntext"), "root")
@@ -650,7 +650,7 @@ func TestAdapter_SearchFiles_ScopeTitles(t *testing.T) {
 
 func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
 	// Simulate a pre-Tier2 note with no stored Headings by directly inserting into map.
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	// Create via normal path and then clear Headings to simulate legacy item.
@@ -779,7 +779,7 @@ func TestScoreMatch_ScopeAllSnippetEvenWithTitleHit(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "h.md", []byte("## Target Heading\nbody content"), "root")
@@ -799,7 +799,7 @@ func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
 // ---- Tier 3: type filter + alias-under-titles tests ----
 
 func TestAdapter_SearchFilesWithTags_TypeFilter(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "a.md", []byte("---\ntype: decision\n---\nbody"), "root")
@@ -821,7 +821,7 @@ func TestAdapter_SearchFilesWithTags_TypeFilter(t *testing.T) {
 // parsing frontmatter on the fly (mirrors the existing tags/headings lazy
 // fallback).
 func TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	fm, err := m.CreateFile(ctx, "legacy.md", []byte("---\ntype: decision\n---\nbody"), "root")
@@ -841,7 +841,7 @@ func TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback(t *testing.T) {
 }
 
 func TestAdapter_SearchFilesWithTags_TypeFilter_NoMatch(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "a.md", []byte("---\ntype: decision\n---\nbody"), "root")
@@ -859,7 +859,7 @@ func TestAdapter_SearchFilesWithTags_TypeFilter_NoMatch(t *testing.T) {
 // scoring component reachable from SearchFilesWithTags: an alias-only match
 // (the query never appears in the title) must still hit under ScopeTitles.
 func TestAdapter_SearchFilesWithTags_AliasHitUnderScopeTitles(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	m.CreateFile(ctx, "note.md", []byte("---\naliases: [Nickname]\n---\nbody"), "root")

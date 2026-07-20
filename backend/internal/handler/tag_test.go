@@ -14,7 +14,7 @@ import (
 )
 
 func TestTagHandler_ListTags_Empty(t *testing.T) {
-	tagH := handler.NewTagHandler(dynamo.NewProvider(nil), "test-secret")
+	tagH := handler.NewTagHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	resp, err := tagH.ListTags(ctx, makeRequest("GET", "/tags", ""))
@@ -30,7 +30,7 @@ func TestTagHandler_ListTags_Empty(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_SortedByCountDesc(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -56,7 +56,7 @@ func TestTagHandler_ListTags_SortedByCountDesc(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_TieBreakByName(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -78,7 +78,7 @@ func TestTagHandler_ListTags_TieBreakByName(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_Unauthorized(t *testing.T) {
-	tagH := handler.NewTagHandler(dynamo.NewProvider(nil), "test-secret")
+	tagH := handler.NewTagHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
 
 	req := events.APIGatewayProxyRequest{
@@ -96,7 +96,7 @@ func TestTagHandler_ListTags_Unauthorized(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_IgnoresFolders(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -114,7 +114,7 @@ func TestTagHandler_ListTags_IgnoresFolders(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	ctx := context.Background()
 
 	// userA creates a note with a tag
@@ -139,7 +139,7 @@ func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_DefaultLimit50(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -159,7 +159,7 @@ func TestTagHandler_ListTags_DefaultLimit50(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_ExplicitLimit(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -181,7 +181,7 @@ func TestTagHandler_ListTags_ExplicitLimit(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_LimitExceedsTotal(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -201,7 +201,7 @@ func TestTagHandler_ListTags_LimitExceedsTotal(t *testing.T) {
 }
 
 func TestTagHandler_ListTags_InvalidLimit(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()

@@ -8,7 +8,7 @@ import (
 
 func TestAdapter_Limits(t *testing.T) {
 	ctx := context.Background()
-	m := NewAdapter(nil, "demo-user-1", "")
+	m := NewMemoryAdapter("demo-user-1", "")
 
 	t.Run("Title length limit", func(t *testing.T) {
 		longName := strings.Repeat("a", maxTitleLength+1)
@@ -27,7 +27,7 @@ func TestAdapter_Limits(t *testing.T) {
 	})
 
 	t.Run("Demo user item count limit", func(t *testing.T) {
-		demo := NewAdapter(nil, "demo-user-2", "")
+		demo := NewMemoryAdapter("demo-user-2", "")
 		for i := 0; i < maxDemoItemCount; i++ {
 			_, err := demo.CreateFile(ctx, "note.md", []byte("ok"), "")
 			if err != nil {
@@ -41,7 +41,7 @@ func TestAdapter_Limits(t *testing.T) {
 	})
 
 	t.Run("Real user has no item count limit", func(t *testing.T) {
-		real := NewAdapter(nil, "google-sub-12345", "")
+		real := NewMemoryAdapter("google-sub-12345", "")
 		for i := 0; i < maxDemoItemCount+5; i++ {
 			_, err := real.CreateFile(ctx, "note.md", []byte("ok"), "")
 			if err != nil {

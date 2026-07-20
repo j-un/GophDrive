@@ -39,7 +39,7 @@ func makeRequest(method, path, body string) events.APIGatewayProxyRequest {
 }
 
 func TestNoteHandler_CreateAndList(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -90,7 +90,7 @@ func TestNoteHandler_CreateAndList(t *testing.T) {
 }
 
 func TestNoteHandler_GetNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -129,7 +129,7 @@ func TestNoteHandler_GetNote(t *testing.T) {
 // Opening a note via GET /notes/{id} must record a view so the note jumps to
 // the front of RECENT — the recency contract wired through the handler layer.
 func TestNoteHandler_GetNote_RecordsView(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -168,7 +168,7 @@ func TestNoteHandler_GetNote_RecordsView(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -210,7 +210,7 @@ func TestNoteHandler_UpdateNote(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -243,7 +243,7 @@ func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
 }
 
 func TestNoteHandler_DeleteNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -275,7 +275,7 @@ func TestNoteHandler_DeleteNote(t *testing.T) {
 }
 
 func TestNoteHandler_Unauthorized(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -295,7 +295,7 @@ func TestNoteHandler_Unauthorized(t *testing.T) {
 }
 
 func TestNoteHandler_DuplicateNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -343,7 +343,7 @@ func TestNoteHandler_DuplicateNote(t *testing.T) {
 }
 
 func TestNoteHandler_CreateFolder(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -367,7 +367,7 @@ func TestNoteHandler_CreateFolder(t *testing.T) {
 }
 
 func TestNoteHandler_RenameNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -396,7 +396,7 @@ func TestNoteHandler_RenameNote(t *testing.T) {
 }
 
 func TestNoteHandler_MoveNote(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -438,7 +438,7 @@ func TestNoteHandler_MoveNote(t *testing.T) {
 }
 
 func TestNoteHandler_MoveNote_InvalidMove(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -461,7 +461,7 @@ func TestNoteHandler_MoveNote_InvalidMove(t *testing.T) {
 }
 
 func TestNoteHandler_PatchNote_Star(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -490,7 +490,7 @@ func TestNoteHandler_PatchNote_Star(t *testing.T) {
 }
 
 func TestNoteHandler_ListStarredNotes(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -528,7 +528,7 @@ func TestNoteHandler_ListStarredNotes(t *testing.T) {
 }
 
 func TestNoteHandler_CreateNote_ExtractsInlineTags(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -551,7 +551,7 @@ func TestNoteHandler_CreateNote_ExtractsInlineTags(t *testing.T) {
 }
 
 func TestNoteHandler_CreateNote_ExtractsFrontmatterTags(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -575,7 +575,7 @@ func TestNoteHandler_CreateNote_ExtractsFrontmatterTags(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote_ReplacesTags(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -602,7 +602,7 @@ func TestNoteHandler_UpdateNote_ReplacesTags(t *testing.T) {
 }
 
 func TestNoteHandler_GetNote_IncludesTagsField(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -623,7 +623,7 @@ func TestNoteHandler_GetNote_IncludesTagsField(t *testing.T) {
 }
 
 func TestNoteHandler_DuplicateNote_PreservesTags(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -651,7 +651,7 @@ func TestNoteHandler_DuplicateNote_PreservesTags(t *testing.T) {
 }
 
 func TestNoteHandler_UpdateNote_PreservesStarred(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -679,7 +679,7 @@ func TestNoteHandler_UpdateNote_PreservesStarred(t *testing.T) {
 }
 
 func TestNoteHandler_GetNote_NotFound(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -697,7 +697,7 @@ func TestNoteHandler_GetNote_NotFound(t *testing.T) {
 // GetNote must surface aliases/type/status from a note's frontmatter so the
 // frontend can render note-type badges and follow alias links.
 func TestNoteHandler_GetNote_ReturnsFrontmatterMeta(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -733,7 +733,7 @@ func TestNoteHandler_GetNote_ReturnsFrontmatterMeta(t *testing.T) {
 }
 
 func TestNoteHandler_CreateNote_InvalidParent_Returns400(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
@@ -748,7 +748,7 @@ func TestNoteHandler_CreateNote_InvalidParent_Returns400(t *testing.T) {
 }
 
 func TestNoteHandler_CreateFolder_InvalidParent_Returns400(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 

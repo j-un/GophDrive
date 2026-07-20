@@ -13,9 +13,17 @@ import (
 // fakeDDB is a shared in-memory DynamoDB table. Multiple Adapters (different
 // userIDs) constructed over one fakeDDB share rows, making cross-tenant
 // access expressible — the per-Adapter map fallback cannot do this.
+//
+// afterGetItem, when non-nil, is invoked once at the end of GetItem while
+// f.mu is held. It fires exactly once per install (the field is cleared
+// before invocation), and the hook may mutate items in place. This models a
+// TOCTOU race — a concurrent ownership change landing between an adapter's
+// read-side guard and its subsequent conditional write — so tests can drive
+// the write-side ConditionExpression path independently of the read guard.
 type fakeDDB struct {
-	mu    sync.Mutex
-	items map[string]map[string]types.AttributeValue // pk -> raw marshaled item
+	mu           sync.Mutex
+	items        map[string]map[string]types.AttributeValue // pk -> raw marshaled item
+	afterGetItem func(items map[string]map[string]types.AttributeValue)
 }
 
 func newFakeDDB() *fakeDDB {
@@ -99,12 +107,24 @@ func (f *fakeDDB) GetItem(_ context.Context, params *dynamodb.GetItemInput, _ ..
 			pk = s.Value
 		}
 	}
-	item, ok := f.items[pk]
-	if !ok {
-		// Adapter maps nil Item to ErrNotFound; do NOT return an error here.
-		return &dynamodb.GetItemOutput{Item: nil}, nil
+	// Snapshot the returned item BEFORE the hook fires: the point of the hook
+	// is to simulate a TOCTOU where the caller reads a stale copy and only the
+	// subsequent conditional write sees the new state.
+	var out dynamodb.GetItemOutput
+	if item, ok := f.items[pk]; ok {
+		out.Item = shallowCopy(item)
 	}
-	return &dynamodb.GetItemOutput{Item: shallowCopy(item)}, nil
+	// (out.Item == nil when the row is missing; the adapter maps that to
+	// ErrNotFound. Never return a synthetic error here.)
+
+	// Snapshot & clear the hook so it fires exactly once. The hook runs under
+	// f.mu so a TOCTOU mutation lands atomically before the next call.
+	hook := f.afterGetItem
+	f.afterGetItem = nil
+	if hook != nil {
+		hook(f.items)
+	}
+	return &out, nil
 }
 
 func (f *fakeDDB) PutItem(_ context.Context, params *dynamodb.PutItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error) {
@@ -148,7 +168,13 @@ func (f *fakeDDB) UpdateItem(_ context.Context, params *dynamodb.UpdateItemInput
 		return nil, fmt.Errorf("fakeDDB: UpdateItem requires UpdateExpression")
 	}
 	expr := *params.UpdateExpression
-	item := f.items[pk] // present because evalCondition passed
+	item, ok := f.items[pk]
+	if !ok {
+		// Reachable only when caller passes no ConditionExpression AND targets a
+		// missing pk — the adapter never does this today, but assigning into a
+		// nil map below would panic; refuse loudly instead.
+		return nil, fmt.Errorf("fakeDDB: UpdateItem on missing item without condition (pk=%q)", pk)
+	}
 
 	switch expr {
 	case "SET viewed_time = :v":

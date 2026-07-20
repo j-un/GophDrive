@@ -15,7 +15,7 @@ import (
 )
 
 func TestExport_ZipsAllNotes(t *testing.T) {
-	provider := dynamo.NewProvider(nil)
+	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	exportH := handler.NewExportHandler(provider, "test-secret")
 	ctx := context.Background()
@@ -68,7 +68,7 @@ func TestExport_ZipsAllNotes(t *testing.T) {
 }
 
 func TestExport_Unauthorized(t *testing.T) {
-	exportH := handler.NewExportHandler(dynamo.NewProvider(nil), "test-secret")
+	exportH := handler.NewExportHandler(dynamo.NewMemoryProvider(), "test-secret")
 	resp, _ := exportH.Export(context.Background(), events.APIGatewayProxyRequest{})
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
@@ -76,7 +76,7 @@ func TestExport_Unauthorized(t *testing.T) {
 }
 
 func TestExport_EmptyArchiveStillSucceeds(t *testing.T) {
-	exportH := handler.NewExportHandler(dynamo.NewProvider(nil), "test-secret")
+	exportH := handler.NewExportHandler(dynamo.NewMemoryProvider(), "test-secret")
 	resp, err := exportH.Export(context.Background(), makeRequest("GET", "/export", ""))
 	if err != nil {
 		t.Fatalf("Export err: %v", err)

@@ -10,7 +10,7 @@ import (
 )
 
 func TestCreatedTime_SetOnCreateFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	before := time.Now()
@@ -33,7 +33,7 @@ func TestCreatedTime_SetOnCreateFile(t *testing.T) {
 }
 
 func TestCreatedTime_SetOnCreateFolder(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	before := time.Now()
@@ -56,7 +56,7 @@ func TestCreatedTime_SetOnCreateFolder(t *testing.T) {
 }
 
 func TestCreatedTime_SetOnDuplicateFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	orig, _ := m.CreateFile(ctx, "orig.md", []byte("content"), "root")
@@ -81,7 +81,7 @@ func TestCreatedTime_SetOnDuplicateFile(t *testing.T) {
 }
 
 func TestCreatedTime_UnchangedAfterSaveFile(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	meta, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
@@ -106,7 +106,7 @@ func TestCreatedTime_UnchangedAfterSaveFile(t *testing.T) {
 func TestCreatedTime_FileMetadataUnchanged(t *testing.T) {
 	// FileMetadata returned by CreateFile must not carry a CreatedTime field —
 	// the JSON output shape is unchanged (A-read is deferred).
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	meta, err := m.CreateFile(ctx, "note.md", []byte("hi"), "root")
@@ -189,7 +189,7 @@ func TestCreatedTime_FileItemMarshalRoundtrip(t *testing.T) {
 // via e2e: POST /notes → PUT /notes/{id} → GET /notes/{id} confirms created_time
 // is unchanged.
 func TestCreatedTime_SaveFilePreservesCreatedTime_InMemory(t *testing.T) {
-	m := NewAdapter(nil, "user1", "")
+	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
 	meta, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")

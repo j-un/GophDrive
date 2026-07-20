@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
 
@@ -194,9 +195,13 @@ func TestCrossTenant_TouchViewed_DemoTTLContamination(t *testing.T) {
 		t.Errorf("victim.ViewedTime changed: got %v, want %v", after.ViewedTime, before.ViewedTime)
 	}
 
-	// Persistence peek: the stored row must have NO "ttl" attribute — victim
-	// is a real (non-demo) user, so writing ttl would flag them for the
-	// 60-minute demo expiry.
+	// White-box peek into the stored row: ttl is the security-relevant
+	// artifact (a demo-user attacker rewriting it would auto-expire the
+	// victim's data), but GetFile intentionally doesn't surface ttl — the
+	// only way to assert absence is to look at the persisted attributes
+	// directly. Also assert user_id survived unchanged, so a future adapter
+	// change that flipped ownership as a side effect wouldn't sneak past
+	// GetFile (which stops returning the row entirely on ownership mismatch).
 	fake.mu.Lock()
 	stored := fake.items[id]
 	fake.mu.Unlock()
@@ -205,6 +210,64 @@ func TestCrossTenant_TouchViewed_DemoTTLContamination(t *testing.T) {
 	}
 	if _, ok := stored["ttl"]; ok {
 		t.Errorf("victim row acquired ttl attribute from attacker.TouchViewed — demo TTL contamination")
+	}
+	if got := stringAttr(stored, "user_id"); got != "user-a" {
+		t.Errorf("victim user_id changed: got %q, want %q", got, "user-a")
+	}
+}
+
+// TestCrossTenant_WriteGuard_TOCTOU covers the write-side ConditionExpression:
+// the previous tests all short-circuit at the read-side getOwnedFileItem
+// guard, so deleting the ConditionExpression from DeleteItem/PutItem would
+// keep them green. Here we install a one-shot afterGetItem hook that flips
+// the stored user_id between the adapter's read and its subsequent
+// conditional write, forcing the guarded path (CCFE → ErrNotFound) to fire.
+//
+// MoveFile and SaveFile aren't included — their PutItems carry no
+// ConditionExpression today. TouchViewed's write guard is covered by
+// TestCrossTenant_TouchViewed_DemoTTLContamination.
+func TestCrossTenant_WriteGuard_TOCTOU(t *testing.T) {
+	tests := []struct {
+		name string
+		op   func(ctx context.Context, victim *Adapter, id string) error
+	}{
+		{
+			name: "DeleteFile",
+			op: func(ctx context.Context, victim *Adapter, id string) error {
+				return victim.DeleteFile(ctx, id)
+			},
+		},
+		{
+			name: "RenameFile",
+			op: func(ctx context.Context, victim *Adapter, id string) error {
+				_, err := victim.RenameFile(ctx, id, "renamed-by-victim")
+				return err
+			},
+		},
+		{
+			name: "SetStarred",
+			op: func(ctx context.Context, victim *Adapter, id string) error {
+				_, err := victim.SetStarred(ctx, id, true)
+				return err
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake, victim, _, id := seedVictim(t)
+			// Concurrent-ownership-change simulation: fires once, on the very
+			// next GetItem (the adapter's read-side ownership check), then
+			// clears itself. Reassign the map key rather than mutating the
+			// existing AttributeValue in place — shallowCopy shares pointers,
+			// and the read-side snapshot must remain the pre-race value.
+			fake.afterGetItem = func(items map[string]map[string]types.AttributeValue) {
+				items[id]["user_id"] = &types.AttributeValueMemberS{Value: "user-c"}
+			}
+			err := tc.op(context.Background(), victim, id)
+			if !errors.Is(err, adapter.ErrNotFound) {
+				t.Fatalf("%s: got %v, want ErrNotFound (CCFE→ErrNotFound mapping)", tc.name, err)
+			}
+		})
 	}
 }
 
