@@ -1,5 +1,5 @@
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/jetbrains-mono";
 
 :root {
   --background: #fafaf9;
@@ -14,7 +14,10 @@
   --sidebar-background: #fafaf9;
   --header-background: #fafaf9;
   --font-sans: "Geist Variable", Arial, Helvetica, sans-serif;
-  --font-mono: "Geist Mono Variable", monospace;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo",
+    monospace;
   --secondary: #f0f0ee;
   --secondary-foreground: #1b1b1a;
   --destructive: #ef4444;

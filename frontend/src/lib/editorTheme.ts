@@ -52,7 +52,7 @@ export const quietEditorTheme = EditorView.theme({
     height: "100%",
   },
   ".cm-scroller": {
-    fontFamily: "var(--font-sans)",
+    fontFamily: "var(--font-mono)",
     backgroundColor: "var(--background)",
     lineHeight: "1.9",
   },
@@ -62,8 +62,8 @@ export const quietEditorTheme = EditorView.theme({
     marginRight: "auto",
     paddingTop: "48px",
     paddingBottom: "48px",
-    fontFamily: "var(--font-sans)",
-    fontSize: "17px",
+    fontFamily: "var(--font-mono)",
+    fontSize: "16px",
     lineHeight: "1.9",
     caretColor: "var(--primary)",
     color: "var(--foreground)",
@@ -132,12 +132,11 @@ export const quietHighlightStyle = HighlightStyle.define([
   },
   { tag: t.quote, color: "var(--text-secondary)" },
   { tag: [t.link, t.url], color: "var(--primary)" },
-  // Inline code and fenced code: secondary text color, kept monospace even
-  // though the surrounding body text is now sans-serif.
+  // Inline code and fenced code: secondary text color to distinguish from
+  // surrounding prose (font is already monospace via the base theme).
   {
     tag: t.monospace,
     color: "var(--text-secondary)",
-    fontFamily: "var(--font-mono)",
   },
 ]);
 
