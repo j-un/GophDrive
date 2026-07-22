@@ -78,7 +78,7 @@
 }
 
 .preview code {
-  font-family: "Geist Mono", monospace;
+  font-family: var(--font-mono);
   background: var(--secondary);
   /* Subtle primary tint */
   padding: 0.2em 0.4em;
