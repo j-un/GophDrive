@@ -31,7 +31,7 @@ mise install go node
 ok "go $(mise x go -- go version | awk '{print $3}') / node $(mise x node -- node --version)"
 
 say "Installing air (Go hot reload) into \$GOPATH/bin"
-mise x go -- go install github.com/air-verse/air@v1.65.3
+mise x go -- go install github.com/air-verse/air@v1.67.1
 GOBIN_DIR="$(mise x go -- bash -c 'echo "${GOBIN:-${GOPATH:-$HOME/go}/bin}"')"
 if [ ! -x "$GOBIN_DIR/air" ]; then
   warn "air not found at $GOBIN_DIR/air after install"
