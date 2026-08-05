@@ -129,4 +129,35 @@ describe("useAutoSave", () => {
     expect(saveFn).not.toHaveBeenCalled();
     expect(result.current.hasUnsavedChanges).toBe(false);
   });
+
+  it("does not reset the pending debounce when saveFunction's reference changes", async () => {
+    const saveFnA = vi.fn().mockResolvedValue(undefined);
+    const saveFnB = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ value, saveFn }) => useAutoSave(value, saveFn, 2000),
+      { initialProps: { value: "initial", saveFn: saveFnA } },
+    );
+
+    // Change value, starting the 2000ms debounce timer.
+    rerender({ value: "changed", saveFn: saveFnA });
+
+    // Let most of the delay elapse.
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(saveFnA).not.toHaveBeenCalled();
+
+    // Swap only the saveFunction reference (value unchanged) — this must not
+    // reset the pending timer.
+    rerender({ value: "changed", saveFn: saveFnB });
+
+    // Advance the remaining 600ms (cumulative 2100ms since the value change).
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+
+    // Save should have fired using the latest saveFunction, not the stale one.
+    expect(saveFnB).toHaveBeenCalledWith("changed");
+    expect(saveFnA).not.toHaveBeenCalled();
+  });
 });
