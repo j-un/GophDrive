@@ -10,9 +10,22 @@ interface PreviewProps {
   markdown: string;
   links?: WikiLinkRef[];
   className?: string;
+  // Whether this Preview is currently visible. When false, the Wasm
+  // render/sanitize pipeline is skipped entirely (the caller may keep this
+  // component mounted while hidden — e.g. behind a CSS class — to avoid
+  // remount cost). Defaults to true so existing callers render as before.
+  // Since active is a useMemo dep, flipping it back to true recomputes html
+  // from the then-current markdown in the same render, before anything
+  // paints — no stale content is ever shown once visible again.
+  active?: boolean;
 }
 
-export function Preview({ markdown, links, className }: PreviewProps) {
+export function Preview({
+  markdown,
+  links,
+  className,
+  active = true,
+}: PreviewProps) {
   const { isReady } = useWasm();
   const navigate = useNavigate();
 
@@ -21,7 +34,7 @@ export function Preview({ markdown, links, className }: PreviewProps) {
   // TODO: client-side sanitize is the sole XSS defense today; remove
   // html.WithUnsafe() from core/markdown/renderer.go for defense in depth.
   const html = useMemo(() => {
-    if (!isReady || !window.renderMarkdown) return "";
+    if (!active || !isReady || !window.renderMarkdown) return "";
     try {
       const raw = window.renderMarkdown(markdown);
       const withTags = linkifyTags(raw);
@@ -31,7 +44,7 @@ export function Preview({ markdown, links, className }: PreviewProps) {
       console.error("Render error", e);
       return '<p style="color:red">Error rendering markdown</p>';
     }
-  }, [markdown, isReady, links]);
+  }, [markdown, isReady, links, active]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

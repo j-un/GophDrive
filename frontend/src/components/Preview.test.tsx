@@ -89,3 +89,67 @@ describe("Preview XSS sanitization", () => {
     });
   });
 });
+
+describe("Preview active prop", () => {
+  let renderMarkdownMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    // Identity stub, same as the sanitization suite above, but kept in a
+    // local variable so tests can assert on call count directly.
+    renderMarkdownMock = vi.fn((s: string) => s);
+    vi.stubGlobal("renderMarkdown", renderMarkdownMock);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("renders by default when active is unspecified", async () => {
+    const { container } = render(<Preview markdown="hello" />);
+    await waitFor(() => {
+      expect(container.textContent).toContain("hello");
+    });
+    expect(renderMarkdownMock).toHaveBeenCalledWith("hello");
+  });
+
+  it("does not render markdown-derived content while inactive, even as markdown changes", () => {
+    const { container, rerender } = render(
+      <Preview markdown="one" active={false} />,
+    );
+    rerender(<Preview markdown="two" active={false} />);
+    rerender(<Preview markdown="three" active={false} />);
+
+    expect(container.textContent).not.toContain("one");
+    expect(container.textContent).not.toContain("two");
+    expect(container.textContent).not.toContain("three");
+
+    // DOM output alone wouldn't catch a regression where the (expensive)
+    // Wasm pipeline still runs on every markdown change but its result is
+    // merely kept out of the DOM. `active` exists specifically to skip that
+    // pipeline while the pane is hidden, so assert the call directly too.
+    expect(renderMarkdownMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the latest markdown once reactivated, including edits made while inactive", async () => {
+    const { container, rerender } = render(
+      <Preview markdown="one" active={true} />,
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain("one");
+    });
+
+    // Pane hidden: markdown keeps changing but must not be rendered yet.
+    rerender(<Preview markdown="two" active={false} />);
+    rerender(<Preview markdown="three" active={false} />);
+    expect(renderMarkdownMock).not.toHaveBeenCalledWith("two");
+    expect(renderMarkdownMock).not.toHaveBeenCalledWith("three");
+
+    // Pane shown again: the last markdown set while hidden must appear.
+    rerender(<Preview markdown="three" active={true} />);
+    await waitFor(() => {
+      expect(container.textContent).toContain("three");
+    });
+  });
+});
