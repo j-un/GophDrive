@@ -757,7 +757,12 @@ function NoteContent() {
               onKeyDown={handleEditorKeyDown}
               onBlur={exitZenMode}
             >
+              {/* Editor pins the mount-time value as its internal CodeMirror
+                  instance's initial document, so a note switch needs a fresh
+                  instance — key explicitly on note id rather than relying on
+                  the loading spinner's incidental unmount/remount above. */}
               <Editor
+                key={id ?? ""}
                 ref={editorRef}
                 value={content}
                 onChange={setContent}
@@ -776,6 +781,7 @@ function NoteContent() {
                   markdown={content}
                   links={noteLinks}
                   className="h-full"
+                  active={previewOpen}
                 />
                 {noteBacklinks.length > 0 && (
                   <div className={styles.backlinks}>
