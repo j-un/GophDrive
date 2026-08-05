@@ -25,7 +25,13 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("react-router", () => import("@/__mocks__/react-router"));
 
-import { listRecent, listStarred, starFile, type FileItem } from "@/lib/api";
+import {
+  listRecent,
+  listStarred,
+  listTags,
+  starFile,
+  type FileItem,
+} from "@/lib/api";
 import { mockNavigate } from "@/__mocks__/react-router";
 import { Sidebar } from "./Sidebar";
 
@@ -48,13 +54,33 @@ const NOTE_ITEM: FileItem = {
   size: 0,
 };
 
-const renderSidebar = (
-  props: {
-    refreshTrigger?: number;
-    isOpen?: boolean;
-    onClose?: () => void;
-  } = {},
-) => render(<Sidebar onNavigate={() => {}} {...props} />);
+type SidebarTestProps = {
+  refreshTrigger?: number;
+  isOpen?: boolean;
+  onClose?: () => void;
+};
+
+const renderSidebar = (props: SidebarTestProps = {}) =>
+  render(<Sidebar onNavigate={() => {}} {...props} />);
+
+// Sidebar's mount effect runs loadFolders(), which awaits listStarred ->
+// listRecent -> listTags in sequence and only then sets state. A test that
+// renders and asserts synchronously returns before those resolutions land, so
+// the state updates arrive outside the test's act() scope and React warns
+// "An update to Sidebar inside a test was not wrapped in act(...)". Whichever
+// synchronous test happens to be running when the microtasks flush gets blamed,
+// which makes the warning look intermittent and unrelated to the real cause.
+//
+// Use this instead of renderSidebar() in any test that does not otherwise await
+// the loaded data. Waiting on listTags (the last call in the chain) rather than
+// flushing blindly guarantees the whole chain has settled; the act() flush then
+// applies the renders it produced.
+const renderSidebarSettled = async (props: SidebarTestProps = {}) => {
+  const result = renderSidebar(props);
+  await waitFor(() => expect(listTags).toHaveBeenCalled());
+  await act(async () => {});
+  return result;
+};
 
 const getRail = () => screen.getByTestId("sidebar-rail");
 const getPanel = () => screen.getByTestId("sidebar-panel");
@@ -80,6 +106,10 @@ const getRecentList = () => {
 // `.setItem()` themselves where the ordering matters for readability.
 beforeEach(() => {
   window.localStorage.clear();
+  // renderSidebarSettled() waits for listTags to have been called by *this*
+  // render; without clearing, a previous test's call would satisfy it instantly
+  // and the wait would be a no-op.
+  vi.mocked(listTags).mockClear();
 });
 
 describe("Sidebar Recent section collapsible", () => {
@@ -251,8 +281,8 @@ describe("Sidebar Recent section keyboard access", () => {
 });
 
 describe("Sidebar branding link", () => {
-  it("navigates to /drive/ when the logo is clicked", () => {
-    renderSidebar();
+  it("navigates to /drive/ when the logo is clicked", async () => {
+    await renderSidebarSettled();
     expect(
       screen.getByRole("link", { name: "GophDrive" }).getAttribute("href"),
     ).toBe("/drive/");
@@ -264,8 +294,8 @@ describe("Sidebar icon rail (collapsed)", () => {
     window.localStorage.setItem("sidebar:collapsed", "true");
   });
 
-  it("shows Expand sidebar, Notes, and Settings on the rail", () => {
-    renderSidebar();
+  it("shows Expand sidebar, Notes, and Settings on the rail", async () => {
+    await renderSidebarSettled();
     const rail = getRail();
     expect(
       within(rail).getByRole("button", { name: "Expand sidebar" }),
@@ -274,8 +304,8 @@ describe("Sidebar icon rail (collapsed)", () => {
     expect(within(rail).getByRole("button", { name: "Settings" })).toBeTruthy();
   });
 
-  it("no longer has separate Search/Starred/Recent/Tags rail buttons", () => {
-    renderSidebar();
+  it("no longer has separate Search/Starred/Recent/Tags rail buttons", async () => {
+    await renderSidebarSettled();
     const rail = getRail();
     expect(within(rail).queryByRole("button", { name: "Search" })).toBeNull();
     expect(within(rail).queryByRole("button", { name: "Starred" })).toBeNull();
@@ -285,8 +315,8 @@ describe("Sidebar icon rail (collapsed)", () => {
 });
 
 describe("Sidebar collapse/expand toggle", () => {
-  it("collapses on 'Collapse sidebar' click, persists to localStorage, and expands again on 'Expand sidebar'", () => {
-    const { container } = renderSidebar();
+  it("collapses on 'Collapse sidebar' click, persists to localStorage, and expands again on 'Expand sidebar'", async () => {
+    const { container } = await renderSidebarSettled();
     const root = getRoot(container);
 
     expect(root.className).not.toMatch(/rootCollapsed/);
@@ -306,17 +336,17 @@ describe("Sidebar collapse/expand toggle", () => {
     expect(window.localStorage.getItem("sidebar:collapsed")).toBe("false");
   });
 
-  it("starts collapsed when sidebar:collapsed=true is set before mount", () => {
+  it("starts collapsed when sidebar:collapsed=true is set before mount", async () => {
     window.localStorage.setItem("sidebar:collapsed", "true");
 
-    const { container } = renderSidebar();
+    const { container } = await renderSidebarSettled();
     const root = getRoot(container);
 
     expect(root.className).toMatch(/rootCollapsed/);
   });
 
-  it("defaults to expanded when no sidebar:collapsed key is present", () => {
-    const { container } = renderSidebar();
+  it("defaults to expanded when no sidebar:collapsed key is present", async () => {
+    const { container } = await renderSidebarSettled();
     const root = getRoot(container);
 
     expect(root.className).not.toMatch(/rootCollapsed/);
@@ -358,8 +388,8 @@ describe("Sidebar Cmd+K shortcut", () => {
 });
 
 describe("Sidebar persistence (no dismiss-on-away behavior)", () => {
-  it("does not collapse on Escape", () => {
-    const { container } = renderSidebar();
+  it("does not collapse on Escape", async () => {
+    const { container } = await renderSidebarSettled();
     const root = getRoot(container);
     expect(root.className).not.toMatch(/rootCollapsed/);
 
@@ -368,8 +398,8 @@ describe("Sidebar persistence (no dismiss-on-away behavior)", () => {
     expect(root.className).not.toMatch(/rootCollapsed/);
   });
 
-  it("does not collapse on a mousedown outside the panel", () => {
-    const { container } = renderSidebar();
+  it("does not collapse on a mousedown outside the panel", async () => {
+    const { container } = await renderSidebarSettled();
     const root = getRoot(container);
     expect(root.className).not.toMatch(/rootCollapsed/);
 
@@ -380,10 +410,10 @@ describe("Sidebar persistence (no dismiss-on-away behavior)", () => {
 });
 
 describe("Sidebar mobile drawer independence from desktop collapse", () => {
-  it("shows the drawer (panelMobileOpen) and calls onClose on overlay click, even while desktop-collapsed", () => {
+  it("shows the drawer (panelMobileOpen) and calls onClose on overlay click, even while desktop-collapsed", async () => {
     window.localStorage.setItem("sidebar:collapsed", "true");
     const onClose = vi.fn();
-    render(<Sidebar onNavigate={() => {}} isOpen={true} onClose={onClose} />);
+    await renderSidebarSettled({ isOpen: true, onClose });
 
     expect(getPanel().className).toMatch(/panelMobileOpen/);
 
