@@ -34,6 +34,18 @@
       matchFileNames: ['frontend/package.json'],
       allowedVersions: '<10.0.0',
     },
+    // typescript-eslint does not support TypeScript 7 (tsgo) yet — every
+    // published version (8.66.0 latest, 8.66.1-alpha canary) still declares
+    // peerDependencies typescript ">=4.8.4 <6.1.0", so bumping TypeScript to 7
+    // makes lock file regeneration fail with ERESOLVE in both frontend/ and
+    // infra/ (and ESLint then crashes inside typescript-estree even if the peer
+    // conflict is forced). Remove this constraint once typescript-eslint widens
+    // its peer range.
+    // Tracking: https://github.com/typescript-eslint/typescript-eslint/issues/10940
+    {
+      matchPackageNames: ['typescript'],
+      allowedVersions: '<7.0.0',
+    },
     {
       matchUpdateTypes: [
         'minor',
