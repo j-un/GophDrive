@@ -1,0 +1,194 @@
+# Renovate Autofix
+#
+# What this does
+# ---------------
+# Renovate branches (`renovate/**`) repeatedly land with drifted manifests: Go's
+# `go mod tidy` runs per-directory with `replace ../core` massaged away, so when
+# core/go.mod's direct deps bump, backend/go.mod's `// indirect` lines go stale and
+# `go test ./...` fails with "go: updates to go.mod needed"; separately, Renovate's npm
+# lockfile artifact update sometimes fails, leaving package.json updated but
+# package-lock.json stale, so `npm ci` fails with EUSAGE. This workflow runs
+# `scripts/deps-sync.sh --fix` (the same script the CI `deps-sync` job uses in --check
+# mode) on every push to a renovate/** branch and, if it changed anything, commits and
+# pushes the fix straight back onto that branch. See scripts/deps-sync.sh for the full
+# background on why core must be tidied before backend.
+#
+# Token behavior
+# ---------------
+# If the repository secret RENOVATE_AUTOFIX_TOKEN exists (a fine-grained PAT scoped to
+# this repo with Contents: Read and write, or a GitHub App installation token), checkout
+# uses it and the resulting push authenticates as that identity. Pushes authored by a
+# real PAT/App token fire `pull_request: synchronize`, so CI re-runs automatically on the
+# fixed commit — fully hands-off.
+#
+# If the secret is absent, this falls back to the default `secrets.GITHUB_TOKEN`. The
+# tree still gets fixed and the commit still gets pushed, but GitHub deliberately does
+# not re-trigger other workflows (including this repo's CI) for pushes authored by the
+# built-in GITHUB_TOKEN, to prevent trivial infinite-workflow loops. In that case the PR
+# will show the autofix commit but its checks need a manual "Re-run" or a Renovate
+# rebase to pick it up. This is a supported, expected configuration, not a broken one:
+# every step below works with the secret undefined, and the `||` fallback in the
+# checkout `token:` input evaluates to `secrets.GITHUB_TOKEN` whenever
+# `secrets.RENOVATE_AUTOFIX_TOKEN` is unset (an unset secret is an empty string, which is
+# falsy in GitHub Actions expression syntax).
+#
+# Loop safety
+# ---------------
+# This workflow's own push also matches `renovate/**`, so it re-triggers itself. That is
+# intentional and safe, not a bug to guard against: the follow-up run executes
+# `deps-sync.sh --fix` again, finds nothing left to fix (the manifests are now tidy),
+# takes the "no drift" branch below, and terminates without committing. There is no
+# unbounded loop because each run either makes exactly one fixing commit and stops being
+# useful, or makes no commit at all. Do not add an actor-based guard (e.g. skipping runs
+# authored by github-actions[bot]) — it is unnecessary and would only make the workflow
+# more fragile (e.g. breaking the RENOVATE_AUTOFIX_TOKEN path, whose commits are not
+# authored by github-actions[bot] at the API-identity level in all token configurations).
+
+name: Renovate Autofix
+
+on:
+  push:
+    branches: ['renovate/**']
+
+concurrency:
+  group: renovate-autofix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  autofix:
+    name: Fix dependency drift
+    runs-on: ubuntu-latest
+    env:
+      # The only files deps-sync.sh is allowed to change. Both the drift check and the
+      # staging below are scoped to this list, so they can never disagree about what
+      # "changed" means. This step auto-commits and auto-pushes under `contents: write`,
+      # so a stray dirty file must not be able to ride along under a `fix(deps): ...`
+      # message. Keep in sync with the target list at the bottom of scripts/deps-sync.sh.
+      MANIFESTS: >-
+        core/go.mod core/go.sum
+        backend/go.mod backend/go.sum
+        tools/gophmem/go.mod tools/gophmem/go.sum
+        frontend/package-lock.json infra/package-lock.json
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.RENOVATE_AUTOFIX_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: '.tool-versions'
+          cache-dependency-path: |
+            backend/go.sum
+            core/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            infra/package-lock.json
+
+      - name: Fix dependency manifests
+        env:
+          DEPS_SYNC_NO_MISE: '1'
+        run: ./scripts/deps-sync.sh --fix
+
+      - name: Check for drift
+        id: diff
+        run: |
+          # Scoped to $MANIFESTS so this agrees exactly with what the commit step stages.
+          # An unscoped status could report "changed" for something we then refuse to stage,
+          # leaving `git commit` with nothing to do and failing the job.
+          # shellcheck disable=SC2086
+          if [ -z "$(git status --porcelain -- $MANIFESTS)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency drift found; nothing to fix." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push fix
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Stage only $MANIFESTS (job-level env), never `git add -A`.
+          #
+          # `git add` fails on a pathspec that matches nothing, and not every manifest exists
+          # (tools/gophmem has no dependencies, so no go.sum). Pass only the ones that are
+          # present on disk or tracked in the index; -A within that pathspec still records
+          # deletions of tracked files.
+          stage_manifests() {
+            local existing=""
+            for m in $MANIFESTS; do
+              if [ -e "$m" ] || git ls-files --error-unmatch "$m" >/dev/null 2>&1; then
+                existing="$existing $m"
+              fi
+            done
+            [ -n "$existing" ] || return 1
+            # shellcheck disable=SC2086
+            git add -A -- $existing
+          }
+
+          stage_manifests
+          git commit -m "fix(deps): sync go.mod / package-lock.json via deps-sync"
+
+          BRANCH="${GITHUB_REF_NAME}"
+          if git push origin "HEAD:${BRANCH}"; then
+            echo "Pushed autofix commit to ${BRANCH}."
+          else
+            echo "Push rejected (Renovate likely force-pushed ${BRANCH} while this job was running)."
+            echo "Re-deriving the fix against the new tip instead of rebasing: our commit touches exactly"
+            echo "the manifests Renovate's push just regenerated, so a rebase would conflict on those same"
+            echo "files most of the time. deps-sync.sh --fix is deterministic given the manifests, so"
+            echo "nothing in the discarded commit is worth preserving across the race."
+
+            # Every git call below is best-effort recovery: a failure here means we lost the
+            # race and should back off quietly, not fail the job (bash runs run: blocks with
+            # -e, so each call is guarded to keep its failure from escaping as a job failure).
+            recover_warn() {
+              echo "::warning::$1 Renovate's next push to ${BRANCH} will re-trigger this workflow, so this is self-healing, not a hard failure."
+              exit 0
+            }
+
+            # --force: Renovate rewrites this branch, so origin/${BRANCH} moves
+            # non-fast-forward and a plain fetch would decline to update the tracking ref.
+            git fetch --force origin "${BRANCH}" || recover_warn "Could not fetch origin/${BRANCH} while recovering from the lost push race."
+            git reset --hard "origin/${BRANCH}" || recover_warn "Could not reset to origin/${BRANCH} while recovering from the lost push race."
+
+            # Unlike the git calls above, a deps-sync.sh failure here is deliberately NOT folded
+            # into the self-healing warning path: network errors / unresolvable deps are the same
+            # genuine failure class as in the "Fix dependency manifests" step earlier in this job,
+            # not the push race this recovery exists for, so they should surface as a real job
+            # failure (still guarded so the message is intelligible instead of an opaque -e abort).
+            if ! DEPS_SYNC_NO_MISE=1 ./scripts/deps-sync.sh --fix; then
+              echo "::error::deps-sync.sh --fix failed while recovering from the lost push race against origin/${BRANCH}."
+              exit 1
+            fi
+
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "Tree is clean after re-deriving against origin/${BRANCH}: Renovate's new push already carries the fix. Nothing more to do."
+              exit 0
+            fi
+
+            stage_manifests || recover_warn "Could not stage the re-derived fix while recovering from the lost push race."
+            git commit -m "fix(deps): sync go.mod / package-lock.json via deps-sync" || recover_warn "Could not commit the re-derived fix while recovering from the lost push race."
+            git push origin "HEAD:${BRANCH}" || recover_warn "Could not push the re-derived fix to ${BRANCH} while recovering from the lost push race."
+            echo "Pushed autofix commit to ${BRANCH} after re-deriving against the latest tip."
+          fi
+
+          {
+            echo "### Renovate Autofix"
+            echo
+            git show --stat HEAD
+          } >> "$GITHUB_STEP_SUMMARY"
