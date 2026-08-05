@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+      # Renovate uses automergeType: 'branch' + platformAutomerge, so on the happy
+      # path it can merge a branch without ever opening a PR — and then no
+      # `pull_request` event fires and the deps-sync drift check never gates the
+      # update. Triggering on renovate/** makes the check run regardless of whether
+      # a PR exists. Cost: when Renovate does open a PR, both events fire and CI
+      # runs twice on that branch. Renovate is scheduled weekly, so that is cheap.
+      - 'renovate/**'
   pull_request:
 
 jobs:
@@ -73,6 +80,35 @@ jobs:
       - name: Run Tests
         working-directory: ./frontend
         run: npm run test
+
+  deps-sync:
+    name: Dependency Sync (go.mod / lockfiles)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: '.tool-versions'
+          cache-dependency-path: |
+            backend/go.sum
+            core/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            infra/package-lock.json
+
+      - name: Check dependency manifests are in sync
+        env:
+          DEPS_SYNC_NO_MISE: '1'
+        run: ./scripts/deps-sync.sh --check
 
   # TODO: Temporarily disabled due to heavy load and timeout issues. 
   # Needs optimization before re-enabling.

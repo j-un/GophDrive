@@ -20,6 +20,7 @@ Required CLIs on the host: `mise`, `overmind`, `docker`, `aws`.
 ./scripts/setup.sh                # First-time: mise install, npm ci, DynamoDB Local + tables, .env
 ./scripts/dev.sh                  # Boot DynamoDB Local + overmind start (backend/frontend/wasm)
 ./scripts/check.sh                # REQUIRED after any change
+./scripts/deps-sync.sh --check    # 依存マニフェスト（go.mod / package-lock.json）の同期チェック
 ./scripts/tests.sh                # All unit suites on host (no DynamoDB Local needed)
 ./scripts/internal/build-wasm.sh  # Manual core/ → core.wasm rebuild
 ./scripts/deploy-aws.sh           # Production deploy (needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)

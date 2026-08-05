@@ -16,8 +16,11 @@
   // Supply-chain attack hardening: wait 7 days after a release before opening a PR.
   // Compromised versions are usually yanked / disclosed within this window.
   minimumReleaseAge: '7 days',
+  // gomodUpdateImportPaths follows module path changes on major upgrades
+  // (e.g. dlclark/regexp2 -> dlclark/regexp2/v2, which broke CI on 2026-06-08).
   postUpdateOptions: [
     'gomodTidy',
+    'gomodUpdateImportPaths',
   ],
   schedule: [
     'on Sunday',
@@ -66,6 +69,21 @@
         'gomod',
       ],
       groupName: 'golang dependencies',
+    },
+    // Renovate disables indirect Go deps by default. backend/go.mod pulls
+    // goldmark / chroma transitively through `replace ../core`, and Renovate's
+    // per-directory `go mod tidy` (with replace statements massaged away) cannot
+    // see core's direct bumps — so the `// indirect` lines silently go stale and
+    // break `go test` in CI. Managing them explicitly makes Renovate bump both
+    // files in the same grouped branch.
+    {
+      matchManagers: [
+        'gomod',
+      ],
+      matchDepTypes: [
+        'indirect',
+      ],
+      enabled: true,
     },
     {
       matchManagers: [
