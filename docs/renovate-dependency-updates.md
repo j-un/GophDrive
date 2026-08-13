@@ -47,6 +47,37 @@ Occurred **2026-08-05** (PR #169, fixed by commit `e128532`).
 Before the guard described below existed, both classes together required
 four manual fix commits: `aa1d4e7`, `728ea07`, `c25c51d`, `e128532`.
 
+**npm — optional-peer ERESOLVE conflict.**
+
+A third npm symptom, distinct from lockfile drift: Renovate's artifact
+update fails with `npm error code ERESOLVE` instead of `EUSAGE`, and
+`package.json` never gets bumped for that dependency at all (the branch just
+carries the *other* updates in the same group). `deps-sync.sh` cannot detect
+or fix this class — there is no drift between `package.json` and
+`package-lock.json` to reconcile; the peer graph itself has no valid
+resolution as declared.
+
+`frontend/package.json`'s `@vitejs/plugin-react` (all `6.0.x` releases
+identically) declares an *optional* peer on `@rolldown/plugin-babel`, which
+in turn declares an optional peer on `@babel/plugin-transform-runtime`
+`"^7.29.0 || ^8.0.0-rc.1"`. Neither package is actually installed — nothing
+in this repo uses Rolldown-Vite — but npm still walks optional peers of
+optional peers when checking graph consistency, and picks the newest
+matching version. Once `@babel/plugin-transform-runtime@8.0.1` was published
+it became that pick, pulling a `@babel/core@^8.0.0` peer requirement that
+conflicts with the real, required `@babel/core@^7.x` from `workbox-build`
+(via `vite-plugin-pwa`). Pinning `@vitejs/plugin-react` below the offending
+version (the fix used for `eslint`/`typescript` elsewhere in
+`renovate.json5`) does not work here, because the conflicting peer
+declaration is identical across every `6.0.x` release — confirmed locally by
+reproducing the same ERESOLVE against `6.0.2` through `6.0.5`.
+
+Fixed instead with a scoped `overrides` entry in `frontend/package.json`
+that pins `@babel/plugin-transform-runtime` to `^7.29.0` only when resolved
+underneath `@rolldown/plugin-babel`, so npm's peer check never reaches for
+the 8.x line. Occurred **2026-08-13** (PR #179 blocked; fixed on branch
+`fix/vitejs-plugin-react-eresolve`).
+
 ## Defense in depth
 
 Three layers, in prevent → detect → repair order. None of them alone is
