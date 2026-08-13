@@ -47,6 +47,14 @@ interface RemoteData {
   etag: string;
 }
 
+// Zen mode (see the "===== Zen mode =====" section in NoteContent below) is
+// fully implemented but disabled at its single trigger point in
+// handleEditorKeyDown — re-enable by flipping this back to true.
+// Disabled 2026-08: caused flicker (any mousemove/blur reset the fade
+// mid-typing) and made the note column look off-center once the sidebar
+// faded to opacity:0 while still reserving its layout width.
+const ZEN_MODE_ENABLED = false;
+
 /** Formats an ISO timestamp as a 24h `HH:MM` string for the save indicator. */
 function formatSavedTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
@@ -372,7 +380,8 @@ function NoteContent() {
   // ===== Zen mode =====
   // First keystroke in the editor starts a 1s timer; when it fires, the rail
   // and top bar fade out. Mouse movement, Escape, or the editor losing focus
-  // clear the timer and bring the UI back immediately.
+  // clear the timer and bring the UI back immediately. Disabled — see
+  // ZEN_MODE_ENABLED above.
   const exitZenMode = useCallback(() => {
     if (typingTimerRef.current !== null) {
       window.clearTimeout(typingTimerRef.current);
@@ -382,6 +391,7 @@ function NoteContent() {
   }, []);
 
   const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent) => {
+    if (!ZEN_MODE_ENABLED) return;
     if (e.key === "Escape") return;
     // A save error must stay visible, so don't let the rail/top bar fade
     // out while one is showing.
