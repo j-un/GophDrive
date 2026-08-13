@@ -692,6 +692,8 @@ function NoteContent() {
               </span>
             </div>
 
+            <span className={styles.charCount}>{charCount} chars</span>
+
             <button
               type="button"
               className={`${styles.actionBtn} ${previewOpen ? styles.actionBtnActive : ""}`}
@@ -814,8 +816,6 @@ function NoteContent() {
             </div>
           </div>
         </div>
-
-        <div className={styles.charCount}>{charCount} chars</div>
       </div>
 
       <ConflictDialog
