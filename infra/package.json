@@ -21,7 +21,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "aws-cdk": "2.1135.0",
+    "aws-cdk": "2.1135.1",
     "aws-cdk-local": "^3.0.1",
     "eslint": "^10.0.1",
     "ts-node": "^10.9.2",
