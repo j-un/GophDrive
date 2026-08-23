@@ -1,10 +1,10 @@
 # AI Agent External Memory Setup
 
-How to use GophDrive as Claude Code's external memory.
+How to use GophDrive as external memory for Claude Code and Cursor (IDE + CLI).
 
 ## Overview
 
-The `gophmem` CLI hits the GophDrive REST API, and Claude Code follows the skill at `~/.claude/skills/gophdrive-memory/SKILL.md` to record and recall notes. The agent operates under your Google identity (same `sub`) and writes to the `AI Memory` folder in your Vault. The skill's source-of-truth is `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repository; `install.sh` symlinks it into `~/.claude/skills/`.
+The `gophmem` CLI hits the GophDrive REST API, and Claude Code and Cursor (IDE + CLI) follow the skill whose source of truth is `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repository. The agent operates under your Google identity (same `sub`) and writes to the `AI Memory` folder in your Vault. `install.sh` registers that same file on both hosts via symlink.
 
 ## Prerequisites
 
@@ -25,8 +25,8 @@ bash tools/gophmem/install.sh
 The script does all of the following:
 
 - Builds `tools/gophmem` and places the binary at `~/.local/bin/gophmem`
-- Symlinks the `gophdrive-memory` Claude Code skill into `~/.claude/skills/gophdrive-memory/SKILL.md` (source: `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md`)
-- Warns if a legacy flat-file skill at `~/.claude/skills/gophdrive-memory.md` is still present
+- Symlinks the `gophdrive-memory` skill into `~/.claude/skills/gophdrive-memory/SKILL.md` and `~/.cursor/skills/gophdrive-memory/SKILL.md` (source: `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md`)
+- Warns if a legacy flat-file skill at `~/.claude/skills/gophdrive-memory.md` or `~/.cursor/skills/gophdrive-memory.md` is still present
 - Warns when `GOPHMEM_API_KEY` is unset and shows the export commands you need
 
 If `~/.local/bin` is not on your `PATH`, the script warns; add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc.
@@ -119,9 +119,9 @@ Both are available immediately under **Settings → API Keys**.
 
 ## Skill installation
 
-Step 1 (`bash tools/gophmem/install.sh`) symlinks `~/.claude/skills/gophdrive-memory/SKILL.md` to `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repo. No extra action is required.
+Step 1 (`bash tools/gophmem/install.sh`) symlinks both `~/.claude/skills/gophdrive-memory/SKILL.md` and `~/.cursor/skills/gophdrive-memory/SKILL.md` to `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` in this repo. No extra action is required.
 
-A **new Claude Code session** is required for the skill to be picked up. The repo-managed file `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` is the single source of truth.
+Pick-up requires a **new** Claude Code session or a **new** `agent` process. Cursor's native skill path is `~/.cursor/skills/`; Cursor also loads `~/.claude/skills/` as a compatibility path, so the dual symlinks are the same skill, not two copies. The repo-managed file `tools/gophmem/plugin/skills/gophdrive-memory/SKILL.md` is the single source of truth.
 
 ---
 

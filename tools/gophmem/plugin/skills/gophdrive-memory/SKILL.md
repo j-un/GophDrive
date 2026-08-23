@@ -1,16 +1,20 @@
 ---
 name: gophdrive-memory
-description: Use this skill when the user wants to (a) save / record a design decision or reasoning ("保存して" "記録して" "覚えて" "decision を残す"), (b) recall a past decision or rationale ("なぜ前回 X にしたか?" "前回どう決めた?" "過去に同じ判断を見たか?"), (c) log an incident timeline or research findings ("インシデント記録" "incident:" "research:" "調査ログ"), (d) consult / contribute to cross-project, cross-device long-term knowledge that should outlive this conversation, or (e) set up the gophmem CLI itself ("gophmem セットアップ" "GOPHMEM_API_KEY 未設定" "API キー発行"). The skill writes to and queries the user's GophDrive Vault via the gophmem CLI. Prefer the auto-memory at ~/.claude/projects/.../memory/ for short-lived per-project state; prefer this skill for durable cross-cutting "why" notes that benefit from GophDrive's Web UI, graph view, and multi-device sync.
-version: 1.1.0
+description: Use this skill when the user wants to (a) save / record a design decision or reasoning ("保存して" "記録して" "覚えて" "decision を残す"), (b) recall a past decision or rationale ("なぜ前回 X にしたか?" "前回どう決めた?" "過去に同じ判断を見たか?"), (c) log an incident timeline or research findings ("インシデント記録" "incident:" "research:" "調査ログ"), (d) consult / contribute to cross-project, cross-device long-term knowledge that should outlive this conversation, or (e) set up the gophmem CLI itself ("gophmem セットアップ" "GOPHMEM_API_KEY 未設定" "API キー発行"). The skill writes to and queries the user's GophDrive Vault via the gophmem CLI. Short-lived project-local: Claude Code auto-memory (~/.claude/projects/.../memory/); Cursor → current conversation / AGENTS.md / project rules (no auto-memory dir). Durable, cross-cutting, multi-device: this skill + gophmem + GophDrive Vault.
+version: 1.2.0
 ---
 
 # GophDrive External Memory Skill
 
-Use GophDrive as Claude Code's external memory. Record and recall "why" knowledge that cannot be reconstructed from code or git history: design rationale, incident timelines, rejected alternatives, constraints.
+Use GophDrive as an agent's external memory. Record and recall "why" knowledge that cannot be reconstructed from code or git history: design rationale, incident timelines, rejected alternatives, constraints.
 
 ## This skill vs auto-memory
 
-Short-lived, project-local context aids → auto-memory (`~/.claude/projects/.../memory/`). Cross-cutting, durable, multi-device "why" notes → this skill.
+Short-lived, project-local context aids:
+- **Claude Code** → auto-memory (`~/.claude/projects/.../memory/`).
+- **Cursor** → current conversation, `AGENTS.md`, and project rules (no equivalent auto-memory directory).
+
+Cross-cutting, durable, multi-device "why" notes → this skill + `gophmem` + GophDrive Vault (both hosts).
 
 When the user asks "why did we previously choose X?" (typical: 「なぜ前回 X にしたか?」「前回どう決めた?」「過去に同じ判断を見たか?」), **search GophDrive before answering**.
 
@@ -73,7 +77,7 @@ Record knowledge that cannot be recovered from code or `git log`:
 - **Experiments** — approaches tried and dropped, with the result
 - **Operational procedures** — manual e2e verification, environment-specific setup
 
-Do not record: implementation detail the code already shows, history already in `git log`, or anything already in `CLAUDE.md`.
+Do not record: implementation detail the code already shows, history already in `git log`, or anything already in `CLAUDE.md`, `AGENTS.md`, or project rules.
 
 ## Note conventions
 
