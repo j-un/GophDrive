@@ -1,5 +1,5 @@
 {
   "name": "gophdrive-memory",
-  "description": "Use GophDrive as Claude Code's external memory for design decisions, incident logs, and cross-project knowledge",
+  "description": "Use GophDrive as an agent's external memory for design decisions, incident logs, and cross-project knowledge",
   "author": { "name": "Jun Tanaka" }
 }

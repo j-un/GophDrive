@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Install gophmem CLI + register the gophdrive-memory Skill globally.
+# Install gophmem CLI + register the gophdrive-memory Skill globally
+# (Claude Code and Cursor IDE + CLI/`agent`).
 #
 # Result:
-#   ~/.local/bin/gophmem                              (built from this directory)
-#   ~/.claude/skills/gophdrive-memory/SKILL.md  →  symlink into this repo
+#   ~/.local/bin/gophmem                               (built from this directory)
+#   ~/.claude/skills/gophdrive-memory/SKILL.md   →  symlink into this repo
+#   ~/.cursor/skills/gophdrive-memory/SKILL.md   →  same source (Cursor-native)
 #
-# Re-running is safe: rebuilds the binary, refreshes the symlink.
+# Re-running is safe: rebuilds the binary, refreshes both symlinks (`ln -snf`).
+# Skill pick-up requires a new Claude Code session and a new Cursor CLI/`agent`
+# session (Cursor loads skills at process start; `/skills` can confirm).
 
 set -euo pipefail
 
@@ -15,6 +19,9 @@ BIN_DIR="$HOME/.local/bin"
 SKILL_DIR="$HOME/.claude/skills/gophdrive-memory"
 SKILL_LINK="$SKILL_DIR/SKILL.md"
 LEGACY_FLAT_SKILL="$HOME/.claude/skills/gophdrive-memory.md"
+CURSOR_SKILL_DIR="$HOME/.cursor/skills/gophdrive-memory"
+CURSOR_SKILL_LINK="$CURSOR_SKILL_DIR/SKILL.md"
+CURSOR_LEGACY_FLAT_SKILL="$HOME/.cursor/skills/gophdrive-memory.md"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
@@ -50,6 +57,12 @@ ln -snf "$PLUGIN_SKILL_SRC" "$SKILL_LINK"
 ok "Linked $SKILL_LINK"
 info "    → $(readlink "$SKILL_LINK")"
 
+bold "Linking Skill into ~/.cursor/skills/ ..."
+mkdir -p "$CURSOR_SKILL_DIR"
+ln -snf "$PLUGIN_SKILL_SRC" "$CURSOR_SKILL_LINK"
+ok "Linked $CURSOR_SKILL_LINK"
+info "    → $(readlink "$CURSOR_SKILL_LINK")"
+
 # ---- 3. legacy flat file detection ----
 # Detect both real files and symlinks at the legacy path — either shadows the
 # new folder-format Skill of the same name.
@@ -59,6 +72,13 @@ if [[ -e "$LEGACY_FLAT_SKILL" || -L "$LEGACY_FLAT_SKILL" ]]; then
   info "  $LEGACY_FLAT_SKILL"
   info "It may shadow or conflict with the new folder-format Skill. Remove it manually:"
   info "  rm \"$LEGACY_FLAT_SKILL\""
+fi
+if [[ -e "$CURSOR_LEGACY_FLAT_SKILL" || -L "$CURSOR_LEGACY_FLAT_SKILL" ]]; then
+  echo
+  warn "Legacy flat-file Skill detected:"
+  info "  $CURSOR_LEGACY_FLAT_SKILL"
+  info "It may shadow or conflict with the new folder-format Skill. Remove it manually:"
+  info "  rm \"$CURSOR_LEGACY_FLAT_SKILL\""
 fi
 
 # ---- 4. env / config check ----
@@ -90,4 +110,6 @@ echo
 bold "Next steps"
 info "1. Open a new shell so PATH / env vars are picked up."
 info "2. Run: gophmem --help"
-info "3. Restart Claude Code so the gophdrive-memory Skill is loaded."
+info "3. Start a new Claude Code session and a new Cursor CLI/agent session"
+info "   so the gophdrive-memory Skill is loaded (Cursor loads skills at process"
+info "   start; run /skills to confirm)."
