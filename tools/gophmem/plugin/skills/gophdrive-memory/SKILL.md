@@ -1,6 +1,7 @@
 ---
 name: gophdrive-memory
-description: Use this skill when the user wants to (a) save / record a design decision or reasoning ("保存して" "記録して" "覚えて" "decision を残す"), (b) recall a past decision or rationale ("なぜ前回 X にしたか?" "前回どう決めた?" "過去に同じ判断を見たか?"), (c) log an incident timeline or research findings ("インシデント記録" "incident:" "research:" "調査ログ"), (d) consult / contribute to cross-project, cross-device long-term knowledge that should outlive this conversation, or (e) set up the gophmem CLI itself ("gophmem セットアップ" "GOPHMEM_API_KEY 未設定" "API キー発行"). The skill writes to and queries the user's GophDrive Vault via the gophmem CLI. Short-lived project-local: Claude Code auto-memory (~/.claude/projects/.../memory/); Cursor → current conversation / AGENTS.md / project rules (no auto-memory dir). Durable, cross-cutting, multi-device: this skill + gophmem + GophDrive Vault.
+description: >-
+  Use this skill when the user wants to (a) save / record a design decision or reasoning ("保存して" "記録して" "覚えて" "decision を残す"), (b) recall a past decision or rationale ("なぜ前回 X にしたか?" "前回どう決めた?" "過去に同じ判断を見たか?"), (c) log an incident timeline or research findings ("インシデント記録" "incident:" "research:" "調査ログ"), (d) consult / contribute to cross-project, cross-device long-term knowledge that should outlive this conversation, or (e) set up the gophmem CLI itself ("gophmem セットアップ" "GOPHMEM_API_KEY 未設定" "API キー発行"). The skill writes to and queries the user's GophDrive Vault via the gophmem CLI. Short-lived project-local: Claude Code auto-memory (~/.claude/projects/.../memory/); Cursor → current conversation / AGENTS.md / project rules (no auto-memory dir). Durable, cross-cutting, multi-device: this skill + gophmem + GophDrive Vault.
 version: 1.2.0
 ---
 
