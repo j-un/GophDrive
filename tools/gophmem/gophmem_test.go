@@ -953,3 +953,48 @@ func TestLooksLikeUUID(t *testing.T) {
 		}
 	}
 }
+
+// npx skills (yaml@2) rejects a plain scalar that contains ": " as a nested
+// mapping. The gophdrive-memory description includes trigger phrases like
+// "project-local: Claude" / "incident:" / "multi-device: this skill", so it
+// must be a quoted or block scalar — otherwise `npx skills list -g` skips it.
+func TestSkillMdDescriptionIsYAMLSafe(t *testing.T) {
+	raw, err := os.ReadFile("plugin/skills/gophdrive-memory/SKILL.md")
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	content := string(raw)
+	if !strings.HasPrefix(content, "---\n") {
+		t.Fatal("SKILL.md must start with YAML frontmatter")
+	}
+	rest := strings.TrimPrefix(content, "---\n")
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		t.Fatal("SKILL.md frontmatter is missing a closing ---")
+	}
+	fm := rest[:end]
+
+	var descLine string
+	for _, line := range strings.Split(fm, "\n") {
+		if strings.HasPrefix(line, "description:") {
+			descLine = line
+			break
+		}
+	}
+	if descLine == "" {
+		t.Fatal("SKILL.md frontmatter is missing description")
+	}
+	if !strings.Contains(fm, "name: gophdrive-memory") {
+		t.Fatal("SKILL.md frontmatter is missing name: gophdrive-memory")
+	}
+
+	val := strings.TrimSpace(strings.TrimPrefix(descLine, "description:"))
+	quoted := strings.HasPrefix(val, `"`) || strings.HasPrefix(val, "'")
+	block := strings.HasPrefix(val, ">") || strings.HasPrefix(val, "|")
+	if quoted || block {
+		return
+	}
+	if strings.Contains(val, ": ") {
+		t.Fatalf("unquoted description contains \": \", which YAML treats as a nested mapping (npx skills skips the skill): %q", val)
+	}
+}
