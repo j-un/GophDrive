@@ -53,7 +53,7 @@
   },
   "overrides": {
     "@rolldown/plugin-babel": {
-      "@babel/plugin-transform-runtime": "^8.0.0"
+      "@babel/plugin-transform-runtime": "^7.29.0"
     }
   }
 }

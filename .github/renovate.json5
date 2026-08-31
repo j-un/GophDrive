@@ -49,6 +49,18 @@
       matchPackageNames: ['typescript'],
       allowedVersions: '<7.0.0',
     },
+    // frontend/package.json pins @babel/plugin-transform-runtime to ^7.29.0
+    // under the unused @rolldown/plugin-babel optional peer so npm never
+    // resolves the 8.x line (which requires @babel/core@^8 and conflicts
+    // with workbox-build's @babel/core@^7). Renovate previously rewrote
+    // that pin to ^8.0.0 (commit 74496db), which re-broke artifact updates
+    // on PR #186. Keep the override on 7.x until vite-plugin-pwa /
+    // workbox-build move off Babel 7.
+    {
+      matchPackageNames: ['@babel/plugin-transform-runtime'],
+      matchFileNames: ['frontend/package.json'],
+      allowedVersions: '<8.0.0',
+    },
     {
       matchUpdateTypes: [
         'minor',

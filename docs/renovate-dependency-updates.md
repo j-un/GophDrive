@@ -57,8 +57,8 @@ or fix this class — there is no drift between `package.json` and
 `package-lock.json` to reconcile; the peer graph itself has no valid
 resolution as declared.
 
-`frontend/package.json`'s `@vitejs/plugin-react` (all `6.0.x` releases
-identically) declares an *optional* peer on `@rolldown/plugin-babel`, which
+`frontend/package.json`'s `@vitejs/plugin-react` (`6.0.x` and `6.1.0`)
+declares an *optional* peer on `@rolldown/plugin-babel`, which
 in turn declares an optional peer on `@babel/plugin-transform-runtime`
 `"^7.29.0 || ^8.0.0-rc.1"`. Neither package is actually installed — nothing
 in this repo uses Rolldown-Vite — but npm still walks optional peers of
@@ -69,14 +69,26 @@ conflicts with the real, required `@babel/core@^7.x` from `workbox-build`
 (via `vite-plugin-pwa`). Pinning `@vitejs/plugin-react` below the offending
 version (the fix used for `eslint`/`typescript` elsewhere in
 `renovate.json5`) does not work here, because the conflicting peer
-declaration is identical across every `6.0.x` release — confirmed locally by
-reproducing the same ERESOLVE against `6.0.2` through `6.0.5`.
+declaration is unchanged across `6.0.x` and `6.1.0` — confirmed locally
+against `6.0.2` through `6.0.5`, and again against `6.1.0` on PR #186.
 
 Fixed instead with a scoped `overrides` entry in `frontend/package.json`
 that pins `@babel/plugin-transform-runtime` to `^7.29.0` only when resolved
 underneath `@rolldown/plugin-babel`, so npm's peer check never reaches for
 the 8.x line. Occurred **2026-08-13** (PR #179 blocked; fixed on branch
 `fix/vitejs-plugin-react-eresolve`).
+
+That pin is load-bearing and must stay on 7.x. Renovate's npm manager
+treats `overrides` as regular dependencies, so it rewrote the range to
+`^8.0.0` in commit `74496db` (grouped into a non-major nodejs bump).
+The next grouped update then failed artifact generation with the same
+ERESOLVE (PR #186): npm walked `@vitejs/plugin-react@6.1.0` → optional
+`@rolldown/plugin-babel@0.2.3` → the overridden `^8.0.0` pin →
+`@babel/core@^8`, which still conflicts with `workbox-build`. Restore
+the override to `^7.29.0` and keep it there via
+`allowedVersions: '<8.0.0'` in `.github/renovate.json5` until
+`vite-plugin-pwa` / `workbox-build` move off Babel 7. `deps-sync.sh`
+still cannot detect or fix this class.
 
 ## Defense in depth
 
@@ -94,6 +106,10 @@ sufficient — each is documented here together with what it cannot do.
   disables it by default) so that backend's `// indirect` lines get bumped
   in the same grouped branch as core's direct bumps, instead of silently
   falling behind.
+- `allowedVersions: '<8.0.0'` on `@babel/plugin-transform-runtime` in
+  `frontend/package.json` stops Renovate rewriting the unused
+  `@rolldown/plugin-babel` override from `^7.29.0` to `^8.0.0` (the
+  rewrite in commit `74496db` re-broke artifact updates on PR #186).
 
 Config alone cannot fully solve this: the per-directory `go mod tidy` with
 massaged `replace` statements is a structural limitation of how Renovate's
