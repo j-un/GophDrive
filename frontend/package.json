@@ -23,7 +23,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.9",
-    "framer-motion": "^13.0.0",
+    "motion": "^13.0.0",
     "lucide-react": "^1.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
