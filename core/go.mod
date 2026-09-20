@@ -9,4 +9,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/dlclark/regexp2/v2 v2.7.2 // indirect
+require github.com/dlclark/regexp2/v2 v2.8.0 // indirect
