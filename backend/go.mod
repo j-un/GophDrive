@@ -1,6 +1,6 @@
 module github.com/jun/gophdrive/backend
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/aws/aws-lambda-go v1.55.0
@@ -20,7 +20,7 @@ require (
 	cloud.google.com/go/auth v0.23.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
+	github.com/alecthomas/chroma/v3 v3.0.0-alpha.5 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.4 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
@@ -44,8 +44,8 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.22 // indirect
 	github.com/googleapis/gax-go/v2 v2.24.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/yuin/goldmark v1.8.6 // indirect
-	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc // indirect
+	github.com/yuin/goldmark-highlighting/v3 v3.1.0 // indirect
+	github.com/yuin/goldmark/v2 v2.1.5 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect

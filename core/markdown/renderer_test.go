@@ -32,6 +32,11 @@ func TestRenderer_Render(t *testing.T) {
 			expected: "<pre><code class=\"language-mermaid\">graph TD;\n    A--&gt;B;\n</code></pre>\n",
 		},
 		{
+			name:     "Syntax highlighted Go fence",
+			input:    "```go\nfunc main() {}\n```",
+			expected: "class=\"chroma\"",
+		},
+		{
 			name:     "Empty Input",
 			input:    "",
 			expected: "",

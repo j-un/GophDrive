@@ -3,43 +3,49 @@ package markdown
 import (
 	"bytes"
 
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
-	"github.com/yuin/goldmark"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/renderer/html"
+	chromahtml "github.com/alecthomas/chroma/v3/formatters/html"
+	highlighting "github.com/yuin/goldmark-highlighting/v3"
+	"github.com/yuin/goldmark/v2/extension"
+	"github.com/yuin/goldmark/v2/parser"
+	"github.com/yuin/goldmark/v2/renderer/html"
 )
 
 // Renderer handles Markdown rendering.
 type Renderer struct {
-	md goldmark.Markdown
+	parser parser.Parser
+	html   html.Renderer
 }
 
 // NewRenderer creates a new Markdown renderer with extensions.
 func NewRenderer() *Renderer {
-	md := goldmark.New(
-		goldmark.WithExtensions(
-			extension.GFM, // GitHub Flavored Markdown (Table, Strikethrough, TaskList, Autolink)
-			highlighting.NewHighlighting(
+	p := parser.New(
+		parser.WithAutoHeadingID(),
+		parser.WithExtensions(
+			extension.GFMParser, // Table, Strikethrough, TaskList, Autolink
+			highlighting.Parser,
+		),
+	)
+	r := html.New(
+		html.WithHardWraps(),
+		html.WithXHTML(),
+		html.WithUnsafe(), // Allow raw HTML (needed for some Mermaid scenarios or user embedded HTML)
+		html.WithExtensions(
+			extension.GFMHTMLRenderer,
+			highlighting.NewHTMLRenderer(
 				highlighting.WithStyle("github"),
-				highlighting.WithFormatOptions(
+				highlighting.WithFormatterOptions(
 					chromahtml.WithClasses(true),
 				),
+				// Keep mermaid fences as plain <pre><code class="language-mermaid">
+				// instead of wrapping them in chroma markup.
+				highlighting.WithExcludeLanguages("mermaid"),
 			),
-		),
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-		),
-		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
-			html.WithXHTML(),
-			html.WithUnsafe(), // Allow raw HTML (needed for some Mermaid scenarios or user embedded HTML)
 		),
 	)
 
 	return &Renderer{
-		md: md,
+		parser: p,
+		html:   r,
 	}
 }
 
@@ -48,7 +54,8 @@ func NewRenderer() *Renderer {
 func (r *Renderer) Render(source []byte) ([]byte, error) {
 	_, body, _ := ParseFrontmatter(source)
 	var buf bytes.Buffer
-	if err := r.md.Convert(body, &buf); err != nil {
+	doc := r.parser.Parse(body)
+	if err := r.html.Render(&buf, body, doc); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
