@@ -11,9 +11,6 @@ say() { echo -e "${BLUE}==>${NC} $*"; }
 ok()  { echo -e "${GREEN}  ok${NC} $*"; }
 warn(){ echo -e "${YELLOW}  !!${NC} $*"; }
 
-# ---------------------------------------------------------------------------
-# 1. Required CLIs
-# ---------------------------------------------------------------------------
 say "Checking required CLIs"
 for bin in mise overmind docker aws; do
   if ! command -v "$bin" >/dev/null 2>&1; then
@@ -23,9 +20,6 @@ for bin in mise overmind docker aws; do
 done
 ok "mise / overmind / docker / aws present"
 
-# ---------------------------------------------------------------------------
-# 2. Toolchain (Go + Node) via mise
-# ---------------------------------------------------------------------------
 say "Installing toolchain via mise (.tool-versions)"
 mise install go node
 ok "go $(mise x go -- go version | awk '{print $3}') / node $(mise x node -- node --version)"
@@ -39,9 +33,6 @@ if [ ! -x "$GOBIN_DIR/air" ]; then
 fi
 ok "air installed at $GOBIN_DIR/air"
 
-# ---------------------------------------------------------------------------
-# 3. .env bootstrap
-# ---------------------------------------------------------------------------
 if [ ! -f "$ROOT/.env" ]; then
   cp "$ROOT/.env.example" "$ROOT/.env"
   ok ".env created from .env.example — edit it before signing in with real Google OAuth"
@@ -49,17 +40,11 @@ else
   ok ".env already exists (left untouched)"
 fi
 
-# ---------------------------------------------------------------------------
-# 4. JS deps
-# ---------------------------------------------------------------------------
 say "Installing JS dependencies"
 mise x node -- bash -c "cd '$ROOT/frontend' && npm ci"
 mise x node -- bash -c "cd '$ROOT/infra' && npm ci"
 ok "frontend & infra node_modules ready"
 
-# ---------------------------------------------------------------------------
-# 5. DynamoDB Local
-# ---------------------------------------------------------------------------
 say "Starting DynamoDB Local"
 docker compose up -d dynamodb-local
 echo -n "  waiting for DynamoDB Local on :8000 "
@@ -70,9 +55,6 @@ done
 echo
 ok "DynamoDB Local ready"
 
-# ---------------------------------------------------------------------------
-# 6. Create DynamoDB tables
-# ---------------------------------------------------------------------------
 say "Creating DynamoDB tables (idempotent)"
 # Local DynamoDB doesn't need real credentials. Strip any inherited AWS_PROFILE
 # (e.g. SSO profiles) to avoid an unrelated `aws login` prompt.
@@ -125,9 +107,6 @@ else
   ok "APIKeyHashes exists"
 fi
 
-# ---------------------------------------------------------------------------
-# 7. Initial Wasm build (so frontend doesn't 404 on first load before air settles)
-# ---------------------------------------------------------------------------
 say "Building initial core.wasm"
 mise x go -- bash -c "cd '$ROOT' && ./scripts/internal/build-wasm.sh"
 

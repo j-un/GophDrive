@@ -16,7 +16,6 @@ export default tseslint.config(
   {
     rules: {
       "@typescript-eslint/no-var-requires": "off",
-      // Allow any type where necessary, but we will fix any easily fixable ones
     },
   },
 );

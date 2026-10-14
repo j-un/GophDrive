@@ -13,9 +13,6 @@ const env: cdk.Environment = {
   region: process.env.CDK_DEFAULT_REGION || "ap-northeast-1",
 };
 
-// ==============================================================================
-// Stack instantiation
-// ==============================================================================
 const databaseStack = new DatabaseStack(app, "GophDriveDatabaseStack", {
   env,
   description: "GophDrive - DynamoDB tables",
