@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,7 +51,6 @@ func (m *LockManager) AcquireLock(ctx context.Context, fileID string, userID str
 		return nil, fmt.Errorf("failed to marshal session: %w", err)
 	}
 
-	// Condition: (attribute_not_exists(file_id)) OR (expires_at < :now) OR (user_id = :user_id)
 	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(m.tableName),
 		Item:      item,
@@ -64,8 +64,8 @@ func (m *LockManager) AcquireLock(ctx context.Context, fileID string, userID str
 	})
 
 	if err != nil {
-		if string(err.Error()) == "ConditionalCheckFailedException" {
-			// In AWS SDK v2, use errors.As(err, &condCheckFailed)
+		var locked *types.ConditionalCheckFailedException
+		if errors.As(err, &locked) {
 			return nil, fmt.Errorf("file is locked by another user")
 		}
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
@@ -79,17 +79,13 @@ func (m *LockManager) Heartbeat(ctx context.Context, fileID string, userID strin
 	now := time.Now().Unix()
 	expiresAt := now + int64(m.ttlDuration.Seconds())
 
-	// We only update if user_id matches and lock is not expired (safety check, though if it's expired we could re-acquire).
-	// But strictly heartbeat implies active session.
-	// If it expired, maybe we should re-acquire? Let's strictly update only if we own it.
-
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(m.tableName),
 		Key: map[string]types.AttributeValue{
 			"file_id": &types.AttributeValueMemberS{Value: fileID},
 		},
 		UpdateExpression:    aws.String("SET expires_at = :expires_at"),
-		ConditionExpression: aws.String("user_id = :user_id"), // Only if we own it
+		ConditionExpression: aws.String("user_id = :user_id"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":expires_at": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", expiresAt)},
 			":user_id":    &types.AttributeValueMemberS{Value: userID},
@@ -118,7 +114,7 @@ func (m *LockManager) ReleaseLock(ctx context.Context, fileID string, userID str
 		Key: map[string]types.AttributeValue{
 			"file_id": &types.AttributeValueMemberS{Value: fileID},
 		},
-		ConditionExpression: aws.String("user_id = :user_id"), // Only if we own it
+		ConditionExpression: aws.String("user_id = :user_id"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":user_id": &types.AttributeValueMemberS{Value: userID},
 		},
@@ -141,7 +137,7 @@ func (m *LockManager) GetLockStatus(ctx context.Context, fileID string) (*model.
 		return nil, fmt.Errorf("failed to get lock status: %w", err)
 	}
 	if out.Item == nil {
-		return nil, nil // No lock
+		return nil, nil
 	}
 
 	var session model.EditingSession
@@ -150,10 +146,9 @@ func (m *LockManager) GetLockStatus(ctx context.Context, fileID string) (*model.
 		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
 	}
 
-	// Check expiry
 	now := time.Now().Unix()
 	if session.ExpiresAt < now {
-		return nil, nil // Expired
+		return nil, nil
 	}
 
 	return &session, nil
