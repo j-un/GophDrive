@@ -16,10 +16,6 @@ import (
 	"github.com/jun/gophdrive/backend/internal/handler"
 )
 
-// TestMain defaults DEV_MODE=true for every test in this file so the
-// production-only X-Origin-Verify gate doesn't need a per-test header dance.
-// Tests that specifically exercise production bootstrap (fail-closed panic,
-// constant-time compare) override this with t.Setenv.
 func TestMain(m *testing.M) {
 	if err := os.Setenv("DEV_MODE", "true"); err != nil {
 		panic(err)
@@ -29,9 +25,6 @@ func TestMain(m *testing.M) {
 
 const csrfFrontendURL = "http://localhost:5173"
 
-// newCSRFTestApp builds a minimal App for CSRF tests.
-// apiGatewaySecret is intentionally empty so the X-Origin-Verify gate passes
-// (both sides are "" → condition false → not blocked).
 func newCSRFTestApp() *App {
 	p := dynamo.NewMemoryProvider()
 	store := apikey.NewInMemoryStore()
@@ -55,7 +48,6 @@ func TestCSRF_GETPassesWithoutOrigin(t *testing.T) {
 		Path:       "/api/notes",
 		Headers:    map[string]string{},
 	})
-	// 401 because no auth — but NOT 403 (CSRF gate does not apply to GET)
 	if resp.StatusCode == http.StatusForbidden {
 		t.Errorf("GET without Origin: want non-403, got 403 (CSRF gate should not apply to GET)")
 	}
@@ -83,7 +75,6 @@ func TestCSRF_POSTBlockedOnEmptyOrigin(t *testing.T) {
 		Path:       "/api/notes",
 		Headers: map[string]string{
 			"X-Requested-With": "XMLHttpRequest",
-			// Origin omitted — most common CSRF attack vector (form POST)
 		},
 	})
 	if resp.StatusCode != http.StatusForbidden {
@@ -98,7 +89,6 @@ func TestCSRF_POSTBlockedOnMissingXRW(t *testing.T) {
 		Path:       "/api/notes",
 		Headers: map[string]string{
 			"Origin": csrfFrontendURL,
-			// X-Requested-With omitted
 		},
 	})
 	if resp.StatusCode != http.StatusForbidden {
@@ -116,7 +106,6 @@ func TestCSRF_POSTPassesWithCorrectHeaders(t *testing.T) {
 			"X-Requested-With": "XMLHttpRequest",
 		},
 	})
-	// 401 because no auth — but NOT 403 (CSRF gate passed)
 	if resp.StatusCode == http.StatusForbidden {
 		t.Errorf("correct CSRF headers: want non-403, got 403")
 	}
@@ -132,7 +121,6 @@ func TestCSRF_RefreshPassesWithCorrectHeaders(t *testing.T) {
 			"X-Requested-With": "XMLHttpRequest",
 		},
 	})
-	// 401 because no valid session — but NOT 403 (CSRF gate passed)
 	if resp.StatusCode == http.StatusForbidden {
 		t.Errorf("/auth/refresh with correct CSRF headers: want non-403, got 403")
 	}
@@ -145,7 +133,6 @@ func TestCSRF_RefreshBlockedOnMissingXRW(t *testing.T) {
 		Path:       "/api/auth/refresh",
 		Headers: map[string]string{
 			"Origin": csrfFrontendURL,
-			// X-Requested-With omitted
 		},
 	})
 	if resp.StatusCode != http.StatusForbidden {
@@ -154,18 +141,16 @@ func TestCSRF_RefreshBlockedOnMissingXRW(t *testing.T) {
 }
 
 func TestCSRF_POSTWithAuthHeaderSkipsCsrf(t *testing.T) {
-	ta := newAPIKeyTestApp("csrf-api-user", "", "csrf-api-secret")
+	ta := newAPIKeyTestApp(t, "csrf-api-user", "", "csrf-api-secret")
 	ta.app.frontendURL = csrfFrontendURL
 	resp, _ := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "POST",
 		Path:       "/api/notes",
 		Headers: map[string]string{
 			"Authorization": "Bearer " + ta.keyPlain,
-			// Origin and X-Requested-With deliberately absent
 		},
 		Body: `{"name":"via-api-key","content":"hello"}`,
 	})
-	// API key is valid → 200 or 201, not 403
 	if resp.StatusCode == http.StatusForbidden {
 		t.Errorf("Bearer Authorization present: CSRF gate must not block, got 403")
 	}
@@ -180,7 +165,7 @@ func TestCSRF_POSTWithGarbageAuthHeaderTriggersCsrf(t *testing.T) {
 		HTTPMethod: "POST",
 		Path:       "/api/notes",
 		Headers: map[string]string{
-			"Authorization": "hello", // not "bearer ..." → CSRF gate applies
+			"Authorization": "hello",
 			"Origin":        "http://evil.example",
 		},
 	})
@@ -189,22 +174,19 @@ func TestCSRF_POSTWithGarbageAuthHeaderTriggersCsrf(t *testing.T) {
 	}
 }
 
-// apiKeyTestApp bundles a minimal App and the plaintext API key issued to it.
 type apiKeyTestApp struct {
 	app      *App
-	keyPlain string // 64-char hex plaintext for the issued key
+	keyPlain string
 }
 
-// newAPIKeyTestApp constructs a minimal App wired for API key tests.
-// dynamo.NewMemoryProvider() uses the in-memory map backend (no real DynamoDB).
-// apiGatewaySecret is intentionally left empty so the X-Origin-Verify gate
-// passes (both sides are "" → condition is false → not blocked).
-func newAPIKeyTestApp(userID, baseFolderID, jwtSecret string) apiKeyTestApp {
+func newAPIKeyTestApp(t *testing.T, userID, baseFolderID, jwtSecret string) apiKeyTestApp {
+	t.Helper()
 	store := apikey.NewInMemoryStore()
-	// Produce a deterministic plaintext for reproducible tests.
-	plain := fmt.Sprintf("%064s", userID) // pad to 64 chars
+	plain := fmt.Sprintf("%064s", userID)
 	hash := apikey.HashKey(plain)
-	store.Issue(context.Background(), userID, baseFolderID, hash, plain[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), userID, baseFolderID, hash, plain[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	p := dynamo.NewMemoryProvider()
 	app := &App{
@@ -222,7 +204,7 @@ func newAPIKeyTestApp(userID, baseFolderID, jwtSecret string) apiKeyTestApp {
 
 func TestAPIKey_CorrectKey(t *testing.T) {
 	const jwtSecret = "test-jwt-secret"
-	ta := newAPIKeyTestApp("112233445566", "", jwtSecret)
+	ta := newAPIKeyTestApp(t, "112233445566", "", jwtSecret)
 
 	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
@@ -238,7 +220,7 @@ func TestAPIKey_CorrectKey(t *testing.T) {
 }
 
 func TestAPIKey_WrongKey(t *testing.T) {
-	ta := newAPIKeyTestApp("sub123", "", "test-secret")
+	ta := newAPIKeyTestApp(t, "sub123", "", "test-secret")
 
 	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
@@ -254,7 +236,6 @@ func TestAPIKey_WrongKey(t *testing.T) {
 }
 
 func TestAPIKey_Unconfigured(t *testing.T) {
-	// An empty Store means no key is configured; a junk bearer should still fail JWT parse.
 	p := dynamo.NewMemoryProvider()
 	emptyApp := &App{
 		noteHandler:   handler.NewNoteHandler(p, "test-secret"),
@@ -263,7 +244,7 @@ func TestAPIKey_Unconfigured(t *testing.T) {
 		tagHandler:    handler.NewTagHandler(p, "test-secret"),
 		graphHandler:  handler.NewGraphHandler(p, "test-secret"),
 		apiKeyHandler: handler.NewAPIKeyHandler(apikey.NewInMemoryStore(), "test-secret"),
-		apiKeys:       apikey.NewInMemoryStore(), // empty — no key registered
+		apiKeys:       apikey.NewInMemoryStore(),
 		jwtSecret:     "test-secret",
 	}
 
@@ -281,7 +262,7 @@ func TestAPIKey_Unconfigured(t *testing.T) {
 }
 
 func TestAPIKey_NoAuthHeader(t *testing.T) {
-	ta := newAPIKeyTestApp("sub123", "", "test-secret")
+	ta := newAPIKeyTestApp(t, "sub123", "", "test-secret")
 
 	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
@@ -297,9 +278,7 @@ func TestAPIKey_NoAuthHeader(t *testing.T) {
 }
 
 func TestAPIKey_NonDemoUser(t *testing.T) {
-	// Agent sub must not start with "demo-user-" so the dynamo adapter treats
-	// the agent as a regular (uncapped, non-TTL) user. Verify ListNotes succeeds.
-	ta := newAPIKeyTestApp("google-oauth2|999888777", "", "jwt-secret")
+	ta := newAPIKeyTestApp(t, "google-oauth2|999888777", "", "jwt-secret")
 
 	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
@@ -315,15 +294,12 @@ func TestAPIKey_NonDemoUser(t *testing.T) {
 }
 
 func TestAPIKey_ScopeIsolation(t *testing.T) {
-	// The translated JWT must carry the correct userID so created notes land in
-	// the key owner's scope and are not visible to a different user.
 	const jwtSecret = "iso-secret"
 
-	taAgent := newAPIKeyTestApp("agent-sub-aaa", "", jwtSecret)
-	taOther := newAPIKeyTestApp("other-sub-bbb", "", jwtSecret)
+	taAgent := newAPIKeyTestApp(t, "agent-sub-aaa", "", jwtSecret)
+	taOther := newAPIKeyTestApp(t, "other-sub-bbb", "", jwtSecret)
 	ctx := context.Background()
 
-	// Create a note as the agent.
 	createResp, err := taAgent.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod: "POST",
 		Path:       "/api/notes",
@@ -337,7 +313,6 @@ func TestAPIKey_ScopeIsolation(t *testing.T) {
 		t.Fatalf("create: want 200/201, got %d body=%s", createResp.StatusCode, createResp.Body)
 	}
 
-	// ListNotes via agent key must return the note.
 	listResp, err := taAgent.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
 		Path:       "/api/notes",
@@ -353,7 +328,6 @@ func TestAPIKey_ScopeIsolation(t *testing.T) {
 		t.Error("expected at least one note in agent scope, got empty list")
 	}
 
-	// The other user's app (different key, different sub) must see an empty list.
 	otherListResp, err := taOther.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
 		Path:       "/api/notes",
@@ -371,14 +345,10 @@ func TestAPIKey_ScopeIsolation(t *testing.T) {
 }
 
 func TestAPIKey_FolderPlacement(t *testing.T) {
-	// Verifies that the gophmem CLI's actual wire payload ("parentId") correctly
-	// routes a created note into the specified folder — both the CLI and the handler
-	// must agree on the field name.
 	const jwtSecret = "placement-secret"
-	ta := newAPIKeyTestApp("placement-sub", "", jwtSecret)
+	ta := newAPIKeyTestApp(t, "placement-sub", "", jwtSecret)
 	ctx := context.Background()
 
-	// Create a destination folder.
 	folderResp, err := ta.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod: "POST",
 		Path:       "/api/folders",
@@ -398,7 +368,6 @@ func TestAPIKey_FolderPlacement(t *testing.T) {
 		t.Fatalf("parse folder response: %v body=%s", err, folderResp.Body)
 	}
 
-	// Create a note using parentId — gophmem's actual wire payload shape.
 	noteResp, err := ta.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod: "POST",
 		Path:       "/api/notes",
@@ -412,7 +381,6 @@ func TestAPIKey_FolderPlacement(t *testing.T) {
 		t.Fatalf("create note: want 200/201, got %d body=%s", noteResp.StatusCode, noteResp.Body)
 	}
 
-	// List notes in that specific folder — the note must appear there.
 	listResp, err := ta.app.HandleRequest(ctx, events.APIGatewayProxyRequest{
 		HTTPMethod:            "GET",
 		Path:                  "/api/notes",
@@ -430,12 +398,12 @@ func TestAPIKey_FolderPlacement(t *testing.T) {
 	}
 }
 
-// ---- translateAPIKey unit tests ----
-
 func TestTranslateAPIKey_CorrectKey(t *testing.T) {
 	store := apikey.NewInMemoryStore()
 	const plain, jwtSecret = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", "jwt-secret"
-	store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	tok, ok := translateAPIKey(
 		context.Background(),
@@ -456,11 +424,13 @@ func TestTranslateAPIKey_CorrectKey(t *testing.T) {
 func TestTranslateAPIKey_CaseInsensitiveHeader(t *testing.T) {
 	store := apikey.NewInMemoryStore()
 	const plain = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
-	store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	_, ok := translateAPIKey(
 		context.Background(),
-		map[string]string{"authorization": "Bearer " + plain}, // lowercase header name
+		map[string]string{"authorization": "Bearer " + plain},
 		store, "jwt-secret",
 	)
 	if !ok {
@@ -471,7 +441,9 @@ func TestTranslateAPIKey_CaseInsensitiveHeader(t *testing.T) {
 func TestTranslateAPIKey_CaseInsensitiveBearer(t *testing.T) {
 	store := apikey.NewInMemoryStore()
 	const plain = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
-	store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), "sub-123", "", apikey.HashKey(plain), plain[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, scheme := range []string{"bearer ", "BEARER ", "Bearer "} {
 		_, ok := translateAPIKey(
@@ -487,7 +459,9 @@ func TestTranslateAPIKey_CaseInsensitiveBearer(t *testing.T) {
 
 func TestTranslateAPIKey_WrongKey(t *testing.T) {
 	store := apikey.NewInMemoryStore()
-	store.Issue(context.Background(), "sub-123", "", apikey.HashKey("real-key"), "real-key"[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), "sub-123", "", apikey.HashKey("real-key"), "real-key"[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	_, ok := translateAPIKey(
 		context.Background(),
@@ -529,7 +503,6 @@ func TestTranslateAPIKey_EmptyStore(t *testing.T) {
 	}
 }
 
-// errStore simulates a DynamoDB failure on every operation.
 type errStore struct{}
 
 func (errStore) Issue(_ context.Context, _, _, _, _ string) error {
@@ -546,7 +519,6 @@ func (errStore) Revoke(_ context.Context, _ string) error {
 }
 
 func TestTranslateAPIKey_StoreError(t *testing.T) {
-	// A store error must be treated as a miss so human sessions are unaffected.
 	_, ok := translateAPIKey(
 		context.Background(),
 		map[string]string{"Authorization": "Bearer some-key"},
@@ -562,7 +534,9 @@ func TestAPIKey_RevokedKeyReturns401(t *testing.T) {
 	store := apikey.NewInMemoryStore()
 	plain := fmt.Sprintf("%064s", "revoked-sub")
 	hash := apikey.HashKey(plain)
-	store.Issue(context.Background(), "revoked-sub", "", hash, plain[:8]) //nolint:errcheck
+	if err := store.Issue(context.Background(), "revoked-sub", "", hash, plain[:8]); err != nil {
+		t.Fatal(err)
+	}
 
 	p := dynamo.NewMemoryProvider()
 	app := &App{
@@ -576,7 +550,6 @@ func TestAPIKey_RevokedKeyReturns401(t *testing.T) {
 		jwtSecret:     jwtSecret,
 	}
 
-	// Key must work before revocation.
 	preResp, err := app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
 		Path:       "/api/notes",
@@ -589,9 +562,10 @@ func TestAPIKey_RevokedKeyReturns401(t *testing.T) {
 		t.Fatalf("before revoke: want 200, got %d body=%s", preResp.StatusCode, preResp.Body)
 	}
 
-	store.Revoke(context.Background(), "revoked-sub") //nolint:errcheck
+	if err := store.Revoke(context.Background(), "revoked-sub"); err != nil {
+		t.Fatal(err)
+	}
 
-	// Same key must now be rejected.
 	postResp, err := app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
 		Path:       "/api/notes",
@@ -634,8 +608,6 @@ func TestAPIKey_RequiresOriginVerify(t *testing.T) {
 	}
 }
 
-// ---- injectSessionCookie unit tests ----
-
 func TestInjectSessionCookie_NilHeaders(t *testing.T) {
 	req := events.APIGatewayProxyRequest{Headers: nil}
 	injectSessionCookie(&req, "tok-abc")
@@ -650,7 +622,6 @@ func TestInjectSessionCookie_NoExistingCookie(t *testing.T) {
 	if req.Headers["Cookie"] != "session_token=tok-123" {
 		t.Errorf("no-prior-cookie: got %q", req.Headers["Cookie"])
 	}
-	// Original header must be preserved.
 	if req.Headers["X-Custom"] != "val" {
 		t.Errorf("X-Custom was dropped: %v", req.Headers)
 	}
@@ -665,7 +636,6 @@ func TestInjectSessionCookie_ExistingCookiePreserved(t *testing.T) {
 	if !strings.Contains(got, "other=value") || !strings.Contains(got, "session_token=tok-xyz") {
 		t.Errorf("existing cookie not preserved: got %q", got)
 	}
-	// Canonical key only — no duplicate.
 	if _, hasLower := req.Headers["cookie"]; hasLower {
 		t.Error("duplicate lowercase 'cookie' key left in map")
 	}
@@ -673,10 +643,9 @@ func TestInjectSessionCookie_ExistingCookiePreserved(t *testing.T) {
 
 func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
 	req := events.APIGatewayProxyRequest{
-		Headers: map[string]string{"cookie": "prior=1"}, // lowercase
+		Headers: map[string]string{"cookie": "prior=1"},
 	}
 	injectSessionCookie(&req, "tok-lower")
-	// The old lowercase key must be gone.
 	if _, hasLower := req.Headers["cookie"]; hasLower {
 		t.Error("lowercase 'cookie' key not removed after normalisation")
 	}
@@ -686,10 +655,6 @@ func TestInjectSessionCookie_LowercaseCookieNormalised(t *testing.T) {
 	}
 }
 
-// setProdEnv forces production mode (DEV_MODE unset) with hermetic fake AWS
-// credentials and blanks the three *_PARAM overrides so the default SSM
-// param paths apply. Shared by the NewAppWithResolver panic/no-panic tests
-// below to avoid duplicating the same seven t.Setenv calls.
 func setProdEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DEV_MODE", "")
@@ -701,8 +666,6 @@ func setProdEnv(t *testing.T) {
 	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
 }
 
-// fakeResolver fails the secret named failName and resolves all others. An
-// empty failName means "never fail" — used for the all-secrets-resolve case.
 type fakeResolver struct{ failName string }
 
 func (f *fakeResolver) GetSecret(_ context.Context, name string) (string, error) {
@@ -712,13 +675,6 @@ func (f *fakeResolver) GetSecret(_ context.Context, name string) (string, error)
 	return "resolved-" + name, nil
 }
 
-// NewAppWithResolver must fail-closed in production (DEV_MODE!="true") when
-// the resolver cannot return a required secret — a warn-and-continue path
-// would let a public fallback JWT secret sign forgeable sessions or leave
-// the X-Origin-Verify gate accepting the empty string. The panic matches the
-// existing SDK-config panic precedent at cmd/api init. Secrets are fetched
-// in order Google -> JWT -> API Gateway, and fakeResolver fails exactly one
-// param name, so each row below genuinely exercises its own branch.
 func TestNewAppWithResolver_ProductionPanicsPerSecret(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -750,9 +706,6 @@ func TestNewAppWithResolver_ProductionPanicsPerSecret(t *testing.T) {
 	}
 }
 
-// Positive control for TestNewAppWithResolver_ProductionPanicsPerSecret:
-// when every secret resolves, NewAppWithResolver must not panic in
-// production mode.
 func TestNewAppWithResolver_AllSecretsResolve_NoPanic(t *testing.T) {
 	setProdEnv(t)
 
@@ -768,16 +721,11 @@ func TestNewAppWithResolver_AllSecretsResolve_NoPanic(t *testing.T) {
 	}
 }
 
-// In DEV_MODE, NewApp must NOT panic even when the EnvResolver cannot find
-// the expected env vars — local dev must remain runnable so a broken .env
-// surfaces as a downstream error rather than a cold-start crash.
 func TestNewApp_DevModeDoesNotPanicOnMissingSecrets(t *testing.T) {
 	t.Setenv("DEV_MODE", "true")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
-	// Ensure param overrides and their resolved env vars are unset so the
-	// EnvResolver returns an error for each secret.
 	t.Setenv("GOOGLE_CLIENT_SECRET_PARAM", "")
 	t.Setenv("JWT_SECRET_PARAM", "")
 	t.Setenv("API_GATEWAY_SECRET_PARAM", "")
@@ -797,12 +745,9 @@ func TestNewApp_DevModeDoesNotPanicOnMissingSecrets(t *testing.T) {
 	}
 }
 
-// Phase 3c regression: Authorization: Bearer <session-JWT> without a Cookie
-// must no longer authenticate (Bearer read path has been removed).
 func TestBearerSessionJWT_NoLongerAuthenticates(t *testing.T) {
-	ta := newAPIKeyTestApp("bearer-jwt-user", "", "jwt-secret")
+	ta := newAPIKeyTestApp(t, "bearer-jwt-user", "", "jwt-secret")
 
-	// Mint a valid session JWT directly (not via API key exchange).
 	tok, err := handler.SignSession(handler.SessionClaims{UserID: "bearer-jwt-user"}, 5*60*1e9, "jwt-secret")
 	if err != nil {
 		t.Fatalf("SignSession: %v", err)

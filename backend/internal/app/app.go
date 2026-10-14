@@ -78,7 +78,6 @@ func NewAppWithResolver(ctx context.Context, resolver secret.Resolver) *App {
 		fmt.Println("Using DynamoDB-backed storage (DEV_MODE=true)")
 	}
 
-	// ---------- Secret Resolver ----------
 	if resolver == nil {
 		if devMode {
 			resolver = secret.NewEnvResolver()
@@ -112,10 +111,6 @@ func NewAppWithResolver(ctx context.Context, resolver secret.Resolver) *App {
 		}
 		log.Printf("WARNING: failed to resolve JWT_SECRET: %v", err)
 	}
-	// The old "default-dev-secret" fallback used to paper over an empty
-	// jwtSecret in dev; without it a misconfigured .env silently signs with
-	// an empty HMAC key, which surfaces later as opaque "invalid session"
-	// errors. Shout loudly here so the cause is unmistakable in the logs.
 	if devMode && jwtSecret == "" {
 		log.Printf("WARNING: JWT_SECRET is empty; sessions will be signed with an empty HMAC key (dev mode)")
 	}
@@ -149,7 +144,6 @@ func NewAppWithResolver(ctx context.Context, resolver secret.Resolver) *App {
 		}
 	}
 
-	// OIDC-only scopes — Drive scope was removed when storage moved to DynamoDB.
 	oauthConfig := &oauth2.Config{
 		ClientID:     googleClientID,
 		ClientSecret: googleClientSecret,
@@ -246,11 +240,6 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		path = strings.TrimPrefix(path, "/api")
 	}
 
-	// CSRF defense: Cookie-only POST/PUT/PATCH/DELETE requests must carry a matching
-	// Origin and X-Requested-With: XMLHttpRequest header. Bearer-authenticated
-	// requests are exempted — programmatic clients (CLI, API keys) send an explicit
-	// Authorization header and cannot accidentally ride Cookies across origins.
-	// NOTE: this check must run before translateAPIKey so it sees the original header.
 	if method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
 		authHeader := getRequestHeader(req, "Authorization")
 		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
@@ -272,9 +261,6 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		}
 	}
 
-	// Translate an API key (Bearer <plaintext>) to a short-lived session JWT and
-	// inject it as a Cookie so downstream GetTokenString (cookie-only) can find it.
-	// Revocation is immediate — DynamoDB lookup on every request.
 	if tok, ok := translateAPIKey(ctx, req.Headers, app.apiKeys, app.jwtSecret); ok {
 		injectSessionCookie(&req, tok)
 	}
@@ -283,48 +269,45 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 		req.PathParameters = make(map[string]string)
 	}
 
-	// /api-keys — API key lifecycle for programmatic access
 	if path == "/api-keys" {
 		if method == "POST" {
-			return corsResponse(must(app.apiKeyHandler.Issue(ctx, req))), nil
+			return corsResponse(responseOr500(app.apiKeyHandler.Issue(ctx, req))), nil
 		}
 		if method == "GET" {
-			return corsResponse(must(app.apiKeyHandler.Get(ctx, req))), nil
+			return corsResponse(responseOr500(app.apiKeyHandler.Get(ctx, req))), nil
 		}
 		if method == "DELETE" {
-			return corsResponse(must(app.apiKeyHandler.Delete(ctx, req))), nil
+			return corsResponse(responseOr500(app.apiKeyHandler.Delete(ctx, req))), nil
 		}
 	}
 
-	// /auth
 	if strings.HasPrefix(path, "/auth") {
 		if path == "/auth/login" && method == "GET" {
-			return corsResponse(must(app.authHandler.Login(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.Login(ctx, req))), nil
 		}
 		if path == "/auth/callback" && method == "GET" {
-			return corsResponse(must(app.authHandler.Callback(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.Callback(ctx, req))), nil
 		}
 		if path == "/auth/demo-login" && method == "GET" {
-			return corsResponse(must(app.authHandler.DemoLogin(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.DemoLogin(ctx, req))), nil
 		}
 		if path == "/auth/logout" && method == "POST" {
-			return corsResponse(must(app.authHandler.Logout(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.Logout(ctx, req))), nil
 		}
 		if path == "/auth/refresh" && method == "POST" {
-			return corsResponse(must(app.authHandler.Refresh(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.Refresh(ctx, req))), nil
 		}
 		if path == "/auth/user" && method == "GET" {
-			return corsResponse(must(app.authHandler.GetUser(ctx, req))), nil
+			return corsResponse(responseOr500(app.authHandler.GetUser(ctx, req))), nil
 		}
 	}
 
-	// /notes
 	if strings.HasPrefix(path, "/notes") {
 		if path == "/notes" && method == "GET" {
-			return corsResponse(must(app.noteHandler.ListNotes(ctx, req))), nil
+			return corsResponse(responseOr500(app.noteHandler.ListNotes(ctx, req))), nil
 		}
 		if path == "/notes" && method == "POST" {
-			return corsResponse(must(app.noteHandler.CreateNote(ctx, req))), nil
+			return corsResponse(responseOr500(app.noteHandler.CreateNote(ctx, req))), nil
 		}
 		if len(path) > len("/notes/") {
 			pathParts := strings.Split(strings.Trim(path, "/"), "/")
@@ -332,45 +315,44 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 			req.PathParameters["id"] = id
 
 			if method == "GET" {
-				return corsResponse(must(app.noteHandler.GetNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.GetNote(ctx, req))), nil
 			}
 			if method == "PUT" {
-				return corsResponse(must(app.noteHandler.UpdateNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.UpdateNote(ctx, req))), nil
 			}
 			if method == "POST" && strings.HasSuffix(path, "/delete") {
 				if len(pathParts) >= 2 && pathParts[len(pathParts)-1] == "delete" {
 					req.PathParameters["id"] = pathParts[len(pathParts)-2]
 				}
-				return corsResponse(must(app.noteHandler.DeleteNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.DeleteNote(ctx, req))), nil
 			}
 			if method == "POST" && strings.HasSuffix(path, "/copy") {
 				if len(pathParts) >= 2 && pathParts[len(pathParts)-1] == "copy" {
 					req.PathParameters["id"] = pathParts[len(pathParts)-2]
 				}
-				return corsResponse(must(app.noteHandler.DuplicateNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.DuplicateNote(ctx, req))), nil
 			}
 			if method == "PATCH" {
-				return corsResponse(must(app.noteHandler.PatchNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.PatchNote(ctx, req))), nil
 			}
 			if method == "DELETE" {
-				return corsResponse(must(app.noteHandler.DeleteNote(ctx, req))), nil
+				return corsResponse(responseOr500(app.noteHandler.DeleteNote(ctx, req))), nil
 			}
 		}
 	}
 
 	if path == "/starred" && method == "GET" {
-		return corsResponse(must(app.noteHandler.ListStarredNotes(ctx, req))), nil
+		return corsResponse(responseOr500(app.noteHandler.ListStarredNotes(ctx, req))), nil
 	}
 
 	if path == "/recent" && method == "GET" {
-		return corsResponse(must(app.noteHandler.ListRecentNotes(ctx, req))), nil
+		return corsResponse(responseOr500(app.noteHandler.ListRecentNotes(ctx, req))), nil
 	}
 
 	if path == "/folders" && method == "POST" {
-		return corsResponse(must(app.noteHandler.CreateFolder(ctx, req))), nil
+		return corsResponse(responseOr500(app.noteHandler.CreateFolder(ctx, req))), nil
 	}
 
-	// /sessions
 	if strings.HasPrefix(path, "/sessions/") {
 		parts := strings.Split(strings.TrimPrefix(path, "/sessions/"), "/")
 		if len(parts) >= 2 {
@@ -379,36 +361,36 @@ func (app *App) HandleRequest(ctx context.Context, req events.APIGatewayProxyReq
 
 			if action == "lock" {
 				if method == "POST" {
-					return corsResponse(must(app.sessionHandler.AcquireLock(ctx, req))), nil
+					return corsResponse(responseOr500(app.sessionHandler.AcquireLock(ctx, req))), nil
 				}
 				if method == "DELETE" {
-					return corsResponse(must(app.sessionHandler.ReleaseLock(ctx, req))), nil
+					return corsResponse(responseOr500(app.sessionHandler.ReleaseLock(ctx, req))), nil
 				}
 			}
 			if action == "heartbeat" && method == "POST" {
-				return corsResponse(must(app.sessionHandler.Heartbeat(ctx, req))), nil
+				return corsResponse(responseOr500(app.sessionHandler.Heartbeat(ctx, req))), nil
 			}
 		}
 	}
 
 	if path == "/sync/check" && method == "POST" {
-		return corsResponse(must(app.syncHandler.CheckConflict(ctx, req))), nil
+		return corsResponse(responseOr500(app.syncHandler.CheckConflict(ctx, req))), nil
 	}
 
 	if path == "/search" && method == "GET" {
-		return corsResponse(must(app.searchHandler.Search(ctx, req))), nil
+		return corsResponse(responseOr500(app.searchHandler.Search(ctx, req))), nil
 	}
 
 	if path == "/tags" && method == "GET" {
-		return corsResponse(must(app.tagHandler.ListTags(ctx, req))), nil
+		return corsResponse(responseOr500(app.tagHandler.ListTags(ctx, req))), nil
 	}
 
 	if path == "/export" && method == "GET" {
-		return corsResponse(must(app.exportHandler.Export(ctx, req))), nil
+		return corsResponse(responseOr500(app.exportHandler.Export(ctx, req))), nil
 	}
 
 	if path == "/graph" && method == "GET" {
-		return corsResponse(must(app.graphHandler.Graph(ctx, req))), nil
+		return corsResponse(responseOr500(app.graphHandler.Graph(ctx, req))), nil
 	}
 
 	return corsResponse(events.APIGatewayProxyResponse{
@@ -435,7 +417,7 @@ func translateAPIKey(ctx context.Context, headers map[string]string, store apike
 	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		return "", false
 	}
-	candidate := authHeader[7:] // "bearer " is always 7 bytes after ToLower+HasPrefix normalisation
+	candidate := authHeader[7:]
 	hash := apikey.HashKey(candidate)
 
 	userID, baseFolderID, ok, err := store.Lookup(ctx, hash)
@@ -481,7 +463,6 @@ func injectSessionCookie(req *events.APIGatewayProxyRequest, tok string) {
 	req.Headers["Cookie"] = cookie
 }
 
-// corsResponse adds CORS headers to an API Gateway response.
 func corsResponse(resp events.APIGatewayProxyResponse) events.APIGatewayProxyResponse {
 	if resp.Headers == nil {
 		resp.Headers = make(map[string]string)
@@ -496,8 +477,7 @@ func corsResponse(resp events.APIGatewayProxyResponse) events.APIGatewayProxyRes
 	return resp
 }
 
-// must unwraps a handler response, ignoring the error.
-func must(resp events.APIGatewayProxyResponse, err error) events.APIGatewayProxyResponse {
+func responseOr500(resp events.APIGatewayProxyResponse, err error) events.APIGatewayProxyResponse {
 	if err != nil {
 		fmt.Printf("Handler error: %v\n", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Internal Server Error"}
