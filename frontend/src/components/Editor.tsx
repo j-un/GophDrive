@@ -72,8 +72,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const selectionCbRef = useRef<EditorProps["onSelectionChange"]>(undefined);
   selectionCbRef.current = onSelectionChange;
 
-  // Frozen at mount — the only part of `value` <CodeMirror> is still allowed to
-  // see. See the note above the element.
   const [initialValue] = useState(value);
 
   // Values this editor pushed out through `onChange`, oldest first. CodeMirror
@@ -111,13 +109,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     [onChange],
   );
 
-  // Writes `next` into the document unless it is one of our own echoes, in
-  // which case the document stays authoritative. A matched echo is drained
-  // along with everything older, so the list never outgrows the commits still
-  // in flight. The write is tagged `ExternalChange` — the same annotation the
-  // library uses for its own controlled-value writes — which keeps it out of
-  // `onChange`: the caller handed us this text, so sending it straight back
-  // would only be a round trip through the parent's state.
   const syncDoc = useCallback((target: EditorView, next: string) => {
     const idx = echoRef.current.indexOf(next);
     if (idx >= 0) {
@@ -137,8 +128,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     syncDoc(view, value);
   }, [value, view, syncDoc]);
 
-  // Extensions are stable across renders — the selection listener reads the
-  // callback from a ref so we don't churn the extension array.
   const extensions = useMemo(
     () => [
       markdown({ base: markdownLanguage, codeLanguages: languages }),

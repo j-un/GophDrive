@@ -1,18 +1,3 @@
-// CodeMirror 6 theme for GophDrive's "Quiet" redesign.
-//
-// Uses CSS variables from globals.css so a single theme covers both light and
-// dark modes automatically — CodeMirror re-reads the variables on every paint,
-// so a `data-theme` flip on <html> is picked up without re-mounting the editor.
-//
-// Extensions exported from this module (combined by `quietEditorExtensions`):
-//   - EditorView.theme  — colors, typography, 660px centered column
-//   - HighlightStyle    — markdown token colors (see `quietHighlightStyle`)
-//   - ViewPlugin        — wikilink + tag mark decorations (`primaryAccentPlugin`)
-//   - keymap            — Mod-B / Mod-I / Mod-Shift-x → toggleBold/Italic/Strike
-//
-// The regexes for wikilink and tag matching are exported as pure constants so
-// they can be unit-tested without spinning up a CodeMirror view.
-
 import {
   HighlightStyle,
   syntaxHighlighting,
@@ -36,10 +21,6 @@ import {
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 
 import { toggleBold, toggleItalic, toggleStrike } from "./markdownCommands";
-
-// ---------------------------------------------------------------------------
-// Theme (colors + typography)
-// ---------------------------------------------------------------------------
 
 /**
  * Base editor theme. Depends only on CSS variables — swaps light/dark via
@@ -81,7 +62,6 @@ export const quietEditorTheme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-content ::selection": {
     background: "var(--selection)",
   },
-  // Neutralize any residual active-line / gutter background from defaults.
   ".cm-activeLine": {
     backgroundColor: "transparent",
   },
@@ -98,17 +78,7 @@ export const quietEditorTheme = EditorView.theme({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Syntax highlight (Lezer markdown tags)
-// ---------------------------------------------------------------------------
-
-/**
- * Highlight style for the markdown grammar. Only colors/weights — layout is
- * handled by `quietEditorTheme` above.
- */
 export const quietHighlightStyle = HighlightStyle.define([
-  // Headings: bold in the body color. Mark chars (`#`) are demoted via
-  // `tags.processingInstruction`/`tags.meta` below.
   {
     tag: [
       t.heading,
@@ -125,24 +95,17 @@ export const quietHighlightStyle = HighlightStyle.define([
   { tag: t.strong, fontWeight: "700" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through" },
-  // Markdown control characters: `#`, `**`, `- [ ]`, `>`, list bullets, etc.
   {
     tag: [t.processingInstruction, t.punctuation, t.meta, t.contentSeparator],
     color: "var(--text-faint)",
   },
   { tag: t.quote, color: "var(--text-secondary)" },
   { tag: [t.link, t.url], color: "var(--primary)" },
-  // Inline code and fenced code: secondary text color to distinguish from
-  // surrounding prose (font is already monospace via the base theme).
   {
     tag: t.monospace,
     color: "var(--text-secondary)",
   },
 ]);
-
-// ---------------------------------------------------------------------------
-// wikilink + tag decorations
-// ---------------------------------------------------------------------------
 
 /**
  * Matches `[[Title]]` — same shape as `lib/linkifyWikilinks.ts`. Title
@@ -166,14 +129,6 @@ export const WIKILINK_RE = /\[\[([^[\]\n|#]+?)\]\]/g;
 export const TAG_RE =
   /(^|[\s>、。，．！？「」『』【】（）[\]])#([\p{L}_][\p{L}\p{N}_\-/]*)/gmu;
 
-/**
- * Lezer node names that mark code content in the markdown grammar (fenced
- * code, indented code blocks, and inline code, plus their inner text/mark
- * nodes). `resolveInner` walks up through these when a match position falls
- * inside one, so wikilink/tag decoration can be skipped there — mirroring
- * the `<pre>`/`<code>` skip that `lib/linkifyWikilinks.ts` and
- * `lib/linkifyTags.ts` apply to rendered HTML.
- */
 const CODE_NODE_NAMES = new Set([
   "FencedCode",
   "CodeBlock",
@@ -204,10 +159,9 @@ const wikilinkDecorator = new MatchDecorator({
 const tagDecorator = new MatchDecorator({
   regexp: TAG_RE,
   decorate(add, from, _to, match, view) {
-    // Skip the boundary character (match[1]) — decorate only from `#` onward.
     const boundaryLen = match[1].length;
     const start = from + boundaryLen;
-    const end = start + 1 /* '#' */ + match[2].length;
+    const end = start + 1 + match[2].length;
     if (isInCodeNode(view.state, start)) return;
     add(start, end, accentMark);
   },
@@ -244,17 +198,8 @@ const accentTheme = EditorView.theme({
   ".cm-quiet-accent": { color: "var(--primary)" },
 });
 
-// ---------------------------------------------------------------------------
-// Keymap (⌘B / ⌘I / ⌘⇧X)
-// ---------------------------------------------------------------------------
-
 type MarkdownCmd = (state: EditorState) => TransactionSpec;
 
-/**
- * Wraps a pure `markdownCommands` builder into a CodeMirror `Command`:
- * dispatches the resulting TransactionSpec and returns true so key dispatch
- * stops after the shortcut fires.
- */
 function runMarkdownCmd(build: MarkdownCmd): (view: EditorView) => boolean {
   return (view) => {
     view.dispatch(build(view.state));
@@ -272,19 +217,6 @@ export const quietMarkdownKeymap = keymap.of([
   },
 ]);
 
-// ---------------------------------------------------------------------------
-// Bundled extension
-// ---------------------------------------------------------------------------
-
-/**
- * All Quiet-theme extensions in a single array, ready to spread into a
- * CodeMirror `extensions` prop. Order:
- *   1. base theme
- *   2. accent theme (needed for `.cm-quiet-accent`)
- *   3. syntax highlight
- *   4. accent plugin (wikilink + tag)
- *   5. keymap (⌘B / ⌘I / ⌘⇧X)
- */
 export const quietEditorExtensions: Extension[] = [
   quietEditorTheme,
   accentTheme,

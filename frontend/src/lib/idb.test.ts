@@ -8,7 +8,6 @@ import {
   LocalNote,
 } from "./idb";
 
-// Use unique IDs per test to avoid cross-test state issues
 let testCounter = 0;
 function uniqueId() {
   return `note-${++testCounter}-${Date.now()}`;

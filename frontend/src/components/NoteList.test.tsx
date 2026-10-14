@@ -180,7 +180,6 @@ describe("NoteList — new note flow", () => {
     const { rerender } = render(<NoteList createNoteSignal={0} />);
     await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
 
-    // Simulates DrivePage incrementing the signal on button click or ⌘N.
     rerender(<NoteList createNoteSignal={1} />);
 
     const input = await screen.findByPlaceholderText("Note name...");

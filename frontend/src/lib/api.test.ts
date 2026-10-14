@@ -24,7 +24,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Fake fetch helper
 function fakeFetch(
   status: number,
   body: unknown = {},
@@ -89,7 +88,7 @@ describe("apiFetch", () => {
     const mockFetch = vi.fn().mockImplementation(async (url: string) => {
       const idx = callIdx++;
       const isRefresh = url.includes("/auth/refresh");
-      const ok = isRefresh || idx > 0; // first non-refresh → 401, rest → 200
+      const ok = isRefresh || idx > 0;
       return {
         ok,
         status: ok ? 200 : 401,
@@ -110,21 +109,18 @@ describe("apiFetch", () => {
     });
 
     expect(result.status).toBe(200);
-    expect(mockFetch).toHaveBeenCalledTimes(3); // original → refresh → retry
+    expect(mockFetch).toHaveBeenCalledTimes(3);
 
     const calls = (mockFetch as ReturnType<typeof vi.fn>).mock.calls;
 
-    // Original request: no Authorization, has X-Requested-With
     const [, origInit] = calls[0];
     expect(origInit.headers?.["Authorization"]).toBeUndefined();
     expect(origInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
 
-    // Refresh call: no Authorization, has X-Requested-With
     const [, refreshInit] = calls[1];
     expect(refreshInit.headers?.["Authorization"]).toBeUndefined();
     expect(refreshInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
 
-    // Retry: no Authorization, has X-Requested-With, original body preserved
     const [, retryInit] = calls[2];
     expect(retryInit.headers?.["Authorization"]).toBeUndefined();
     expect(retryInit.headers?.["X-Requested-With"]).toBe("XMLHttpRequest");
@@ -528,7 +524,6 @@ describe("getBreadcrumbs", () => {
           status: 200,
           body: { id: FOLDER_A, name: "FolderA", parents: [FOLDER_B] },
         },
-        // FOLDER_B not in routes → 404 → traversal stops
       }),
     );
 

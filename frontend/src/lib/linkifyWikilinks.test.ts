@@ -97,10 +97,7 @@ describe("linkifyWikilinks", () => {
       "<pre><code>[[Auth Design]]</code>[[Auth Design]]</pre><p>[[Auth Design]]</p>";
     const result = linkifyWikilinks(html, links);
 
-    // Exactly one link, and only from the <p> outside the pre/code block.
     expect(result.match(/data-note-id="uuid-1"/g)).toHaveLength(1);
-    // Both occurrences inside the <pre> (including the one between </code>
-    // and </pre>) stay literal — no leakage past the inner </code>.
     expect(result).toContain(
       "<pre><code>[[Auth Design]]</code>[[Auth Design]]</pre>",
     );

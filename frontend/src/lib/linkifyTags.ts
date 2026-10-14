@@ -1,8 +1,5 @@
 // Converts #tag patterns in rendered HTML to clickable links.
-// Skips content inside <pre>/<code> blocks. The prefix group (whitespace,
-// punctuation, or > for HTML tag close) prevents mid-word # matches.
 export function linkifyTags(html: string): string {
-  // /mu: m for ^ line-start matching, u for \p{} Unicode property escapes
   return html.replace(
     /(<(?:pre|code)[^>]*>[\s\S]*?<\/(?:pre|code)>)|([\s>\u3000、。，．！？「」『』【】（）[\]]|^)#([\p{L}_][\p{L}\p{N}_\-/]*)/gmu,
     (match, codeBlock, prefix, tag) => {

@@ -29,10 +29,6 @@ export function Preview({
   const { isReady } = useWasm();
   const navigate = useNavigate();
 
-  // isReady gates window access — safe in SSR/static-generation contexts where
-  // isReady stays false and window is undefined.
-  // TODO: client-side sanitize is the sole XSS defense today; remove
-  // html.WithUnsafe() from core/markdown/renderer.go for defense in depth.
   const html = useMemo(() => {
     if (!active || !isReady || !window.renderMarkdown) return "";
     try {
