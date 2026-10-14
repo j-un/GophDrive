@@ -12,10 +12,8 @@ func TestResolveLinks_NewNote(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create target note first.
 	target, _ := m.CreateFile(ctx, "Auth Design", []byte("# Auth Design"), "root")
 
-	// Create a note linking to it.
 	src, err := m.CreateFile(ctx, "Overview", []byte("see [[Auth Design]]"), "root")
 	if err != nil {
 		t.Fatalf("CreateFile: %v", err)
@@ -54,7 +52,6 @@ func TestResolveLinks_CarryForwardOnResave(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create target, then link to it.
 	target, _ := m.CreateFile(ctx, "Auth Design", []byte("# Auth"), "root")
 	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Auth Design]]"), "root")
 
@@ -62,10 +59,6 @@ func TestResolveLinks_CarryForwardOnResave(t *testing.T) {
 		t.Fatalf("initial link not resolved")
 	}
 
-	// Rename target — in the map adapter there is no dedicated rename method
-	// for this test; simulate by changing the stored Name directly via SaveFile
-	// on the source to trigger re-resolve while the target name has changed.
-	// Instead just verify that re-saving the source preserves the targetId.
 	updated, err := m.SaveFile(ctx, src.ID, []byte("updated: see [[Auth Design]]"), src.ETag)
 	if err != nil {
 		t.Fatalf("SaveFile: %v", err)
@@ -82,16 +75,13 @@ func TestResolveLinks_LateTargetCreation(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create source with unresolved link.
 	src, _ := m.CreateFile(ctx, "Overview", []byte("see [[Future Note]]"), "root")
 	if src.Links[0].Resolved {
 		t.Fatal("should be unresolved initially")
 	}
 
-	// Create the target later.
 	future, _ := m.CreateFile(ctx, "Future Note", []byte("# Future"), "root")
 
-	// EnrichNoteLinks re-resolves on read.
 	enriched, backs, err := m.EnrichNoteLinks(ctx, src.ID, src.Links)
 	if err != nil {
 		t.Fatalf("EnrichNoteLinks: %v", err)
@@ -183,10 +173,6 @@ func TestGraph_Basic(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_CarryForwardCaseChange locks in the case-insensitive
-// carry-forward fix: editing a written token's case ([[API]] → [[api]]) while a
-// newer same-titled note exists must keep the original targetId rather than
-// silently re-resolving to the newer note.
 func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -197,9 +183,6 @@ func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
 		t.Fatalf("initial resolve: targetId = %q, want %q", src.Links[0].TargetID, a.ID)
 	}
 
-	// A second, more-recent note with the same title now exists. Without the
-	// normalized carry-forward key, re-saving with a case-only edit would miss
-	// the carried entry and re-resolve to b (most-recently-modified wins).
 	b, _ := m.CreateFile(ctx, "API", []byte("# API v2"), "root")
 
 	updated, err := m.SaveFile(ctx, src.ID, []byte("see [[api]]"), src.ETag)
@@ -215,9 +198,6 @@ func TestResolveLinks_CarryForwardCaseChange(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_AliasResolution covers the alias fallback: a note whose
-// frontmatter aliases include "X" is the target of [[X]] when no note is
-// literally named X.
 func TestResolveLinks_AliasResolution(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -240,15 +220,10 @@ func TestResolveLinks_AliasResolution(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_ExactNameBeatsAlias asserts a same-titled note wins over
-// another note that lists the token as an alias.
 func TestResolveLinks_ExactNameBeatsAlias(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Note A carries "Payments" as an alias; note B is literally named
-	// "Payments". [[Payments]] must resolve to B regardless of modified-time
-	// ordering — exact-name precedence overrides alias-recency.
 	aliasNote, _ := m.CreateFile(ctx, "Billing",
 		[]byte("---\naliases: [Payments]\n---\n# Billing"), "root")
 	time.Sleep(2 * time.Millisecond)
@@ -261,9 +236,6 @@ func TestResolveLinks_ExactNameBeatsAlias(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_AliasCollision_MostRecentWins asserts the standard
-// ambiguity rule applies within the alias bucket: two notes sharing the same
-// alias resolve to the most-recently-modified one.
 func TestResolveLinks_AliasCollision_MostRecentWins(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -281,10 +253,6 @@ func TestResolveLinks_AliasCollision_MostRecentWins(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_CarryForwardBeatsAliasReResolution locks in that
-// carry-forward wins over a fresh alias resolution: if a link was already
-// resolved to note A, adding a new note that aliases the token must not
-// silently redirect an unchanged link.
 func TestResolveLinks_CarryForwardBeatsAliasReResolution(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -295,8 +263,6 @@ func TestResolveLinks_CarryForwardBeatsAliasReResolution(t *testing.T) {
 		t.Fatalf("initial resolve failed: %+v", src.Links)
 	}
 
-	// A newer note now claims "Original" as an alias. Resaving src without
-	// changing the token must preserve the original targetId.
 	newer, _ := m.CreateFile(ctx, "Fresh",
 		[]byte("---\naliases: [Original]\n---\n# Fresh"), "root")
 
@@ -310,18 +276,13 @@ func TestResolveLinks_CarryForwardBeatsAliasReResolution(t *testing.T) {
 	}
 }
 
-// TestResolveLinks_LegacyItemAliasFallback uses the pure resolveLinks function
-// with a hand-built FileItem whose Aliases attribute is empty but whose
-// Content carries frontmatter aliases — mirroring rows persisted before the
-// aliases field existed.
 func TestResolveLinks_LegacyItemAliasFallback(t *testing.T) {
 	legacy := FileItem{
 		ID:           "legacy-1",
 		Name:         "Legacy.md",
 		MIMEType:     "text/markdown",
 		ModifiedTime: time.Now(),
-		// Aliases attribute intentionally omitted; alias lives inside Content.
-		Content: []byte("---\naliases:\n  - Historic Name\n---\nbody"),
+		Content:      []byte("---\naliases:\n  - Historic Name\n---\nbody"),
 	}
 	links := resolveLinks([]byte("see [[Historic Name]]"), []FileItem{legacy}, nil)
 	if len(links) != 1 || !links[0].Resolved || links[0].TargetID != "legacy-1" {
@@ -329,15 +290,10 @@ func TestResolveLinks_LegacyItemAliasFallback(t *testing.T) {
 	}
 }
 
-// TestBacklinks_ParityWithGraph_LateTarget asserts EnrichNoteLinks backlinks
-// agree with Graph backlinks for a target created after its referrer. Both
-// paths must apply read-time enrichment so the late target's inbound link is
-// visible identically through GET /notes/{id} and GET /graph.
 func TestBacklinks_ParityWithGraph_LateTarget(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Source links to a target that does not exist yet → unresolved at write.
 	src, _ := m.CreateFile(ctx, "Source", []byte("[[Late Target]]"), "root")
 	if src.Links[0].Resolved {
 		t.Fatal("link should be unresolved at write time")

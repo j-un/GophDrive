@@ -61,10 +61,6 @@ func (h *ExportHandler) Export(ctx context.Context, req events.APIGatewayProxyRe
 	}, nil
 }
 
-// writeZip writes each export entry into a deterministic zip archive. Path
-// collisions are de-duplicated with a numeric suffix so two notes that
-// happen to share a name (different folders shouldn't, but inline-renamed
-// rows might) don't silently overwrite each other inside the archive.
 func writeZip(entries []adapter.ExportEntry) ([]byte, error) {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,7 +18,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// fakeExchanger satisfies handler.OAuthExchanger without hitting Google.
 type fakeExchanger struct {
 	url   string
 	token *oauth2.Token
@@ -34,7 +32,6 @@ func (f *fakeExchanger) Exchange(_ context.Context, _ string, _ ...oauth2.AuthCo
 	return f.token, f.err
 }
 
-// fakeVerifier satisfies auth.Verifier so callback tests bypass Google's JWKS.
 type fakeVerifier struct {
 	claims *auth.Claims
 	err    error
@@ -44,17 +41,13 @@ func (f *fakeVerifier) Verify(_ context.Context, _ string) (*auth.Claims, error)
 	return f.claims, f.err
 }
 
-// tokenWithIDToken wraps an oauth2.Token to attach an id_token extra value.
 func tokenWithIDToken(idToken string) *oauth2.Token {
 	t := &oauth2.Token{AccessToken: "access"}
 	return t.WithExtra(map[string]interface{}{"id_token": idToken})
 }
 
-// testOAuthState is the canonical state value used by callbackReq helpers.
 const testOAuthState = "test-state-AAAA1111"
 
-// callbackReq builds an API Gateway request shaped for AuthHandler.Callback.
-// Empty arguments are omitted so individual fields can be exercised in isolation.
 func callbackReq(state, cookie, code string) events.APIGatewayProxyRequest {
 	qs := map[string]string{}
 	if state != "" {
@@ -85,8 +78,6 @@ func newAuthHandler(t *testing.T, deps handler.AuthHandlerDeps) *handler.AuthHan
 }
 
 func TestIsEmailAllowed(t *testing.T) {
-	// isEmailAllowed is unexported; tested indirectly through Callback.
-	// Each subtest configures the allow list and verifies the response code.
 	verified := &auth.Claims{Subject: "google-1", Email: "user@example.com", Name: "User"}
 
 	tests := []struct {
@@ -155,8 +146,6 @@ func TestAuthHandler_Login_RedirectsToOAuthURL(t *testing.T) {
 	if cookieState == "" {
 		t.Fatal("oauth_state cookie value is empty")
 	}
-	// fakeExchanger.AuthCodeURL echoes state into ?state=<v>; the URL state must
-	// match the cookie so Callback's double-submit check can succeed.
 	parsedURL, err := url.Parse(resp.Headers["Location"])
 	if err != nil {
 		t.Fatalf("parse Location: %v", err)
@@ -166,7 +155,6 @@ func TestAuthHandler_Login_RedirectsToOAuthURL(t *testing.T) {
 	}
 }
 
-// State must be unpredictable; two consecutive Login calls must not collide.
 func TestAuthHandler_Login_StateIsRandom(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{url: "https://accounts.google.com/o/oauth2/auth"},
@@ -216,13 +204,10 @@ func TestAuthHandler_Callback_Success(t *testing.T) {
 			t.Errorf("session_token cookie missing %q: %s", want, cookies[0])
 		}
 	}
-	// Second cookie must clear oauth_state (Max-Age=0) so the state can't be
-	// replayed on a stale browser tab.
 	if !strings.HasPrefix(cookies[1], "oauth_state=;") || !strings.Contains(cookies[1], "Max-Age=0") {
 		t.Errorf("expected oauth_state cleared with Max-Age=0, got %q", cookies[1])
 	}
 
-	// JWT must carry sub and a non-empty base_folder_id (auto-created at login).
 	tokStr := extractCookieValue(t, cookies[0], "session_token")
 	claims := parseClaims(t, tokStr, "test-secret")
 	if claims["sub"] != "google-sub-42" {
@@ -239,8 +224,6 @@ func TestAuthHandler_Callback_MissingCode(t *testing.T) {
 		Verifier:  &fakeVerifier{},
 	})
 
-	// Valid state but no code — exercise the missing-code branch specifically
-	// rather than the state-mismatch branch (both return 400).
 	resp, _ := h.Callback(context.Background(), callbackReq(testOAuthState, testOAuthState, ""))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.StatusCode)
@@ -250,7 +233,6 @@ func TestAuthHandler_Callback_MissingCode(t *testing.T) {
 	}
 }
 
-// Callback must reject requests where the state query param is missing.
 func TestAuthHandler_Callback_MissingState(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{},
@@ -263,8 +245,6 @@ func TestAuthHandler_Callback_MissingState(t *testing.T) {
 	}
 }
 
-// Callback must reject requests where the oauth_state cookie is missing,
-// even when the URL carries a state parameter.
 func TestAuthHandler_Callback_MissingStateCookie(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{},
@@ -277,7 +257,6 @@ func TestAuthHandler_Callback_MissingStateCookie(t *testing.T) {
 	}
 }
 
-// Callback must reject when the URL state and cookie state diverge.
 func TestAuthHandler_Callback_StateMismatch(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{token: tokenWithIDToken("opaque")},
@@ -304,7 +283,7 @@ func TestAuthHandler_Callback_ExchangeError(t *testing.T) {
 
 func TestAuthHandler_Callback_MissingIDToken(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
-		Exchanger: &fakeExchanger{token: &oauth2.Token{AccessToken: "x"}}, // no id_token extra
+		Exchanger: &fakeExchanger{token: &oauth2.Token{AccessToken: "x"}},
 		Verifier:  &fakeVerifier{},
 	})
 
@@ -365,7 +344,6 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 		t.Errorf("base_folder_id = %q, want folder-xyz", body.BaseFolderID)
 	}
 
-	// New token is issued via Set-Cookie (not in the body) and must re-carry base_folder_id.
 	cookies := resp.MultiValueHeaders["Set-Cookie"]
 	if len(cookies) == 0 {
 		t.Fatal("Refresh: no Set-Cookie header")
@@ -386,9 +364,6 @@ func TestAuthHandler_Refresh_PreservesClaims(t *testing.T) {
 	}
 }
 
-// Demo sessions are deliberately ephemeral (1h JWT, 60min data TTL on DDB).
-// Refresh must refuse them so users can't accidentally extend a demo
-// session into an authenticated-but-empty state.
 func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{},
@@ -416,16 +391,11 @@ func TestAuthHandler_Refresh_RejectsDemoUser(t *testing.T) {
 	if !strings.Contains(strings.ToLower(resp.Body), "demo") {
 		t.Errorf("body = %q, want a message that mentions demo so frontend logs/UX is unambiguous", resp.Body)
 	}
-	// No Set-Cookie header on refusal — otherwise the browser's stored cookie
-	// (Max-Age=30d) would persist and make the failure look like a flake.
 	if cookies := resp.MultiValueHeaders["Set-Cookie"]; len(cookies) != 0 {
 		t.Errorf("rejection should not Set-Cookie, got %v", cookies)
 	}
 }
 
-// Refresh must cap how old a JWT can be: without an iat ceiling, a leaked
-// token could be refreshed indefinitely as long as the signing key is
-// unrotated. 30 days mirrors the cookie Max-Age and is the production default.
 func TestAuthHandler_Refresh_RejectsTokensOlderThanMaxRefreshAge(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger:     &fakeExchanger{},
@@ -452,8 +422,6 @@ func TestAuthHandler_Refresh_RejectsTokensOlderThanMaxRefreshAge(t *testing.T) {
 	}
 }
 
-// iat-less tokens (pre-iat-ceiling rollout) must be rejected so attackers
-// can't strip the claim to bypass the age check.
 func TestAuthHandler_Refresh_RejectsTokensWithoutIat(t *testing.T) {
 	h := newAuthHandler(t, handler.AuthHandlerDeps{
 		Exchanger: &fakeExchanger{},
@@ -563,7 +531,6 @@ func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
 		t.Fatalf("Location = %q, want demo redirect without token in URL", loc)
 	}
 
-	// Extract the JWT from the session cookie to verify claims.
 	cookies := resp.MultiValueHeaders["Set-Cookie"]
 	if len(cookies) == 0 {
 		t.Fatal("DemoLogin: no Set-Cookie header")
@@ -588,7 +555,6 @@ func TestAuthHandler_DemoLogin_SeedsRootFolderAndWelcomeNotes(t *testing.T) {
 		t.Errorf("base_folder_id is empty")
 	}
 
-	// Confirm welcome notes were seeded under the minted folder.
 	storage, _ := provider.GetAdapter(context.Background(), userID, baseFolderID)
 	files, err := storage.ListFiles(context.Background(), baseFolderID)
 	if err != nil {
@@ -655,6 +621,3 @@ func extractCookieValue(t *testing.T, cookie, name string) string {
 	t.Fatalf("cookie %q not found in %q", name, cookie)
 	return ""
 }
-
-// Suppress unused warning for fmt — kept for potential debug prints.
-var _ = fmt.Sprintf

@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// Export should return paths rooted at the base folder, with intermediate
-// folder names joined by "/", and skip non-note rows entirely.
 func TestAdapter_Export_NestedPaths(t *testing.T) {
 	ctx := context.Background()
 
@@ -51,8 +49,6 @@ func TestAdapter_Export_NestedPaths(t *testing.T) {
 	}
 }
 
-// A note created without a base folder should still get a sensible path.
-// Folders are emitted as their name; the note itself sits at the root.
 func TestAdapter_Export_NoBaseFolder(t *testing.T) {
 	ctx := context.Background()
 
@@ -85,7 +81,6 @@ func TestAdapter_Export_NoBaseFolder(t *testing.T) {
 	}
 }
 
-// Folders themselves must not appear as export entries.
 func TestAdapter_Export_FoldersAreNotEntries(t *testing.T) {
 	ctx := context.Background()
 
@@ -103,8 +98,6 @@ func TestAdapter_Export_FoldersAreNotEntries(t *testing.T) {
 	}
 }
 
-// Notes with BodyS3Key set live in S3 — read isn't wired yet, so they must
-// not be silently exported with empty content.
 func TestAdapter_Export_SkipsSpilloverRows(t *testing.T) {
 	a := NewMemoryAdapter("user1", "")
 
@@ -124,7 +117,6 @@ func TestAdapter_Export_SkipsSpilloverRows(t *testing.T) {
 	}
 }
 
-// A corrupt parent chain (cycle) must not hang the export.
 func TestAdapter_Export_CycleSafe(t *testing.T) {
 	a := NewMemoryAdapter("user1", "")
 
@@ -140,7 +132,6 @@ func TestAdapter_Export_CycleSafe(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
-	// Path traversal stops on cycle; we still get a usable filename.
 	if entries[0].Content == nil || string(entries[0].Content) != "x" {
 		t.Errorf("content = %q, want x", entries[0].Content)
 	}

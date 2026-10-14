@@ -43,7 +43,6 @@ func TestNoteHandler_CreateAndList(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create a note
 	req := makeRequest("POST", "/notes", `{"name":"test.md","content":"# Hello"}`)
 	resp, err := h.CreateNote(ctx, req)
 	if err != nil {
@@ -67,7 +66,6 @@ func TestNoteHandler_CreateAndList(t *testing.T) {
 		t.Error("Expected non-empty ETag")
 	}
 
-	// List notes
 	listReq := makeRequest("GET", "/notes", "")
 	listResp, err := h.ListNotes(ctx, listReq)
 	if err != nil {
@@ -94,13 +92,11 @@ func TestNoteHandler_GetNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"get-test.md","content":"body content"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Get
 	getReq := makeRequest("GET", "/notes/"+created.ID, "")
 	getReq.PathParameters["id"] = created.ID
 	getResp, err := h.GetNote(ctx, getReq)
@@ -126,8 +122,6 @@ func TestNoteHandler_GetNote(t *testing.T) {
 	}
 }
 
-// Opening a note via GET /notes/{id} must record a view so the note jumps to
-// the front of RECENT — the recency contract wired through the handler layer.
 func TestNoteHandler_GetNote_RecordsView(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
@@ -141,7 +135,6 @@ func TestNoteHandler_GetNote_RecordsView(t *testing.T) {
 	var b adapter.FileMetadata
 	json.Unmarshal([]byte(createB.Body), &b)
 
-	// B was created last, so it leads RECENT until A is opened.
 	time.Sleep(2 * time.Millisecond)
 	getReq := makeRequest("GET", "/notes/"+a.ID, "")
 	getReq.PathParameters["id"] = a.ID
@@ -172,13 +165,11 @@ func TestNoteHandler_UpdateNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"update-test.md","content":"v1"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Update with matching ETag
 	updateReq := makeRequest("PUT", "/notes/"+created.ID, `{"content":"v2"}`)
 	updateReq.PathParameters["id"] = created.ID
 	updateReq.Headers["If-Match"] = created.ETag
@@ -196,7 +187,6 @@ func TestNoteHandler_UpdateNote(t *testing.T) {
 		t.Error("Expected ETag to change after update")
 	}
 
-	// Verify content changed
 	getReq := makeRequest("GET", "/notes/"+created.ID, "")
 	getReq.PathParameters["id"] = created.ID
 	getResp, _ := h.GetNote(ctx, getReq)
@@ -214,13 +204,11 @@ func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"conflict.md","content":"original"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// First update (succeeds, changes ETag)
 	updateReq1 := makeRequest("PUT", "/notes/"+created.ID, `{"content":"updated-by-user-a"}`)
 	updateReq1.PathParameters["id"] = created.ID
 	updateReq1.Headers["If-Match"] = created.ETag
@@ -229,10 +217,9 @@ func TestNoteHandler_UpdateNote_Conflict(t *testing.T) {
 		t.Fatalf("First update should succeed, got %d", resp1.StatusCode)
 	}
 
-	// Second update with STALE ETag (should get 412)
 	updateReq2 := makeRequest("PUT", "/notes/"+created.ID, `{"content":"updated-by-user-b"}`)
 	updateReq2.PathParameters["id"] = created.ID
-	updateReq2.Headers["If-Match"] = created.ETag // stale!
+	updateReq2.Headers["If-Match"] = created.ETag
 	resp2, err := h.UpdateNote(ctx, updateReq2)
 	if err != nil {
 		t.Fatalf("UpdateNote returned error: %v", err)
@@ -247,13 +234,11 @@ func TestNoteHandler_DeleteNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"delete-test.md","content":"bye"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Delete
 	deleteReq := makeRequest("DELETE", "/notes/"+created.ID, "")
 	deleteReq.PathParameters["id"] = created.ID
 	deleteResp, err := h.DeleteNote(ctx, deleteReq)
@@ -264,7 +249,6 @@ func TestNoteHandler_DeleteNote(t *testing.T) {
 		t.Fatalf("Expected 204, got %d: %s", deleteResp.StatusCode, deleteResp.Body)
 	}
 
-	// Verify it's gone
 	listReq := makeRequest("GET", "/notes", "")
 	listResp, _ := h.ListNotes(ctx, listReq)
 	var notes []adapter.FileMetadata
@@ -279,7 +263,6 @@ func TestNoteHandler_Unauthorized(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Request with no auth header
 	req := events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
 		Path:       "/notes",
@@ -299,13 +282,11 @@ func TestNoteHandler_DuplicateNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"orig.md","content":"content"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Duplicate
 	dupReq := makeRequest("POST", "/notes/"+created.ID+"/copy", "")
 	dupReq.PathParameters["id"] = created.ID
 	dupResp, err := h.DuplicateNote(ctx, dupReq)
@@ -329,7 +310,6 @@ func TestNoteHandler_DuplicateNote(t *testing.T) {
 		t.Errorf("Expected size %d, got %d", created.Size, duplicated.Size)
 	}
 
-	// Verify content of duplicate
 	getReq := makeRequest("GET", "/notes/"+duplicated.ID, "")
 	getReq.PathParameters["id"] = duplicated.ID
 	getResp, _ := h.GetNote(ctx, getReq)
@@ -371,13 +351,11 @@ func TestNoteHandler_RenameNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"old-name.md","content":"data"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Rename
 	renameReq := makeRequest("PATCH", "/notes/"+created.ID, `{"name":"new-name.md"}`)
 	renameReq.PathParameters["id"] = created.ID
 	resp, err := h.RenameNote(ctx, renameReq)
@@ -400,7 +378,6 @@ func TestNoteHandler_MoveNote(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create a folder and a note
 	folderReq := makeRequest("POST", "/folders", `{"name":"Dest","parentId":"root"}`)
 	folderResp, _ := h.CreateFolder(ctx, folderReq)
 	var folder adapter.FileMetadata
@@ -411,7 +388,6 @@ func TestNoteHandler_MoveNote(t *testing.T) {
 	var note adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &note)
 
-	// Move note into the folder via PATCH { parentId }
 	moveReq := makeRequest("PATCH", "/notes/"+note.ID, `{"parentId":"`+folder.ID+`"}`)
 	moveReq.PathParameters["id"] = note.ID
 	resp, err := h.PatchNote(ctx, moveReq)
@@ -428,7 +404,6 @@ func TestNoteHandler_MoveNote(t *testing.T) {
 		t.Errorf("Expected parent %s, got %v", folder.ID, moved.Parents)
 	}
 
-	// Move to unknown destination should return 404
 	badReq := makeRequest("PATCH", "/notes/"+note.ID, `{"parentId":"no-such-folder"}`)
 	badReq.PathParameters["id"] = note.ID
 	badResp, _ := h.PatchNote(ctx, badReq)
@@ -442,13 +417,11 @@ func TestNoteHandler_MoveNote_InvalidMove(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create a folder and attempt to move it into itself
 	folderReq := makeRequest("POST", "/folders", `{"name":"SelfMove","parentId":"root"}`)
 	folderResp, _ := h.CreateFolder(ctx, folderReq)
 	var folder adapter.FileMetadata
 	json.Unmarshal([]byte(folderResp.Body), &folder)
 
-	// Moving a folder into itself must return 400 (ErrInvalidMove → PatchNote → 400)
 	moveReq := makeRequest("PATCH", "/notes/"+folder.ID, `{"parentId":"`+folder.ID+`"}`)
 	moveReq.PathParameters["id"] = folder.ID
 	resp, err := h.PatchNote(ctx, moveReq)
@@ -465,13 +438,11 @@ func TestNoteHandler_PatchNote_Star(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create
 	createReq := makeRequest("POST", "/notes", `{"name":"star.md","content":"data"}`)
 	createResp, _ := h.CreateNote(ctx, createReq)
 	var created adapter.FileMetadata
 	json.Unmarshal([]byte(createResp.Body), &created)
 
-	// Patch: set starred
 	patchReq := makeRequest("PATCH", "/notes/"+created.ID, `{"starred":true}`)
 	patchReq.PathParameters["id"] = created.ID
 	resp, err := h.PatchNote(ctx, patchReq)
@@ -494,7 +465,6 @@ func TestNoteHandler_ListStarredNotes(t *testing.T) {
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create two notes
 	req1 := makeRequest("POST", "/notes", `{"name":"s1.md","content":"a"}`)
 	resp1, _ := h.CreateNote(ctx, req1)
 	var n1 adapter.FileMetadata
@@ -502,12 +472,10 @@ func TestNoteHandler_ListStarredNotes(t *testing.T) {
 
 	makeRequest("POST", "/notes", `{"name":"s2.md","content":"b"}`)
 
-	// Star s1
 	patchReq := makeRequest("PATCH", "/notes/"+n1.ID, `{"starred":true}`)
 	patchReq.PathParameters["id"] = n1.ID
 	h.PatchNote(ctx, patchReq)
 
-	// List starred
 	listReq := makeRequest("GET", "/starred", "")
 	listResp, err := h.ListStarredNotes(ctx, listReq)
 	if err != nil {
@@ -694,14 +662,11 @@ func TestNoteHandler_GetNote_NotFound(t *testing.T) {
 	}
 }
 
-// GetNote must surface aliases/type/status from a note's frontmatter so the
-// frontend can render note-type badges and follow alias links.
 func TestNoteHandler_GetNote_ReturnsFrontmatterMeta(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	h := handler.NewNoteHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// JSON-encode the note body so the embedded newlines survive as YAML.
 	body, _ := json.Marshal("---\ntype: decision\nstatus: active\naliases:\n  - Auth\n  - Login\n---\n# Auth")
 	createReq := makeRequest("POST", "/notes",
 		`{"name":"meta.md","content":`+string(body)+`}`)

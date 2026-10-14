@@ -49,7 +49,6 @@ func HashKey(plaintext string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// keyItem is the DynamoDB row shape.
 type keyItem struct {
 	PK            string `dynamodbav:"pk"`
 	UserID        string `dynamodbav:"user_id"`
@@ -97,8 +96,6 @@ func (s *DDBStore) Issue(ctx context.Context, userID, baseFolderID, hash, prefix
 	}
 
 	if oldPK == "" {
-		// First issue: record the original creation time and guard against
-		// simultaneous clicks with a conditional write.
 		item.FirstIssuedAt = now
 		av, err := attributevalue.MarshalMap(item)
 		if err != nil {
@@ -112,7 +109,6 @@ func (s *DDBStore) Issue(ctx context.Context, userID, baseFolderID, hash, prefix
 		return err
 	}
 
-	// Regenerate: preserve the original first_issued_at from the old row.
 	oldOut, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.table),
 		Key:       map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: oldPK}},
@@ -127,7 +123,7 @@ func (s *DDBStore) Issue(ctx context.Context, userID, baseFolderID, hash, prefix
 		}
 	}
 	if item.FirstIssuedAt == 0 {
-		item.FirstIssuedAt = now // fallback for rows written before this column existed
+		item.FirstIssuedAt = now
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -135,7 +131,6 @@ func (s *DDBStore) Issue(ctx context.Context, userID, baseFolderID, hash, prefix
 		return fmt.Errorf("apikey Issue: marshal: %w", err)
 	}
 
-	// Atomically delete the old hash and write the new one.
 	_, err = s.client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
 		TransactItems: []types.TransactWriteItem{
 			{
@@ -211,7 +206,7 @@ func (s *DDBStore) Revoke(ctx context.Context, userID string) error {
 		return fmt.Errorf("apikey Revoke: query existing key: %w", err)
 	}
 	if pk == "" {
-		return nil // no-op
+		return nil
 	}
 	_, err = s.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.table),
@@ -222,8 +217,6 @@ func (s *DDBStore) Revoke(ctx context.Context, userID string) error {
 	return err
 }
 
-// queryUserPK queries the user_id-index GSI and returns the pk for the user,
-// or "" if no key exists.
 func (s *DDBStore) queryUserPK(ctx context.Context, userID string) (string, error) {
 	out, err := s.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(s.table),
@@ -255,7 +248,7 @@ func (s *DDBStore) queryUserPK(ctx context.Context, userID string) (string, erro
 type InMemoryStore struct {
 	mu     sync.RWMutex
 	byHash map[string]*memRecord
-	byUser map[string]string // userID → hash
+	byUser map[string]string
 }
 
 type memRecord struct {
@@ -278,7 +271,7 @@ func (s *InMemoryStore) Issue(_ context.Context, userID, baseFolderID, hash, pre
 	firstIssuedAt := now
 	if old, ok := s.byUser[userID]; ok {
 		if prev := s.byHash[old]; prev != nil && prev.firstIssuedAt != 0 {
-			firstIssuedAt = prev.firstIssuedAt // preserve original creation time across regenerate
+			firstIssuedAt = prev.firstIssuedAt
 		}
 		delete(s.byHash, old)
 	}

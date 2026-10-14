@@ -9,9 +9,6 @@ import (
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
 
-// seedVictim creates a fresh shared fake + victim/attacker adapters, and
-// seeds a single owner-a note. Returns the fake for direct inspection, the
-// two adapters, and the seeded file ID.
 func seedVictim(t *testing.T) (*fakeDDB, *Adapter, *Adapter, string) {
 	t.Helper()
 	fake := newFakeDDB()
@@ -25,8 +22,6 @@ func seedVictim(t *testing.T) (*fakeDDB, *Adapter, *Adapter, string) {
 	return fake, victim, attacker, f.ID
 }
 
-// assertVictimContentUnchanged is the positive-control half of each attack
-// test: the victim must still own the row with its original content.
 func assertVictimContentUnchanged(t *testing.T, victim *Adapter, fileID string) {
 	t.Helper()
 	f, err := victim.GetFile(context.Background(), fileID)
@@ -146,9 +141,6 @@ func TestCrossTenant_MoveFile_Destination(t *testing.T) {
 	_, victim, attacker, id := seedVictim(t)
 	ctx := context.Background()
 
-	// Attacker creates their own folder, then victim tries to move victim's
-	// own file into it — the destination guard must fail because the folder
-	// belongs to another tenant.
 	attFolder, err := attacker.CreateFolder(ctx, "attacker-folder", nil)
 	if err != nil {
 		t.Fatalf("attacker.CreateFolder: %v", err)
@@ -170,19 +162,13 @@ func TestCrossTenant_TouchViewed_DemoTTLContamination(t *testing.T) {
 	fake, victim, _, id := seedVictim(t)
 	ctx := context.Background()
 
-	// Attacker is a demo user: without the user_id condition guard on
-	// TouchViewed, a demo-user attacker could rewrite the victim's ttl and
-	// have the row auto-expire.
 	attacker := NewAdapter(fake, "demo-user-evil", "")
 
-	// Capture victim's ViewedTime before the attack.
 	before, err := victim.GetFile(ctx, id)
 	if err != nil {
 		t.Fatalf("victim.GetFile (before): %v", err)
 	}
 
-	// TouchViewed swallows CCFE — a documented no-op — so err == nil is
-	// the correct assertion.
 	if err := attacker.TouchViewed(ctx, id); err != nil {
 		t.Fatalf("attacker.TouchViewed: got %v, want nil (documented no-op)", err)
 	}
@@ -195,13 +181,6 @@ func TestCrossTenant_TouchViewed_DemoTTLContamination(t *testing.T) {
 		t.Errorf("victim.ViewedTime changed: got %v, want %v", after.ViewedTime, before.ViewedTime)
 	}
 
-	// White-box peek into the stored row: ttl is the security-relevant
-	// artifact (a demo-user attacker rewriting it would auto-expire the
-	// victim's data), but GetFile intentionally doesn't surface ttl — the
-	// only way to assert absence is to look at the persisted attributes
-	// directly. Also assert user_id survived unchanged, so a future adapter
-	// change that flipped ownership as a side effect wouldn't sneak past
-	// GetFile (which stops returning the row entirely on ownership mismatch).
 	fake.mu.Lock()
 	stored := fake.items[id]
 	fake.mu.Unlock()
@@ -216,16 +195,6 @@ func TestCrossTenant_TouchViewed_DemoTTLContamination(t *testing.T) {
 	}
 }
 
-// TestCrossTenant_WriteGuard_TOCTOU covers the write-side ConditionExpression:
-// the previous tests all short-circuit at the read-side getOwnedFileItem
-// guard, so deleting the ConditionExpression from DeleteItem/PutItem would
-// keep them green. Here we install a one-shot afterGetItem hook that flips
-// the stored user_id between the adapter's read and its subsequent
-// conditional write, forcing the guarded path (CCFE → ErrNotFound) to fire.
-//
-// MoveFile and SaveFile aren't included — their PutItems carry no
-// ConditionExpression today. TouchViewed's write guard is covered by
-// TestCrossTenant_TouchViewed_DemoTTLContamination.
 func TestCrossTenant_WriteGuard_TOCTOU(t *testing.T) {
 	tests := []struct {
 		name string
@@ -255,11 +224,6 @@ func TestCrossTenant_WriteGuard_TOCTOU(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fake, victim, _, id := seedVictim(t)
-			// Concurrent-ownership-change simulation: fires once, on the very
-			// next GetItem (the adapter's read-side ownership check), then
-			// clears itself. Reassign the map key rather than mutating the
-			// existing AttributeValue in place — shallowCopy shares pointers,
-			// and the read-side snapshot must remain the pre-race value.
 			fake.afterGetItem = func(items map[string]map[string]types.AttributeValue) {
 				items[id]["user_id"] = &types.AttributeValueMemberS{Value: "user-c"}
 			}
@@ -271,14 +235,10 @@ func TestCrossTenant_WriteGuard_TOCTOU(t *testing.T) {
 	}
 }
 
-// TestSameTenant_HappyPath is the positive control for the fake: it proves
-// the condition guard passes for legitimate owners, so the cross-tenant
-// failures above are meaningful rather than the fake rejecting everything.
 func TestSameTenant_HappyPath(t *testing.T) {
 	_, victim, _, id := seedVictim(t)
 	ctx := context.Background()
 
-	// Rename
 	if _, err := victim.RenameFile(ctx, id, "renamed"); err != nil {
 		t.Fatalf("Rename: %v", err)
 	}
@@ -290,7 +250,6 @@ func TestSameTenant_HappyPath(t *testing.T) {
 		t.Errorf("Name after Rename: got %q, want %q", got.Name, "renamed")
 	}
 
-	// SetStarred(true)
 	if _, err := victim.SetStarred(ctx, id, true); err != nil {
 		t.Fatalf("SetStarred: %v", err)
 	}
@@ -302,7 +261,6 @@ func TestSameTenant_HappyPath(t *testing.T) {
 		t.Errorf("Starred after SetStarred(true) was false")
 	}
 
-	// TouchViewed sets a non-zero ViewedTime
 	if err := victim.TouchViewed(ctx, id); err != nil {
 		t.Fatalf("TouchViewed: %v", err)
 	}
@@ -314,7 +272,6 @@ func TestSameTenant_HappyPath(t *testing.T) {
 		t.Errorf("ViewedTime is zero after TouchViewed")
 	}
 
-	// SaveFile with the current ETag
 	saved, err := victim.SaveFile(ctx, id, []byte("v2"), got.ETag)
 	if err != nil {
 		t.Fatalf("SaveFile: %v", err)
@@ -323,7 +280,6 @@ func TestSameTenant_HappyPath(t *testing.T) {
 		t.Errorf("ETag should change after SaveFile")
 	}
 
-	// DeleteFile, then GetFile → ErrNotFound
 	if err := victim.DeleteFile(ctx, id); err != nil {
 		t.Fatalf("DeleteFile: %v", err)
 	}

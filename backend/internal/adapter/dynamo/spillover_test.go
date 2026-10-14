@@ -8,10 +8,6 @@ import (
 	"github.com/jun/gophdrive/backend/internal/adapter"
 )
 
-// routeBody is the policy decision for inline-vs-S3 body storage. The
-// implementation today only ever takes the inline branch; this test pins the
-// observable contract so the spillover path lands cleanly later.
-
 func TestRouteBody_SmallContentStaysInline(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	body := []byte("hello world")
@@ -55,9 +51,6 @@ func TestRouteBody_OverBoundaryReturnsErrPayloadTooLarge(t *testing.T) {
 }
 
 func TestFileItem_BodyS3KeyOmittedWhenEmpty(t *testing.T) {
-	// New rows for the inline path must omit body_s3_key entirely so
-	// existing readers (and future code that switches on the field's
-	// presence) see "this is an inline row" cleanly.
 	item := FileItem{Content: []byte("data")}
 	if item.BodyS3Key != "" {
 		t.Errorf("default BodyS3Key = %q, want empty", item.BodyS3Key)

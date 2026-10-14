@@ -67,12 +67,10 @@ func TestSessionHandler_Heartbeat_Success(t *testing.T) {
 	h := handler.NewSessionHandler(locker, "test-secret")
 	ctx := context.Background()
 
-	// First acquire
 	req := makeRequest("POST", "/sessions/file1/lock", "")
 	req.PathParameters = map[string]string{"fileId": "file1"}
 	h.AcquireLock(ctx, req)
 
-	// Heartbeat
 	hbReq := makeRequest("POST", "/sessions/file1/heartbeat", "")
 	hbReq.PathParameters = map[string]string{"fileId": "file1"}
 	resp, err := h.Heartbeat(ctx, hbReq)
@@ -102,12 +100,10 @@ func TestSessionHandler_ReleaseLock_Success(t *testing.T) {
 	h := handler.NewSessionHandler(locker, "test-secret")
 	ctx := context.Background()
 
-	// Acquire
 	acqReq := makeRequest("POST", "/sessions/file1/lock", "")
 	acqReq.PathParameters = map[string]string{"fileId": "file1"}
 	h.AcquireLock(ctx, acqReq)
 
-	// Release
 	relReq := makeRequest("DELETE", "/sessions/file1/lock", "")
 	relReq.PathParameters = map[string]string{"fileId": "file1"}
 	resp, err := h.ReleaseLock(ctx, relReq)

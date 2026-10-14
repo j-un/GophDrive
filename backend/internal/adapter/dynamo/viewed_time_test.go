@@ -8,8 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 )
 
-// Opening a note (TouchViewed) must move it to the front of RECENT, even when
-// other notes were created/modified more recently.
 func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -24,7 +22,6 @@ func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
 		t.Fatalf("CreateFile b: %v", err)
 	}
 
-	// Opening A records a view newer than either creation, so A must lead RECENT.
 	time.Sleep(2 * time.Millisecond)
 	if err := m.TouchViewed(ctx, a.ID); err != nil {
 		t.Fatalf("TouchViewed a: %v", err)
@@ -40,7 +37,6 @@ func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
 		t.Fatalf("after opening A, recent[0]=%s, want A=%s", recent[0].ID, a.ID)
 	}
 
-	// Opening B in turn moves B to the front.
 	time.Sleep(2 * time.Millisecond)
 	if err := m.TouchViewed(ctx, b.ID); err != nil {
 		t.Fatalf("TouchViewed b: %v", err)
@@ -54,8 +50,6 @@ func TestTouchViewed_MovesNoteToFrontOfRecent(t *testing.T) {
 	}
 }
 
-// TouchViewed must not alter ETag or ModifiedTime, so it can never trigger a
-// false conflict on the optimistic-concurrency save path.
 func TestTouchViewed_DoesNotChangeETagOrModifiedTime(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -86,7 +80,6 @@ func TestTouchViewed_DoesNotChangeETagOrModifiedTime(t *testing.T) {
 	}
 }
 
-// Touching a note that no longer exists is a no-op, not an error.
 func TestTouchViewed_MissingNoteIsNoop(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	if err := m.TouchViewed(context.Background(), "does-not-exist"); err != nil {
@@ -94,9 +87,6 @@ func TestTouchViewed_MissingNoteIsNoop(t *testing.T) {
 	}
 }
 
-// The viewed_time attribute must survive a DynamoDB marshal round-trip, and a
-// zero value must read back as IsZero() so ListRecent's fallback to
-// modified_time fires for notes never opened since this field was introduced.
 func TestViewedTime_FileItemMarshalRoundtrip(t *testing.T) {
 	now := time.Now().UTC()
 
