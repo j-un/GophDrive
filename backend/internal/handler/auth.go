@@ -76,19 +76,10 @@ func NewAuthHandler(deps AuthHandlerDeps) *AuthHandler {
 	return &AuthHandler{deps: deps}
 }
 
-// demoUserIDPrefix marks a session as belonging to the ephemeral demo flow
-// (DemoLogin mints user IDs as "demo-user-<uuid>"). Kept in sync with
-// adapter/dynamo's identical-but-private prefix; both halves change together
-// or the demo flow breaks visibly.
-const demoUserIDPrefix = "demo-user-"
-
-// IsDemoUserID reports whether the given user ID belongs to an ephemeral demo session.
 func IsDemoUserID(id string) bool {
-	return strings.HasPrefix(id, demoUserIDPrefix)
+	return strings.HasPrefix(id, adapter.DemoUserIDPrefix)
 }
 
-// isEmailAllowed checks if the given email is allowed to login.
-// If allowedEmails is empty, all emails are allowed.
 func isEmailAllowed(email string, allowedEmails []string) bool {
 	if len(allowedEmails) == 0 {
 		return true
@@ -106,7 +97,6 @@ func (h *AuthHandler) sessionCookie(token string, maxAge int) string {
 	return fmt.Sprintf("session_token=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=Lax; Secure", token, maxAge)
 }
 
-// signSession produces a signed JWT for the given session claims.
 func (h *AuthHandler) signSession(c SessionClaims, ttl time.Duration) (string, error) {
 	return SignSession(c, ttl, h.deps.JWTSecret)
 }
@@ -215,7 +205,6 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		return []byte(h.deps.JWTSecret), nil
 	})
-	// Only "expired" is acceptable; any other failure means the token isn't ours.
 	if err != nil && !errors.Is(err, jwt.ErrTokenExpired) {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: fmt.Sprintf("Invalid token: %v", err)}, nil
 	}
@@ -230,9 +219,6 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Missing subject in token"}, nil
 	}
 
-	// Cap how old a token can be and still be refreshable. Without this, a
-	// leaked JWT remains a permanent foothold as long as the signing key is
-	// unrotated.
 	iatFloat, ok := mc["iat"].(float64)
 	if !ok {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Token missing iat"}, nil
@@ -241,10 +227,6 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Token too old to refresh; please log in again"}, nil
 	}
 
-	// Demo sessions are intentionally short-lived (DemoSessionTTL, 1h) and
-	// their data has a 60-minute TTL on DynamoDB. Re-issuing here at
-	// SessionTTL (24h) would let the JWT outlive the data, leaving the user
-	// authenticated against an empty store. Force a fresh demo-login instead.
 	if IsDemoUserID(sub) {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Demo sessions cannot be refreshed; please log in again"}, nil
 	}
@@ -305,10 +287,8 @@ func (h *AuthHandler) GetUser(ctx context.Context, req events.APIGatewayProxyReq
 	}, nil
 }
 
-// DemoLogin issues a temporary JWT without Google OAuth, seeding a demo user
-// with a fresh root folder and welcome notes.
 func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userID := fmt.Sprintf("demo-user-%s", uuid.New().String())
+	userID := adapter.DemoUserIDPrefix + uuid.New().String()
 	email := "demo@gophdrive.local"
 
 	storage, err := h.deps.StorageProvider.GetAdapter(ctx, userID, "")
@@ -351,11 +331,8 @@ func (h *AuthHandler) DemoLogin(ctx context.Context, req events.APIGatewayProxyR
 	}, nil
 }
 
-// oauthStateMaxAge is the lifetime of the oauth_state cookie issued by Login.
-// 5 minutes mirrors typical OAuth consent-screen completion windows.
-const oauthStateMaxAge = 300
+const oauthStateMaxAge = int(5 * time.Minute / time.Second)
 
-// generateOAuthState returns a 256-bit cryptographically random, URL-safe state value.
 func generateOAuthState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -370,7 +347,6 @@ func (h *AuthHandler) oauthStateCookie(value string, maxAge int) string {
 	return fmt.Sprintf("oauth_state=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=Lax; Secure", value, maxAge)
 }
 
-// getOAuthStateCookie extracts the oauth_state value from request cookies.
 func getOAuthStateCookie(req events.APIGatewayProxyRequest) string {
 	cookieHeaders := []string{}
 	for k, v := range req.Headers {
