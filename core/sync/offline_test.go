@@ -38,7 +38,6 @@ func TestNewOfflineChange_TimestampIsCurrentEpoch(t *testing.T) {
 	now := time.Now().Unix()
 	change := NewOfflineChange("id", "content")
 
-	// Should be within 1 second of now
 	diff := change.Timestamp - now
 	if diff < 0 || diff > 1 {
 		t.Errorf("Timestamp %d is not close to current time %d", change.Timestamp, now)

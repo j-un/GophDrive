@@ -21,14 +21,14 @@ func NewRenderer() *Renderer {
 	p := parser.New(
 		parser.WithAutoHeadingID(),
 		parser.WithExtensions(
-			extension.GFMParser, // Table, Strikethrough, TaskList, Autolink
+			extension.GFMParser,
 			highlighting.Parser,
 		),
 	)
 	r := html.New(
 		html.WithHardWraps(),
 		html.WithXHTML(),
-		html.WithUnsafe(), // Allow raw HTML (needed for some Mermaid scenarios or user embedded HTML)
+		html.WithUnsafe(),
 		html.WithExtensions(
 			extension.GFMHTMLRenderer,
 			highlighting.NewHTMLRenderer(

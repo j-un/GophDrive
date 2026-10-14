@@ -14,9 +14,7 @@ var (
 	codeFenceRe   = regexp.MustCompile("(?s)```[^`]*```")
 	inlineCodeRe  = regexp.MustCompile("`[^`\n]+`")
 	headingRe     = regexp.MustCompile(`^#{1,6}\s`)
-	// inlineTagRe matches #tag preceded by line-start or whitespace/punctuation.
-	// First char of tag must be a Unicode letter or underscore (excludes #1, #123).
-	inlineTagRe = regexp.MustCompile(`(?:^|[\s　、。，．！？「」『』【】（）\[\]])#([\p{L}_][\p{L}\p{N}_\-/]*)`)
+	inlineTagRe   = regexp.MustCompile(`(?:^|[\s　、。，．！？「」『』【】（）\[\]])#([\p{L}_][\p{L}\p{N}_\-/]*)`)
 )
 
 // ParseFrontmatter extracts YAML frontmatter from the start of source.
@@ -38,7 +36,6 @@ func ParseFrontmatter(source []byte) (tags []string, body []byte, ok bool) {
 	return normalizeTags(fm.Tags), body, true
 }
 
-// normalizeTags converts a YAML tags value (list or comma-separated string) to []string.
 func normalizeTags(v interface{}) []string {
 	switch t := v.(type) {
 	case []interface{}:
@@ -80,8 +77,6 @@ func ExtractTags(source []byte) []string {
 	return all
 }
 
-// extractInlineTags finds #tag patterns in body text, excluding code fences,
-// inline code spans, and ATX headings.
 func extractInlineTags(body []byte) []string {
 	body = codeFenceRe.ReplaceAll(body, nil)
 	body = inlineCodeRe.ReplaceAll(body, nil)

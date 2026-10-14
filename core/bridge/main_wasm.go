@@ -13,7 +13,6 @@ import (
 func main() {
 	renderer := markdown.NewRenderer()
 
-	// format: renderMarkdown(sourceString) -> htmlString
 	renderFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) != 1 {
 			return "Error: Invalid number of arguments"
@@ -28,7 +27,6 @@ func main() {
 		return string(htmlBytes)
 	})
 
-	// format: checkConflict(localEtag, remoteEtag string) -> bool
 	checkConflictFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) != 2 {
 			return false
@@ -38,7 +36,6 @@ func main() {
 		return sync.CheckConflict(localEtag, remoteEtag)
 	})
 
-	// format: createOfflineChange(noteID, content string) -> object
 	createOfflineChangeFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) != 2 {
 			return nil

@@ -8,7 +8,6 @@ import (
 
 var headingLineRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 
-// tildeOrBacktickFenceRe matches the opening line of a ~~~ or ``` code fence.
 var tildeOrBacktickFenceRe = regexp.MustCompile("^(`{3,}|~{3,})")
 
 // ExtractHeadings returns the plain-text heading texts from source in document
@@ -23,13 +22,11 @@ func ExtractHeadings(source []byte) []string {
 
 	var headings []string
 	inFence := false
-	var fenceDelim []byte // the opening delimiter (e.g. "```" or "~~~")
+	var fenceDelim []byte
 
 	for _, rawLine := range bytes.Split(body, []byte("\n")) {
-		// Strip trailing CR for CRLF sources.
 		line := bytes.TrimRight(rawLine, "\r")
 
-		// Track code fence state (``` and ~~~).
 		if m := tildeOrBacktickFenceRe.Find(line); m != nil {
 			if !inFence {
 				inFence = true
@@ -44,7 +41,6 @@ func ExtractHeadings(source []byte) []string {
 			continue
 		}
 
-		// Skip blockquote lines.
 		if bytes.HasPrefix(line, []byte(">")) {
 			continue
 		}
