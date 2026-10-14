@@ -52,12 +52,10 @@ export default function NoteList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // New Note state
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newNoteName, setNewNoteName] = useState("");
 
-  // New Folder state
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isSubmittingFolder, setIsSubmittingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -65,21 +63,17 @@ export default function NoteList({
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
 
-  // Delete State
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [deleteNoteName, setDeleteNoteName] = useState<string>("");
 
-  // Rename State
   const [renameNoteId, setRenameNoteId] = useState<string | null>(null);
   const [renameNoteName, setRenameNoteName] = useState<string>("");
 
-  // Folder Delete/Rename State
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
   const [deleteFolderName, setDeleteFolderName] = useState<string>("");
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
   const [renameFolderName, setRenameFolderName] = useState<string>("");
 
-  // Move State
   const [moveItemId, setMoveItemId] = useState<string | null>(null);
   const [moveItemName, setMoveItemName] = useState<string>("");
   const [moveItemIsFolder, setMoveItemIsFolder] = useState(false);
@@ -87,7 +81,6 @@ export default function NoteList({
 
   const isOffline = useOffline();
 
-  // Folders section only makes sense when browsing (not searching/tag-filtering).
   const isBrowseMode = !searchQuery && !(tagFilter && tagFilter.length > 0);
 
   const loadNotes = async () => {
@@ -95,7 +88,6 @@ export default function NoteList({
     setLoading(true);
     setError(null);
     try {
-      // Search / Tag filter mode — backend returns notes only
       if (searchQuery || tagFilter?.length) {
         const { text, tags } = buildSearchRequest(searchQuery, tagFilter);
         const results = await searchFiles(text, tags);
@@ -105,7 +97,6 @@ export default function NoteList({
         return;
       }
 
-      // Offline Mode — notes only from IndexedDB
       if (isOffline) {
         const localNotes = await getAllNotesLocal();
         if (requestId !== loadRequestRef.current) return;
@@ -133,7 +124,6 @@ export default function NoteList({
         return;
       }
 
-      // Online browse mode — split into folders and notes
       const items = await listFiles(folderId);
       if (requestId !== loadRequestRef.current) return;
       const { folders: folderItems, notes: noteItems } = partitionFilesByKind(
@@ -159,10 +149,6 @@ export default function NoteList({
     loadNotesRef.current();
   }, [folderId, searchQuery, tagFilter, isOffline]);
 
-  // Opens the inline "new note" row whenever DrivePage bumps createNoteSignal
-  // (button click or ⌘N). Adjusted during render (React's documented pattern
-  // for "reset/react to a changed prop") rather than in an effect — skipped
-  // on mount since prevCreateSignal starts equal to createNoteSignal.
   const [prevCreateSignal, setPrevCreateSignal] = useState(createNoteSignal);
   if (createNoteSignal !== prevCreateSignal) {
     setPrevCreateSignal(createNoteSignal);
@@ -585,10 +571,6 @@ interface FolderRowProps {
   onToggleStar: (e: React.MouseEvent) => void;
 }
 
-// Stretched-link row: `.rowLink` is a real <Link> whose ::after covers the
-// whole `.row` (position: relative), so the entire row is clickable/keyboard-
-// focusable without nesting interactive elements inside the anchor. NoteMenu
-// sits on top via z-index so it stays independently clickable.
 function FolderRow({
   folder,
   isMenuOpen,
@@ -637,11 +619,6 @@ interface NoteRowProps {
   onToggleStar: (e: React.MouseEvent) => void;
 }
 
-// Stretched-link row: `.rowLink` is a real <Link> whose ::after covers the
-// whole `.row` (position: relative), so the entire row is clickable/keyboard-
-// focusable (incl. middle-click / ⌘-click to open in a new tab) without
-// nesting interactive elements inside the anchor. Tags and NoteMenu sit on
-// top via z-index so they stay independently clickable.
 function NoteRow({
   note,
   isMenuOpen,

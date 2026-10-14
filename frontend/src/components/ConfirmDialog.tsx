@@ -32,7 +32,7 @@ export function ConfirmDialog({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 1000, // Higher than everything else
+        zIndex: 1000,
       }}
     >
       <div

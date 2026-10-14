@@ -21,7 +21,6 @@ export function parseSearchQuery(query: string): {
     if (token.startsWith("tag:")) {
       const value = token.slice(4);
       if (value) tags.push(value);
-      // bare "tag:" with no value is silently dropped
     } else {
       textParts.push(token);
     }
@@ -41,7 +40,6 @@ export function buildSearchRequest(
 ): { text: string; tags: string[] | undefined } {
   const { text, tags: queryTags } = parseSearchQuery(rawQuery ?? "");
   const merged = [...(urlTags ?? []), ...queryTags];
-  // Dedupe while preserving first-occurrence order
   const seen = new Set<string>();
   const tags = merged.filter((t) => (seen.has(t) ? false : seen.add(t)));
   return { text, tags: tags.length > 0 ? tags : undefined };

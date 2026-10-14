@@ -1,6 +1,6 @@
 /**
- * Counts visible characters in note content for the NotePage zen-mode
- * indicator, excluding whitespace (space, tab, newline, and the U+3000
+ * Counts visible characters in note content, excluding whitespace (space, tab,
+ * newline, and the U+3000
  * full-width space, which `\s` matches). A word count doesn't mean much
  * for Japanese/CJK text — those
  * scripts don't separate words with spaces — so NotePage shows a character

@@ -6,12 +6,6 @@ import type { EditorView } from "@codemirror/view";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
 
-/**
- * Mounts an Editor and hands back the pieces the tests drive it with:
- * `view` (the live CodeMirror view), `doc()` (observable document text),
- * `onChange` (the spy the component emits through) and `setValue()`, which
- * re-renders with a new `value` prop the way a parent's state update would.
- */
 function renderEditor(value: string) {
   const onChange = vi.fn();
   const ref = createRef<EditorHandle>();
@@ -66,8 +60,6 @@ describe("Editor document sync", () => {
   });
 
   it("keeps characters typed after a lagging value commit", () => {
-    // The parent mirrors the document one commit late, so its commit for "abc"
-    // can land only after the document has already moved on to "abcd".
     const { view, doc, onChange, setValue } = renderEditor("ab");
 
     typeAtEnd(view, "c");
@@ -83,8 +75,6 @@ describe("Editor document sync", () => {
   });
 
   it("keeps the document when only the intermediate value is committed", () => {
-    // Same race, except the parent never gets to deliver the catch-up value —
-    // the stale "abc" commit is the last thing the component sees.
     const { view, doc, setValue } = renderEditor("ab");
 
     typeAtEnd(view, "c");
@@ -108,8 +98,6 @@ describe("Editor document sync", () => {
   });
 
   it("applies a value that did not come from the editor", () => {
-    // A note load, or the conflict dialog's "Discard Local Changes", pushes
-    // text the editor never emitted — that must overwrite the document.
     const { view, doc, setValue } = renderEditor("ab");
 
     typeAtEnd(view, "cd");
@@ -121,8 +109,6 @@ describe("Editor document sync", () => {
   });
 
   it("does not report a value that did not come from the editor", () => {
-    // The parent already holds the text it just pushed in, so writing it into
-    // the document must not come back out as a fresh edit.
     const { view, doc, onChange, setValue } = renderEditor("ab");
 
     typeAtEnd(view, "cd");

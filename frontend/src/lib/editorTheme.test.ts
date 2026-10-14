@@ -4,17 +4,13 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 
 import { TAG_RE, WIKILINK_RE, isInCodeNode } from "./editorTheme";
 
-/**
- * Executes a global regex against `input` and returns every match's captured
- * groups. Resets `lastIndex` between calls so a shared regex instance is safe.
- */
 function matchAll(re: RegExp, input: string): RegExpExecArray[] {
   re.lastIndex = 0;
   const out: RegExpExecArray[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
     out.push(m);
-    if (m[0].length === 0) re.lastIndex++; // zero-length safety
+    if (m[0].length === 0) re.lastIndex++;
   }
   return out;
 }
@@ -110,7 +106,6 @@ describe("TAG_RE", () => {
   });
 
   it("does not match digit-only sequences", () => {
-    // #1 has a digit start — first tag-body char must be a letter or _.
     expect(matchAll(TAG_RE, "issue #1 closed")).toHaveLength(0);
   });
 

@@ -2,16 +2,13 @@
 import { EditorState, EditorSelection } from "@codemirror/state";
 import type { TransactionSpec } from "@codemirror/state";
 
-// Selected text, when inserted, so the user can immediately type or paste the real URL.
 const URL_PLACEHOLDER = "url";
 
-/** Line numbers (1-based) covered by the current selection, excluding a bare line-start at the end. */
 function getSelectedLineNumbers(state: EditorState): number[] {
   const nums = new Set<number>();
   for (const range of state.selection.ranges) {
     const fromLineNum = state.doc.lineAt(range.from).number;
     const toLine = state.doc.lineAt(range.to);
-    // Exclude the next line when range.to sits exactly on its beginning
     const toLineNum =
       range.to > range.from && toLine.from === range.to
         ? toLine.number - 1
@@ -21,7 +18,6 @@ function getSelectedLineNumbers(state: EditorState): number[] {
   return Array.from(nums).sort((a, b) => a - b);
 }
 
-/** Wrap/unwrap the current selection with a symmetric marker (e.g. `**`, `*`, `~~`, `` ` ``). */
 function wrapSelection(state: EditorState, marker: string): TransactionSpec {
   const { from, to } = state.selection.main;
   const mLen = marker.length;
@@ -33,7 +29,6 @@ function wrapSelection(state: EditorState, marker: string): TransactionSpec {
     };
   }
 
-  // Priority 1: the selected text itself is wrapped — strip markers from inside
   const selected = state.doc.sliceString(from, to);
   if (
     selected.startsWith(marker) &&
@@ -49,7 +44,6 @@ function wrapSelection(state: EditorState, marker: string): TransactionSpec {
     };
   }
 
-  // Priority 2: markers immediately surround the selection from outside
   const beforeStart = Math.max(0, from - mLen);
   const afterEnd = Math.min(state.doc.length, to + mLen);
   const before = state.doc.sliceString(beforeStart, from);
@@ -74,7 +68,6 @@ function wrapSelection(state: EditorState, marker: string): TransactionSpec {
   };
 }
 
-/** Add/remove a line-start prefix on all selected lines (Notion-style: all-have → remove, else add). */
 function togglePrefixOnLines(
   state: EditorState,
   prefix: string,

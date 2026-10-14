@@ -59,13 +59,11 @@ describe("toggleBold", () => {
   });
 
   it("selection is the content of a bold span: strips the surrounding markers", () => {
-    // "a**b**c" with "b" selected at (3,4) — the ** do wrap this selection, so bold is removed
     const r = apply("a**b**c", 3, 4, toggleBold);
     expect(r.doc).toBe("abc");
   });
 
   it("full bold span selected: strips markers via inner-content priority", () => {
-    // selecting "**hello**" (0,9) — selected text itself starts/ends with marker
     const r = apply("**hello**", 0, 9, toggleBold);
     expect(r.doc).toBe("hello");
   });
@@ -185,7 +183,6 @@ describe("toggleBulletList", () => {
   });
 
   it("mixed with trailing unprefixed line: adds prefix to all (all-or-nothing)", () => {
-    // "- a\n- b\nc" — not all have prefix → adds to the missing one
     const r = apply("- a\n- b\nc", 0, 9, toggleBulletList);
     expect(r.doc).toBe("- a\n- b\n- c");
   });
@@ -279,7 +276,6 @@ describe("toggleCode", () => {
   });
 
   it("selection not at line start: prepends newline so fence is at column 0", () => {
-    // selecting "b" in "abc" at pos 1..2 — opening fence must be on its own line
     const r = apply("abc", 1, 2, toggleCode);
     expect(r.doc).toBe("a\n```\nb\n```\nc");
   });

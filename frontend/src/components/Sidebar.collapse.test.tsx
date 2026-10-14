@@ -86,9 +86,6 @@ const getRail = () => screen.getByTestId("sidebar-rail");
 const getPanel = () => screen.getByTestId("sidebar-panel");
 const getRoot = (container: HTMLElement) => container.firstChild as HTMLElement;
 
-// The mobile backdrop has no data-testid; it's the only element whose CSS
-// Module class name contains "overlay" (base class is always applied, so
-// this matches whether or not `.overlayOpen` is also present).
 const getOverlay = () =>
   document.querySelector('[class*="overlay"]') as HTMLElement;
 
@@ -101,14 +98,8 @@ const getRecentList = () => {
   return list as HTMLElement;
 };
 
-// Isolate the new `sidebar:collapsed` key (and any other sidebar state)
-// between tests; individual describes below still call `.clear()` or
-// `.setItem()` themselves where the ordering matters for readability.
 beforeEach(() => {
   window.localStorage.clear();
-  // renderSidebarSettled() waits for listTags to have been called by *this*
-  // render; without clearing, a previous test's call would satisfy it instantly
-  // and the wait would be a no-op.
   vi.mocked(listTags).mockClear();
 });
 
@@ -177,7 +168,6 @@ describe("Sidebar refreshTrigger", () => {
 
     rerender(<Sidebar onNavigate={() => {}} refreshTrigger={0} />);
 
-    // Allow a render cycle; count must not increase
     await new Promise((r) => setTimeout(r, 50));
     expect(listRecent).toHaveBeenCalledTimes(1);
   });
