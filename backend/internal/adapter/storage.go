@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// FileMetadata represents metadata about a file stored in the cloud storage.
+const DemoUserIDPrefix = "demo-user-"
+
 type FileMetadata struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`

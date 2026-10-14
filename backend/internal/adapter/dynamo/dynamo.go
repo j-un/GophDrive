@@ -23,7 +23,6 @@ import (
 
 const mdExt = ".md"
 
-// toStoredName appends .md extension for storage.
 func toStoredName(name string) string {
 	if strings.HasSuffix(name, mdExt) {
 		return name
@@ -31,7 +30,6 @@ func toStoredName(name string) string {
 	return name + mdExt
 }
 
-// fromStoredName strips .md extension when returning names to the API.
 func fromStoredName(name string) string {
 	return strings.TrimSuffix(name, mdExt)
 }
@@ -64,7 +62,6 @@ type Adapter struct {
 	inMemory bool
 	userID   string
 
-	// Fallback for tests
 	files map[string]*adapter.File
 	mu    sync.RWMutex
 
@@ -74,23 +71,15 @@ type Adapter struct {
 const (
 	// maxContentSize bounds a single note body. 256KB stays well under DDB's
 	// 400KB item-size cap and leaves room for metadata.
-	maxContentSize = 256 * 1024
-	// maxTitleLength caps how long a file or folder name can be.
-	maxTitleLength = 255
-	// maxDemoItemCount limits demo-user data only — real (Google-authenticated)
-	// users have no item-count limit.
+	maxContentSize   = 256 * 1024
+	maxTitleLength   = 255
 	maxDemoItemCount = 50
-	demoUserPrefix   = "demo-user-"
 )
 
-// isDemoUser reports whether ephemeral demo-user limits/TTL apply.
 func (m *Adapter) isDemoUser() bool {
-	return strings.HasPrefix(m.userID, demoUserPrefix)
+	return strings.HasPrefix(m.userID, adapter.DemoUserIDPrefix)
 }
 
-// itemTTL returns the DynamoDB TTL for a newly-written item. Demo users get
-// a 60-minute expiry so their data auto-cleans; real users get 0 (omitted by
-// omitempty), meaning the item never expires.
 func (m *Adapter) itemTTL() int64 {
 	if !m.isDemoUser() {
 		return 0
@@ -98,8 +87,6 @@ func (m *Adapter) itemTTL() int64 {
 	return time.Now().Add(60 * time.Minute).Unix()
 }
 
-// checkItemLimit enforces the demo-user item count cap. Real users are
-// uncapped at this layer.
 func (m *Adapter) checkItemLimit(ctx context.Context) error {
 	if !m.isDemoUser() {
 		return nil
@@ -120,9 +107,6 @@ func (m *Adapter) countUserItems(ctx context.Context) (int, error) {
 	return countAllPages(ctx, m.client, m.userScanInput())
 }
 
-// userScanInput returns the canonical ScanInput used by every per-user scan.
-// Concentrating it here means new callers can't accidentally drop the
-// user_id filter, and pagination is handled uniformly via scanAllPages.
 func (m *Adapter) userScanInput() *dynamodb.ScanInput {
 	return &dynamodb.ScanInput{
 		TableName:        getTableName(),
@@ -133,23 +117,8 @@ func (m *Adapter) userScanInput() *dynamodb.ScanInput {
 	}
 }
 
-// inlineSizeLimit caps how large a body can be before storage must spill to
-// S3. Set well below DynamoDB's 400KB single-item limit to leave room for
-// metadata and JSON encoding overhead.
-//
-// Today every body comes through under this limit (text-only, capped further
-// by maxContentSize at the API layer). The constant exists so the spillover
-// branch in routeBody is reachable as soon as a future feature lifts the
-// API-level cap to allow non-text content.
 const inlineSizeLimit = 300 * 1024
 
-// routeBody decides whether a body lives inline (DDB) or in S3.
-//
-// Phase 3 implements only the inline path. The S3 spillover path is
-// reserved: when a future feature enables image/file uploads, this is the
-// single place that learns to upload to S3 and return a non-empty key.
-// Until then, oversized bodies surface ErrPayloadTooLarge so a regression
-// that lifts the API cap fails loudly instead of silently corrupting items.
 func (m *Adapter) routeBody(_ context.Context, content []byte) (inline []byte, s3Key string, err error) {
 	if len(content) > inlineSizeLimit {
 		return nil, "", adapter.ErrPayloadTooLarge
@@ -157,10 +126,6 @@ func (m *Adapter) routeBody(_ context.Context, content []byte) (inline []byte, s
 	return content, "", nil
 }
 
-// getFileItem reads the raw persisted FileItem (vs the adapter.File facade
-// returned by GetFile). Used by metadata-only writers (rename, star) so they
-// can preserve every attribute — including BodyS3Key once spillover lands —
-// without re-implementing knowledge of the schema.
 func (m *Adapter) getFileItem(ctx context.Context, fileID string) (*FileItem, error) {
 	out, err := m.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: getTableName(),
@@ -181,12 +146,6 @@ func (m *Adapter) getFileItem(ctx context.Context, fileID string) (*FileItem, er
 	return &item, nil
 }
 
-// getOwnedFileItem is the ownership-scoped variant of getFileItem. Every
-// by-id operation that returns row content or drives a mutation must go
-// through this helper — a new method that forgets it re-opens the
-// cross-tenant IDOR MoveFile has always guarded against. Foreign rows are
-// mapped to ErrNotFound so the caller cannot distinguish "missing" from
-// "belongs to someone else".
 func (m *Adapter) getOwnedFileItem(ctx context.Context, fileID string) (*FileItem, error) {
 	item, err := m.getFileItem(ctx, fileID)
 	if err != nil {
@@ -307,7 +266,6 @@ func (m *Adapter) ListFiles(ctx context.Context, folderID string) ([]adapter.Fil
 		if item.MIMEType != "application/vnd.google-apps.folder" && !strings.HasSuffix(item.Name, ".md") {
 			continue
 		}
-		// Filter by parent
 		isChild := false
 		for _, p := range item.Parents {
 			if p == targetFolderID {
@@ -357,9 +315,6 @@ func (m *Adapter) GetFile(ctx context.Context, fileID string) (*adapter.File, er
 		return nil, err
 	}
 
-	// Defensive: a non-empty BodyS3Key means this row was written by a
-	// future-Phase spillover path that the read side hasn't learned to fetch.
-	// Surfacing this loudly avoids returning silently-empty Content.
 	if item.BodyS3Key != "" {
 		return nil, adapter.ErrPayloadTooLarge
 	}
@@ -407,9 +362,6 @@ func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 		":uid": &types.AttributeValueMemberS{Value: m.userID},
 	}
 	var names map[string]string
-	// For demo users, viewing a note also refreshes its 60-minute TTL so an
-	// active read-only session doesn't lose notes mid-use. Real users have no
-	// ttl attribute (itemTTL returns 0) and must never get one written here.
 	if ttl := m.itemTTL(); ttl != 0 {
 		updateExpr += ", #ttl = :t"
 		values[":t"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(ttl, 10)}
@@ -420,11 +372,7 @@ func (m *Adapter) TouchViewed(ctx context.Context, fileID string) error {
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: fileID},
 		},
-		UpdateExpression: aws.String(updateExpr),
-		// user_id guard blocks cross-tenant TTL contamination: a demo caller
-		// touching another user's note would otherwise silently rewrite the
-		// victim's ttl attribute. Failing the condition falls through to the
-		// existing best-effort no-op below.
+		UpdateExpression:          aws.String(updateExpr),
 		ConditionExpression:       aws.String("attribute_exists(pk) AND user_id = :uid"),
 		ExpressionAttributeValues: values,
 		ExpressionAttributeNames:  names,
@@ -457,7 +405,6 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return m.saveFileMap(ctx, fileID, content, etag)
 	}
 
-	// Get existing to check ETag and get Metadata
 	f, err := m.GetFile(ctx, fileID)
 	if err != nil {
 		return nil, err
@@ -512,9 +459,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		Content:      inline,
 		BodyS3Key:    s3Key,
 		TTL:          m.itemTTL(),
-		// Editing a note also counts as viewing it; keep it at the top of
-		// recents and avoid the full-item PutItem wiping a prior viewed_time.
-		ViewedTime: f.ModifiedTime,
+		ViewedTime:   f.ModifiedTime,
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -559,14 +504,14 @@ func (m *Adapter) CreateFile(ctx context.Context, name string, content []byte, f
 	}
 
 	if targetFolderID != m.BaseFolderID && targetFolderID != "root" {
-		it, err := m.getFileItem(ctx, targetFolderID)
+		it, err := m.getOwnedFileItem(ctx, targetFolderID)
 		if err != nil {
 			if errors.Is(err, adapter.ErrNotFound) {
 				return nil, fmt.Errorf("parent folder %q: %w", targetFolderID, adapter.ErrNotFound)
 			}
 			return nil, err
 		}
-		if it.UserID != m.userID || it.MIMEType != "application/vnd.google-apps.folder" {
+		if it.MIMEType != "application/vnd.google-apps.folder" {
 			return nil, fmt.Errorf("parent folder %q: %w", targetFolderID, adapter.ErrNotFound)
 		}
 	}
@@ -671,14 +616,14 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 
 	parentID := targetParents[0]
 	if parentID != m.BaseFolderID && parentID != "root" {
-		it, err := m.getFileItem(ctx, parentID)
+		it, err := m.getOwnedFileItem(ctx, parentID)
 		if err != nil {
 			if errors.Is(err, adapter.ErrNotFound) {
 				return nil, fmt.Errorf("parent folder %q: %w", parentID, adapter.ErrNotFound)
 			}
 			return nil, err
 		}
-		if it.UserID != m.userID || it.MIMEType != "application/vnd.google-apps.folder" {
+		if it.MIMEType != "application/vnd.google-apps.folder" {
 			return nil, fmt.Errorf("parent folder %q: %w", parentID, adapter.ErrNotFound)
 		}
 	}
@@ -726,13 +671,10 @@ func (m *Adapter) CreateFolder(ctx context.Context, name string, parents []strin
 	return &f.FileMetadata, nil
 }
 
-// Helper for case-insensitive check
 func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// itemNoteType returns the note's type, lazily parsing frontmatter when
-// noteType is empty and content is available (mirrors itemAliases).
 func itemNoteType(noteType string, content []byte) string {
 	if noteType != "" {
 		return noteType
@@ -744,20 +686,10 @@ func itemNoteType(noteType string, content []byte) string {
 	return meta.Type
 }
 
-// scoreMatch reports whether the item matches query under scope, with a
-// relevance score and optional body snippet. Pure; must not mutate inputs;
-// callers may pass aliased backing arrays while holding RLock. Callers must
-// not invoke this with an empty query — SearchFilesWithTags skips the
-// text-match step entirely when query == "".
-//
-// Score components (each computed once, then combined per scope below):
-//   - title: contains query → +100; exact title (minus .md) → +50 more.
-//   - alias: any alias contains query → +80; any alias exactly equals query → +40 more.
-//   - heading: any heading contains query → +40 (stored headings preferred,
-//     falling back to on-the-fly extraction when unset).
-//   - tag: any tag contains query → +30.
-//   - body: 10 points per occurrence of query, capped at 5 occurrences (+50 max).
 func scoreMatch(name string, aliases []string, content []byte, headings, tags []string, query string, scope adapter.SearchScope) (hit bool, score int, snippet string) {
+	if query == "" {
+		return false, 0, ""
+	}
 	titleScore := 0
 	if containsIgnoreCase(name, query) {
 		titleScore = 100
@@ -788,8 +720,6 @@ func scoreMatch(name string, aliases []string, content []byte, headings, tags []
 		return s > 0, s, ""
 	}
 
-	// Prefer stored headings; fall back to on-the-fly extraction. Shared by
-	// ScopeHeadings and ScopeAll.
 	hs := headings
 	if len(hs) == 0 && len(content) > 0 {
 		hs = markdown.ExtractHeadings(content)
@@ -806,7 +736,6 @@ func scoreMatch(name string, aliases []string, content []byte, headings, tags []
 		return headingScore > 0, headingScore, ""
 	}
 
-	// ScopeAll
 	tagScore := 0
 	for _, t := range tags {
 		if containsIgnoreCase(t, query) {
@@ -833,9 +762,6 @@ func scoreMatch(name string, aliases []string, content []byte, headings, tags []
 	return true, total, snip
 }
 
-// makeSnippet extracts a ±window-byte context around the first occurrence of
-// query in content. Newlines are collapsed to spaces. Returns empty string when
-// query is not found or is empty.
 func makeSnippet(content []byte, query string, window int) string {
 	if len(query) == 0 || len(content) == 0 {
 		return ""
@@ -861,7 +787,6 @@ func makeSnippet(content []byte, query string, window int) string {
 		end++
 	}
 	snippet := strings.ReplaceAll(string(content[start:end]), "\n", " ")
-	// collapse consecutive spaces
 	for strings.Contains(snippet, "  ") {
 		snippet = strings.ReplaceAll(snippet, "  ", " ")
 	}
@@ -880,10 +805,7 @@ func (m *Adapter) EnsureRootFolder(ctx context.Context, name string) (string, er
 		return m.ensureRootFolderMap(ctx, name)
 	}
 
-	// 1. Search existing (Scan)
-	files, err := m.ListFiles(ctx, "root") // Helper scan? No, ListFiles filters by parent "root".
-	// But EnsureRootFolder checks for Name + MimeType + Parent=root
-	// Let's just Scan all and find it.
+	files, err := m.ListFiles(ctx, "root")
 
 	if err == nil {
 		for _, f := range files {
@@ -893,7 +815,6 @@ func (m *Adapter) EnsureRootFolder(ctx context.Context, name string) (string, er
 		}
 	}
 
-	// 2. Create
 	return m.createRootFolder(ctx, name)
 }
 
@@ -946,14 +867,10 @@ func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
 		return m.deleteFileMap(ctx, fileID)
 	}
 
-	// Ownership guard on the read side (short-circuits cross-tenant callers
-	// before we scan children or attempt writes).
 	if _, err := m.getOwnedFileItem(ctx, fileID); err != nil {
 		return err
 	}
 
-	// Find children for recursive delete. scanUserItems is already scoped to
-	// m.userID, so a foreign folder pk here would surface no children.
 	items, err := m.scanUserItems(ctx)
 	if err != nil {
 		return err
@@ -968,16 +885,12 @@ func (m *Adapter) DeleteFile(ctx context.Context, fileID string) error {
 			}
 		}
 		if isChild {
-			// Recursively delete child
 			if err := m.DeleteFile(ctx, item.ID); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Atomic ownership on the write side (defense-in-depth): even if a race
-	// invalidates the read-side guard, the row is only deleted when user_id
-	// still matches.
 	_, err = m.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: getTableName(),
 		Key: map[string]types.AttributeValue{
@@ -1007,17 +920,11 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		return m.duplicateFileMap(ctx, fileID)
 	}
 
-	// Read the raw FileItem so spillover-mode rows (BodyS3Key set) wouldn't
-	// be silently truncated to an empty body on copy. Phase 3 doesn't write
-	// such rows, but the helper means a future "duplicate also copies the
-	// S3 object" implementation has only one place to extend.
 	orig, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
 	if orig.BodyS3Key != "" {
-		// Spillover not wired yet; refuse to duplicate a row we couldn't
-		// faithfully copy. Phase 3 never produces such rows.
 		return nil, adapter.ErrPayloadTooLarge
 	}
 
@@ -1025,7 +932,6 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 	newName := toStoredName("Copy of " + fromStoredName(orig.Name))
 	now := time.Now()
 
-	// Deep-copy the inline body so the new row never shares backing memory.
 	dupContent := append([]byte(nil), orig.Content...)
 
 	item := FileItem{
@@ -1077,8 +983,6 @@ func (m *Adapter) DuplicateFile(ctx context.Context, fileID string) (*adapter.Fi
 		Status:       item.Status,
 	}, nil
 }
-
-// --- Map Implementations (Fallback) ---
 
 func (m *Adapter) listFilesMap(ctx context.Context, folderID string) ([]adapter.FileMetadata, error) {
 	m.mu.RLock()
@@ -1193,7 +1097,6 @@ func (m *Adapter) createFileMap(_ context.Context, name string, content []byte, 
 func (m *Adapter) createFolderMap(_ context.Context, name string, parents []string) (*adapter.FileMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// CreateFolder always resolves targetParents to len >= 1 before calling this helper.
 	parentID := parents[0]
 	if parentID != "root" && parentID != m.BaseFolderID {
 		f, ok := m.files[parentID]
@@ -1236,7 +1139,6 @@ func (m *Adapter) ensureRootFolderMap(ctx context.Context, name string) (string,
 			}
 		}
 	}
-	// Create
 	id := uuid.New().String()
 	now := time.Now()
 	f := &adapter.File{
@@ -1255,38 +1157,31 @@ func (m *Adapter) ensureRootFolderMap(ctx context.Context, name string) (string,
 	return id, nil
 }
 
-func (m *Adapter) deleteFileMap(ctx context.Context, fileID string) error {
+func (m *Adapter) deleteFileMap(_ context.Context, fileID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.deleteFileMapLocked(fileID)
+}
 
-	// Check existence
+func (m *Adapter) deleteFileMapLocked(fileID string) error {
 	if _, ok := m.files[fileID]; !ok {
 		return adapter.ErrNotFound
 	}
 
-	// Find children to delete (avoid modifying map while iterating)
-	var childrenToDelete []string
+	var children []string
 	for id, f := range m.files {
-		isChild := false
 		for _, p := range f.Parents {
 			if p == fileID {
-				isChild = true
+				children = append(children, id)
 				break
 			}
 		}
-		if isChild {
-			childrenToDelete = append(childrenToDelete, id)
+	}
+	for _, childID := range children {
+		if err := m.deleteFileMapLocked(childID); err != nil {
+			return err
 		}
 	}
-
-	// Unlock to allow recursive calls
-	m.mu.Unlock()
-	for _, childID := range childrenToDelete {
-		// Recursion (will lock again)
-		_ = m.deleteFileMap(ctx, childID)
-	}
-	m.mu.Lock()
-
 	delete(m.files, fileID)
 	return nil
 }
@@ -1341,9 +1236,6 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return m.renameFileMap(ctx, fileID, newName)
 	}
 
-	// Read the raw row so we re-PUT every attribute, including any
-	// future-Phase BodyS3Key, instead of going through GetFile (which
-	// strips spillover state).
 	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
@@ -1363,8 +1255,6 @@ func (m *Adapter) RenameFile(ctx context.Context, fileID string, newName string)
 		return nil, err
 	}
 
-	// Atomic ownership guard on the write: catches any race where the row's
-	// owner changed between our read and this PutItem.
 	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           getTableName(),
 		Item:                av,
@@ -1403,7 +1293,6 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		return m.setStarredMap(ctx, fileID, starred)
 	}
 
-	// See RenameFile for why this reads the raw FileItem rather than GetFile.
 	item, err := m.getOwnedFileItem(ctx, fileID)
 	if err != nil {
 		return nil, err
@@ -1419,7 +1308,6 @@ func (m *Adapter) SetStarred(ctx context.Context, fileID string, starred bool) (
 		return nil, err
 	}
 
-	// Atomic ownership guard (see RenameFile).
 	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           getTableName(),
 		Item:                av,
@@ -1522,7 +1410,6 @@ func (m *Adapter) MoveFile(ctx context.Context, fileID string, newParentID strin
 		}
 	}
 
-	// Only folders can create a cycle; notes have no children.
 	if item.MIMEType == "application/vnd.google-apps.folder" {
 		items, err := m.scanUserItems(ctx)
 		if err != nil {
@@ -1605,7 +1492,6 @@ func (m *Adapter) moveFileMap(ctx context.Context, fileID string, newParentID st
 		return nil, adapter.ErrInvalidMove
 	}
 
-	// "root" and BaseFolderID are meta-destinations that always exist for the user.
 	if resolvedParentID != "root" && resolvedParentID != m.BaseFolderID {
 		dest, ok := m.files[resolvedParentID]
 		if !ok {
@@ -1697,7 +1583,6 @@ func (p *Provider) GetAdapter(ctx context.Context, userID, baseFolderID string) 
 	return p.stores[userID], nil
 }
 
-// isDescendant checks recursively if targetFolderID is an ancestor of the file.
 func (m *Adapter) isDescendant(fileParents []string, targetFolderID string, allItems map[string][]string) bool {
 	if targetFolderID == "root" {
 		return true
@@ -1709,7 +1594,6 @@ func (m *Adapter) isDescendant(fileParents []string, targetFolderID string, allI
 		if p == "" || p == "root" {
 			continue
 		}
-		// Recursive check
 		if nextParents, ok := allItems[p]; ok {
 			if m.isDescendant(nextParents, targetFolderID, allItems) {
 				return true
@@ -1734,7 +1618,6 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 		return nil, err
 	}
 
-	// Build parent map for recursive check
 	parentMap := make(map[string][]string)
 	for _, item := range items {
 		parentMap[item.ID] = item.Parents
@@ -1772,9 +1655,6 @@ func (m *Adapter) ListStarred(ctx context.Context) ([]adapter.FileMetadata, erro
 	return files, nil
 }
 
-// sortByViewedTimeDesc orders newest-viewed first, breaking ties on ID so the
-// result is fully deterministic even when several notes share a timestamp
-// (common for legacy rows whose viewed_time falls back to modified_time).
 func sortByViewedTimeDesc(files []adapter.FileMetadata) {
 	sort.SliceStable(files, func(i, j int) bool {
 		if !files[i].ViewedTime.Equal(files[j].ViewedTime) {
@@ -1801,13 +1681,11 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 		return nil, err
 	}
 
-	// Build parent map
 	parentMap := make(map[string][]string)
 	for _, item := range items {
 		parentMap[item.ID] = item.Parents
 	}
 
-	// Filter
 	var files []adapter.FileMetadata
 	for _, item := range items {
 		if item.MIMEType == "application/vnd.google-apps.folder" || !strings.HasSuffix(item.Name, ".md") {
@@ -1818,7 +1696,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 		}
 		viewedTime := item.ViewedTime
 		if viewedTime.IsZero() {
-			viewedTime = item.ModifiedTime // fallback: never opened since viewed_time was introduced
+			viewedTime = item.ModifiedTime
 		}
 		files = append(files, adapter.FileMetadata{
 			ID:           item.ID,
@@ -1872,7 +1750,7 @@ func (m *Adapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileM
 		meta := f.FileMetadata
 		meta.Name = fromStoredName(meta.Name)
 		if meta.ViewedTime.IsZero() {
-			meta.ViewedTime = f.ModifiedTime // fallback: never opened
+			meta.ViewedTime = f.ModifiedTime
 		}
 		files = append(files, meta)
 	}
@@ -1895,7 +1773,6 @@ func (m *Adapter) listStarredMap(ctx context.Context) ([]adapter.FileMetadata, e
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Build parent map
 	parentMap := make(map[string][]string)
 	for _, f := range m.files {
 		parentMap[f.ID] = f.Parents
@@ -1960,12 +1837,10 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			continue
 		}
 
-		// Type filter; lazy fallback for items with no stored NoteType
 		if noteType != "" && !strings.EqualFold(itemNoteType(item.NoteType, item.Content), noteType) {
 			continue
 		}
 
-		// Text match (skip if query is empty)
 		var snippet string
 		var score int
 		if query != "" {
@@ -1977,11 +1852,9 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 			snippet = snip
 		}
 
-		// Tag filter (AND semantics); lazy fallback for items with no stored tags
 		if len(tags) > 0 {
 			itemTags := item.Tags
 			if len(itemTags) == 0 && len(item.Content) > 0 {
-				// Lazy: item predates tag feature — extract on the fly for this query
 				itemTags = markdown.ExtractTags(item.Content)
 			}
 			if !hasAllTags(itemTags, tags) {
@@ -2010,7 +1883,6 @@ func (m *Adapter) SearchFilesWithTags(ctx context.Context, query string, tags []
 	return files, nil
 }
 
-// hasAllTags reports whether itemTags contains every tag in required.
 func hasAllTags(itemTags, required []string) bool {
 	for _, r := range required {
 		found := false
@@ -2095,9 +1967,6 @@ func (m *Adapter) exportMap(_ context.Context) ([]adapter.ExportEntry, error) {
 	return m.buildExport(items)
 }
 
-// buildExport is the storage-agnostic core: given a flat list of items, build
-// folder-name and parent-id maps, then compose each note's relative path by
-// walking parents up to the base folder (or filesystem "root" pseudo-id).
 func (m *Adapter) buildExport(items []FileItem) ([]adapter.ExportEntry, error) {
 	folderName := make(map[string]string, len(items))
 	parentOf := make(map[string]string, len(items))
@@ -2138,10 +2007,6 @@ func (m *Adapter) buildExport(items []FileItem) ([]adapter.ExportEntry, error) {
 	return entries, nil
 }
 
-// folderPathSegments walks parent ids from the note's immediate parent up to
-// the stop sentinel, returning folder names in root→leaf order. Cycles are
-// defended against with a visited set so a corrupt parent chain can't hang
-// the export.
 func folderPathSegments(parents []string, parentOf map[string]string, folderName map[string]string, stop string) []string {
 	if len(parents) == 0 {
 		return nil
@@ -2193,7 +2058,6 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 			continue
 		}
 
-		// Type filter; lazy fallback for items with no stored Type
 		if noteType != "" && !strings.EqualFold(itemNoteType(f.Type, f.Content), noteType) {
 			continue
 		}
@@ -2203,7 +2067,6 @@ func (m *Adapter) searchFilesWithTagsMap(_ context.Context, query string, tags [
 		if query != "" {
 			aliases := f.Aliases
 			if len(aliases) == 0 && len(f.Content) > 0 {
-				// Lazy: item predates aliases feature — extract on the fly for this query
 				meta, _, _ := markdown.ParseNoteMeta(f.Content)
 				aliases = meta.Aliases
 			}
@@ -2259,8 +2122,6 @@ func (m *Adapter) listAllTagsMap(_ context.Context) ([]adapter.TagCount, error) 
 	return result, nil
 }
 
-// mapItems converts the in-memory file map to a FileItem slice for use by
-// resolveLinks and buildGraph. Must be called while holding m.mu (read or write).
 func (m *Adapter) mapItems() []FileItem {
 	items := make([]FileItem, 0, len(m.files))
 	for _, f := range m.files {
