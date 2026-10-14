@@ -3,9 +3,6 @@ set -e
 
 echo "Starting AWS Deployment Process..."
 
-# ---- Toolchain (mise) ----
-# Pin Go and Node to .tool-versions via mise so the deploy is independent of
-# whatever asdf / nvm / Homebrew version is currently active in the user's shell.
 if ! command -v mise >/dev/null 2>&1; then
   echo -e "\033[0;31mError: mise not found.\033[0m Install with 'brew install mise'." >&2
   exit 1
@@ -14,7 +11,6 @@ mise install go node >/dev/null
 eval "$(mise env -s bash)"
 echo "✅ Using node $(node -v) / go $(go version | awk '{print $3}') (via mise)"
 
-# ---- Validation ----
 if [ -z "${GOOGLE_CLIENT_ID}" ] || [ -z "${GOOGLE_CLIENT_SECRET}" ]; then
   echo -e "\033[0;31mError: Missing required environment variables.\033[0m"
   echo "You must set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to deploy the application."
@@ -41,8 +37,6 @@ if [ -n "${CUSTOM_DOMAIN_NAME}" ]; then
   export FRONTEND_URL="https://${CUSTOM_DOMAIN_NAME}"
 fi
 
-# Optional: Privacy Policy and Terms of Service URLs
-# These are baked into the frontend at build time.
 if [ -n "${PRIVACY_POLICY_URL}" ]; then
   export VITE_PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL}"
   echo "  Privacy Policy URL: ${PRIVACY_POLICY_URL}"
@@ -52,21 +46,13 @@ if [ -n "${TERMS_OF_SERVICE_URL}" ]; then
   echo "  Terms of Service URL: ${TERMS_OF_SERVICE_URL}"
 fi
 
-# Optional: App branding / legal page content (baked in at build time).
-# Defaults are set in PrivacyPage.tsx / TermsPage.tsx if these are unset.
-# APP_NAME         → VITE_APP_NAME          (default: "GophDrive")
-# CONTACT_EMAIL    → VITE_CONTACT_EMAIL     (default: "the administrator")
-# ENCRYPTION_METHOD→ VITE_ENCRYPTION_METHOD (default: "AES-256")
-# JURISDICTION     → VITE_JURISDICTION      (default: "Your Jurisdiction")
 [ -n "${APP_NAME}" ]          && export VITE_APP_NAME="${APP_NAME}"
 [ -n "${CONTACT_EMAIL}" ]     && export VITE_CONTACT_EMAIL="${CONTACT_EMAIL}"
 [ -n "${ENCRYPTION_METHOD}" ] && export VITE_ENCRYPTION_METHOD="${ENCRYPTION_METHOD}"
 [ -n "${JURISDICTION}" ]      && export VITE_JURISDICTION="${JURISDICTION}"
 
-# ---- SSM Parameter Store: Manage Secrets ----
 echo "Managing secrets in SSM Parameter Store..."
 
-# JWT_SECRET and API_GATEWAY_SECRET: auto-generate if not already in SSM
 for PARAM in "/gophdrive/jwt-secret" "/gophdrive/api-gateway-secret"; do
   if ! aws ssm get-parameter --name "$PARAM" > /dev/null 2>&1; then
     echo "  Creating $PARAM (auto-generated)..."
@@ -77,35 +63,29 @@ for PARAM in "/gophdrive/jwt-secret" "/gophdrive/api-gateway-secret"; do
   fi
 done
 
-# GOOGLE_CLIENT_SECRET: write only if provided via env var
 if [ -n "${GOOGLE_CLIENT_SECRET}" ]; then
   echo "  Writing /gophdrive/google-client-secret from env var..."
   aws ssm put-parameter --name "/gophdrive/google-client-secret" \
     --value "${GOOGLE_CLIENT_SECRET}" --type SecureString --overwrite
 fi
 
-# Fetch API_GATEWAY_SECRET from SSM and export for CDK (CloudFront X-Origin-Verify header)
 export API_GATEWAY_SECRET=$(aws ssm get-parameter --name "/gophdrive/api-gateway-secret" \
   --with-decryption --query "Parameter.Value" --output text)
 echo "  ✅ API_GATEWAY_SECRET fetched from SSM for CloudFront."
 
 echo "SSM secrets ready."
 
-# 1. Build Backend (Lambda Bootstrap)
 echo "Building Backend..."
 cd backend
 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bootstrap ./cmd/api
 cd ..
 
-# 2. Deploy Infrastructure
 echo "Deploying Infrastructure..."
 cd infra
 npm ci
-# Ensure context is set if needed or just deploy
 npx cdk deploy --all --require-approval never
 cd ..
 
-# 3. Automate Frontend URL and Bucket Extraction
 echo "Extracting Deployment Outputs..."
 if [ -z "${CUSTOM_DOMAIN_NAME}" ]; then
   export FRONTEND_URL=$(aws cloudformation describe-stacks --stack-name GophDriveFrontendStack --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text || echo "")
@@ -119,7 +99,6 @@ fi
 echo "  Frontend URL: $FRONTEND_URL"
 echo "  S3 Bucket: $BUCKET_NAME"
 
-# 4. Build Frontend
 echo "Rebuilding core.wasm so the deploy never ships a stale Wasm artifact..."
 ./scripts/internal/build-wasm.sh
 
@@ -130,13 +109,11 @@ npm ci
 npm run build
 cd ..
 
-# 5. Upload Frontend Assets
 echo "Uploading Static Assets to S3..."
 aws s3 sync frontend/out "s3://$BUCKET_NAME" --delete
 
 echo "Invalidating CloudFront Cache..."
-# Get Distribution ID (Assuming only one distribution or filter by tag if possible, but for MVP grabbing the first one)
-DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[0].Id" --output text)
+DIST_ID=$(aws cloudformation describe-stacks --stack-name GophDriveFrontendStack --query "Stacks[0].Outputs[?OutputKey=='FrontendDistributionId'].OutputValue" --output text || echo "")
 if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
     aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
     echo "Invalidation created for $DIST_ID"
