@@ -23,14 +23,12 @@ fi
 
 VERSION="$1"
 
-# Validate semantic version format: vMAJOR.MINOR.PATCH with optional pre-release/build metadata.
 SEMVER_REGEX='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 if ! [[ "$VERSION" =~ $SEMVER_REGEX ]]; then
   echo "ERROR: '$VERSION' is not a valid semantic version (expected e.g. v1.2.3)." >&2
   exit 1
 fi
 
-# Ensure we are inside a git repository.
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "ERROR: not inside a git repository." >&2
   exit 1
@@ -39,7 +37,6 @@ fi
 echo "--- Fetching origin... ---"
 git fetch origin --tags --prune
 
-# Ensure the tag does not already exist locally or remotely.
 if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
   echo "ERROR: tag '$VERSION' already exists locally." >&2
   exit 1
@@ -49,14 +46,12 @@ if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1;
   exit 1
 fi
 
-# Working tree must be clean (no staged, unstaged, or untracked changes).
 if [ -n "$(git status --porcelain)" ]; then
   echo "ERROR: working tree is not clean. Commit or stash changes first." >&2
   git status --short >&2
   exit 1
 fi
 
-# HEAD must equal origin/main exactly.
 LOCAL_SHA="$(git rev-parse HEAD)"
 REMOTE_SHA="$(git rev-parse origin/main)"
 if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then

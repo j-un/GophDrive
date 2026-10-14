@@ -9,7 +9,6 @@ describe("ComputeStack", () => {
   beforeAll(() => {
     const app = new cdk.App();
 
-    // Create mock dependency stacks
     const depStack = new cdk.Stack(app, "DepStack");
 
     const editingSessionsTable = new dynamodb.Table(
@@ -164,7 +163,6 @@ describe("ComputeStack", () => {
   });
 
   test("API Gateway has CORS configuration", () => {
-    // CORS preflight creates an OPTIONS method
     template.hasResourceProperties("AWS::ApiGateway::Method", {
       HttpMethod: "OPTIONS",
     });

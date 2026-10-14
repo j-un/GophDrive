@@ -197,12 +197,6 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
-# --fix
-# Each *_fix step below records failure instead of aborting, so one failing target (network
-# blip, an ERESOLVE-style resolution error) doesn't hide the status of the others, and so we
-# never fall through to the unconditional success this script used to have — a silent "(no
-# changes)" + exit 0 on failure would make the Renovate auto-fix workflow conclude "no
-# drift" and do nothing, which is exactly the silent-failure mode this script exists to kill.
 go_fix core
 go_fix backend
 go_fix tools/gophmem

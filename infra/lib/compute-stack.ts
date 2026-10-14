@@ -21,16 +21,6 @@ export class ComputeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ComputeStackProps) {
     super(scope, id, props);
 
-    // ==========================================================================
-    // BodyStore S3 Bucket
-    // --------------------------------------------------------------------------
-    // Reserved for the future spillover path: bodies that exceed the
-    // DynamoDB inline budget will be uploaded here and FileStore items will
-    // hold an `body_s3_key` pointer instead of inline content. The bucket
-    // is provisioned now so the migration to that mode is just a code change.
-    //
-    // RETAIN policy because the data, once written, is the user's notes.
-    // ==========================================================================
     this.bodyStoreBucket = new s3.Bucket(this, "BodyStoreBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -39,7 +29,6 @@ export class ComputeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Lambda Function
     const backendFunction = new lambda.Function(this, "BackendFunction", {
       runtime: lambda.Runtime.PROVIDED_AL2023,
       handler: "bootstrap",
@@ -87,7 +76,6 @@ export class ComputeStack extends cdk.Stack {
       memorySize: 128,
     });
 
-    // Grant Permissions
     props.editingSessionsTable.grantReadWriteData(backendFunction);
     props.fileStoreTable.grantReadWriteData(backendFunction);
     backendFunction.addToRolePolicy(
@@ -111,7 +99,6 @@ export class ComputeStack extends cdk.Stack {
     );
     this.bodyStoreBucket.grantReadWrite(backendFunction);
 
-    // Grant SSM Parameter Store read access for secrets
     backendFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -122,7 +109,6 @@ export class ComputeStack extends cdk.Stack {
       }),
     );
 
-    // API Gateway
     this.api = new apigateway.RestApi(this, "GophDriveAPI", {
       restApiName: "GophDrive API",
       description: "API for GophDrive Backend",
@@ -147,7 +133,6 @@ export class ComputeStack extends cdk.Stack {
       defaultIntegration: integration,
     });
 
-    // Outputs
     new cdk.CfnOutput(this, "ApiUrl", {
       value: this.api.url,
       description: "API Gateway URL",
