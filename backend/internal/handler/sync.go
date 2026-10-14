@@ -41,27 +41,6 @@ func (h *SyncHandler) CheckConflict(ctx context.Context, req events.APIGatewayPr
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Invalid request body"}, nil
 	}
 
-	// Simple conflict detection logic:
-	// If localETag != remoteETag, it's a conflict?
-	// Usually:
-	// If base (last known) != remote, then remote has changed.
-	// If local has changes (dirty), and remote has changed, then conflict.
-	// Here the client sends what it has.
-	// Actually, client should check if its 'base' etag matches current remote etag.
-	// This endpoint might be redundant if we use conditional updates (If-Match) in UpdateNote.
-	// But the plan included it.
-
-	// Implementation:
-	// Conflict if LocalETag != RemoteETag
-	// (Assuming LocalETag is the version the client has, and RemoteETag is what server has?
-	// No, client passes both? That seems like client-side logic.
-	// Maybe endpoint accepts specific note ID and client's ETag, and server checks against DB.)
-
-	// Re-reading plan: `POST /sync/check` -> `syncHandler` -> `CheckConflict(localEtag, remoteEtag) bool`
-	// It seems to be a stateless check logic exposed as API?
-	// Or maybe checking against server state?
-	// If input is CheckConflictRequest with 2 tags, it's stateless.
-
 	hasConflict := input.LocalETag != input.RemoteETag
 
 	resp := CheckConflictResponse{

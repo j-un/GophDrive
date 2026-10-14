@@ -32,7 +32,6 @@ func (m *MockLocker) AcquireLock(ctx context.Context, fileID, userID string) (*m
 	expiresAt := now + int64(m.ttlDuration.Seconds())
 
 	if existing, ok := m.locks[fileID]; ok {
-		// Allow if expired or same user
 		if existing.ExpiresAt > now && existing.UserID != userID {
 			return nil, fmt.Errorf("file is locked by another user")
 		}
@@ -85,7 +84,7 @@ func (m *MockLocker) GetLockStatus(ctx context.Context, fileID string) (*model.E
 
 	now := time.Now().Unix()
 	if existing.ExpiresAt < now {
-		return nil, nil // Expired
+		return nil, nil
 	}
 
 	return existing, nil

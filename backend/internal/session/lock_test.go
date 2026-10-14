@@ -66,7 +66,6 @@ func TestMockLocker_Heartbeat(t *testing.T) {
 	s, _ := m.AcquireLock(ctx, "file1", "user1")
 	originalExpiry := s.ExpiresAt
 
-	// Wait a bit so time.Now() gives a different second
 	time.Sleep(1100 * time.Millisecond)
 
 	updated, err := m.Heartbeat(ctx, "file1", "user1")
@@ -80,7 +79,7 @@ func TestMockLocker_Heartbeat(t *testing.T) {
 
 func TestMockLocker_ExpiredLock(t *testing.T) {
 	m := NewMockLocker()
-	m.ttlDuration = -1 * time.Second // already expired
+	m.ttlDuration = -1 * time.Second
 	ctx := context.Background()
 
 	_, err := m.AcquireLock(ctx, "file1", "user1")

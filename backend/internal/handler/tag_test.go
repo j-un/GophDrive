@@ -35,7 +35,6 @@ func TestTagHandler_ListTags_SortedByCountDesc(t *testing.T) {
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// #beta appears twice, #alpha once
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n1.md","content":"Tag #alpha"}`))
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n2.md","content":"Tag #beta"}`))
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n3.md","content":"Tag #beta again"}`))
@@ -61,7 +60,6 @@ func TestTagHandler_ListTags_TieBreakByName(t *testing.T) {
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// #zebra and #apple each appear once — alphabetical tie-break expected
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n1.md","content":"Tag #zebra"}`))
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"n2.md","content":"Tag #apple"}`))
 
@@ -117,14 +115,12 @@ func TestTagHandler_ListTags_IsolatesUsers(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	ctx := context.Background()
 
-	// userA creates a note with a tag
 	userAToken := makeToken("user-a")
 	createReq := makeRequest("POST", "/notes", `{"name":"n.md","content":"Tag #secret"}`)
 	createReq.Headers["Cookie"] = "session_token=" + userAToken
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	noteH.CreateNote(ctx, createReq)
 
-	// userB should not see userA's tags
 	userBToken := makeToken("user-b")
 	tagH := handler.NewTagHandler(provider, "test-secret")
 	tagReq := makeRequest("GET", "/tags", "")

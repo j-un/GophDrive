@@ -75,7 +75,7 @@ func TestGetUserID_CaseInsensitiveCookieHeader(t *testing.T) {
 	token := makeToken(testUserID)
 	req := events.APIGatewayProxyRequest{
 		Headers: map[string]string{
-			"cookie": "session_token=" + token, // lowercase header name
+			"cookie": "session_token=" + token,
 		},
 	}
 
@@ -100,7 +100,6 @@ func TestSignSession_SubAndExpiry(t *testing.T) {
 		t.Fatalf("SignSession: %v", err)
 	}
 
-	// Parse and verify sub + expiry window.
 	parsed, parseErr := jwt.Parse(tok, func(t *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})

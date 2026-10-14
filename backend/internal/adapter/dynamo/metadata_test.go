@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TestCreateFile_PersistsFrontmatterMeta covers the CreateFile write path:
-// aliases, type, status parsed from frontmatter must surface on the returned
-// FileMetadata and round-trip through GetFile.
 func TestCreateFile_PersistsFrontmatterMeta(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -39,9 +36,6 @@ func TestCreateFile_PersistsFrontmatterMeta(t *testing.T) {
 	}
 }
 
-// TestSaveFile_ReExtractsMetaFromNewContent verifies SaveFile parses meta from
-// the incoming content — not from the previously-fetched file — so removing or
-// changing frontmatter is reflected on the next read.
 func TestSaveFile_ReExtractsMetaFromNewContent(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -76,9 +70,6 @@ func TestSaveFile_ReExtractsMetaFromNewContent(t *testing.T) {
 	}
 }
 
-// TestCreateFile_NoFrontmatter_LeavesMetaEmpty locks in the round-trip when a
-// note has no frontmatter: aliases/type/status stay empty, and omitempty means
-// no attribute is written.
 func TestCreateFile_NoFrontmatter_LeavesMetaEmpty(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -102,14 +93,10 @@ func TestCreateFile_NoFrontmatter_LeavesMetaEmpty(t *testing.T) {
 	}
 }
 
-// TestDuplicateFile_CopiesMetaAndDerivedFields verifies a duplicated note
-// carries aliases, type, status, headings, and links — matching the original
-// byte-for-byte since the copy shares content.
 func TestDuplicateFile_CopiesMetaAndDerivedFields(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create a target so the source's [[wiki-link]] is resolved.
 	if _, err := m.CreateFile(ctx, "Target", []byte("# Target"), "root"); err != nil {
 		t.Fatalf("create target: %v", err)
 	}
@@ -138,7 +125,6 @@ func TestDuplicateFile_CopiesMetaAndDerivedFields(t *testing.T) {
 		t.Errorf("dup.Aliases = %v, want [Alt]", dup.Aliases)
 	}
 
-	// Verify the persisted duplicate also carries headings and links (via GetFile).
 	got, err := m.GetFile(ctx, dup.ID)
 	if err != nil {
 		t.Fatalf("GetFile duplicated: %v", err)
@@ -149,9 +135,6 @@ func TestDuplicateFile_CopiesMetaAndDerivedFields(t *testing.T) {
 	if got.Type != "howto" || got.Status != "active" {
 		t.Errorf("duplicated GetFile type/status = %q/%q", got.Type, got.Status)
 	}
-	// DuplicateFile in map mode persists via FileMetadata, so the duplicated
-	// file's stored Links reflect the copy — must include the same resolved
-	// target the original had, not the previous default of dropping links.
 	if len(got.Links) != 1 || !got.Links[0].Resolved {
 		t.Errorf("duplicated Links = %+v, want one resolved link", got.Links)
 	}

@@ -54,7 +54,7 @@ func (h *APIKeyHandler) Issue(ctx context.Context, req events.APIGatewayProxyReq
 		log.Printf("api_key Issue: rand.Read: %v", err)
 		return jsonError(http.StatusInternalServerError, "failed to generate key"), nil
 	}
-	plaintext := hex.EncodeToString(raw) // 64 hex chars
+	plaintext := hex.EncodeToString(raw)
 	prefix := plaintext[:8]
 	hash := apikey.HashKey(plaintext)
 

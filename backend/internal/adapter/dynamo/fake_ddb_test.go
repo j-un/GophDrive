@@ -10,19 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// fakeDDB is a shared in-memory DynamoDB table. Multiple Adapters (different
-// userIDs) constructed over one fakeDDB share rows, making cross-tenant
-// access expressible — the per-Adapter map fallback cannot do this.
-//
-// afterGetItem, when non-nil, is invoked once at the end of GetItem while
-// f.mu is held. It fires exactly once per install (the field is cleared
-// before invocation), and the hook may mutate items in place. This models a
-// TOCTOU race — a concurrent ownership change landing between an adapter's
-// read-side guard and its subsequent conditional write — so tests can drive
-// the write-side ConditionExpression path independently of the read guard.
 type fakeDDB struct {
 	mu           sync.Mutex
-	items        map[string]map[string]types.AttributeValue // pk -> raw marshaled item
+	items        map[string]map[string]types.AttributeValue
 	afterGetItem func(items map[string]map[string]types.AttributeValue)
 }
 
@@ -30,8 +20,6 @@ func newFakeDDB() *fakeDDB {
 	return &fakeDDB{items: make(map[string]map[string]types.AttributeValue)}
 }
 
-// pkOf extracts the pk string from a marshaled item map. Returns "" if absent
-// or not a string attribute; callers treat "" as a programmer error.
 func pkOf(item map[string]types.AttributeValue) string {
 	v, ok := item["pk"]
 	if !ok {
@@ -44,7 +32,6 @@ func pkOf(item map[string]types.AttributeValue) string {
 	return s.Value
 }
 
-// stringAttr reads a string attribute, returning "" if missing or wrong type.
 func stringAttr(item map[string]types.AttributeValue, name string) string {
 	v, ok := item[name]
 	if !ok {
@@ -57,8 +44,6 @@ func stringAttr(item map[string]types.AttributeValue, name string) string {
 	return s.Value
 }
 
-// shallowCopy returns a new outer map sharing the same AttributeValue pointers.
-// Sufficient because the adapter never mutates values in place after read.
 func shallowCopy(item map[string]types.AttributeValue) map[string]types.AttributeValue {
 	out := make(map[string]types.AttributeValue, len(item))
 	for k, v := range item {
@@ -67,15 +52,10 @@ func shallowCopy(item map[string]types.AttributeValue) map[string]types.Attribut
 	return out
 }
 
-// ccfe returns the bare typed ConditionalCheckFailedException the adapter
-// errors.As-matches against.
 func ccfe() error {
 	return &types.ConditionalCheckFailedException{Message: aws.String("The conditional request failed")}
 }
 
-// evalCondition evaluates the single condition expression used by the adapter:
-// "attribute_exists(pk) AND user_id = :uid". Any other expression fails loudly.
-// A nil condExpr returns true (unconditional).
 func (f *fakeDDB) evalCondition(condExpr *string, values map[string]types.AttributeValue, pk string) (bool, error) {
 	if condExpr == nil {
 		return true, nil
@@ -107,18 +87,11 @@ func (f *fakeDDB) GetItem(_ context.Context, params *dynamodb.GetItemInput, _ ..
 			pk = s.Value
 		}
 	}
-	// Snapshot the returned item BEFORE the hook fires: the point of the hook
-	// is to simulate a TOCTOU where the caller reads a stale copy and only the
-	// subsequent conditional write sees the new state.
 	var out dynamodb.GetItemOutput
 	if item, ok := f.items[pk]; ok {
 		out.Item = shallowCopy(item)
 	}
-	// (out.Item == nil when the row is missing; the adapter maps that to
-	// ErrNotFound. Never return a synthetic error here.)
 
-	// Snapshot & clear the hook so it fires exactly once. The hook runs under
-	// f.mu so a TOCTOU mutation lands atomically before the next call.
 	hook := f.afterGetItem
 	f.afterGetItem = nil
 	if hook != nil {
@@ -154,8 +127,6 @@ func (f *fakeDDB) UpdateItem(_ context.Context, params *dynamodb.UpdateItemInput
 			pk = s.Value
 		}
 	}
-	// Condition is always present from TouchViewed; missing item means the
-	// condition fails (no upsert emulation).
 	pass, err := f.evalCondition(params.ConditionExpression, params.ExpressionAttributeValues, pk)
 	if err != nil {
 		return nil, err
@@ -170,9 +141,6 @@ func (f *fakeDDB) UpdateItem(_ context.Context, params *dynamodb.UpdateItemInput
 	expr := *params.UpdateExpression
 	item, ok := f.items[pk]
 	if !ok {
-		// Reachable only when caller passes no ConditionExpression AND targets a
-		// missing pk — the adapter never does this today, but assigning into a
-		// nil map below would panic; refuse loudly instead.
 		return nil, fmt.Errorf("fakeDDB: UpdateItem on missing item without condition (pk=%q)", pk)
 	}
 
@@ -250,6 +218,6 @@ func (f *fakeDDB) Scan(_ context.Context, params *dynamodb.ScanInput, _ ...func(
 	return &dynamodb.ScanOutput{
 		Items:            matched,
 		Count:            int32(len(matched)),
-		LastEvaluatedKey: nil, // single-page: scanAllPages would loop forever otherwise
+		LastEvaluatedKey: nil,
 	}, nil
 }

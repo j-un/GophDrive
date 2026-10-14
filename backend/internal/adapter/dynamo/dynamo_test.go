@@ -14,7 +14,6 @@ func TestAdapter_CreateAndListFiles(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create a file in root
 	file, err := m.CreateFile(ctx, "note.md", []byte("hello"), "")
 	if err != nil {
 		t.Fatalf("CreateFile failed: %v", err)
@@ -26,7 +25,6 @@ func TestAdapter_CreateAndListFiles(t *testing.T) {
 		t.Errorf("Expected mimeType 'text/markdown', got '%s'", file.MIMEType)
 	}
 
-	// List files in root
 	files, err := m.ListFiles(ctx, "root")
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err)
@@ -56,7 +54,6 @@ func TestAdapter_SaveFile_ETagMatch(t *testing.T) {
 	file, _ := m.CreateFile(ctx, "note.md", []byte("v1"), "root")
 	originalETag := file.ETag
 
-	// Update with matching ETag
 	updated, err := m.SaveFile(ctx, file.ID, []byte("v2"), originalETag)
 	if err != nil {
 		t.Fatalf("SaveFile failed: %v", err)
@@ -65,7 +62,6 @@ func TestAdapter_SaveFile_ETagMatch(t *testing.T) {
 		t.Error("Expected ETag to change after update")
 	}
 
-	// Verify content changed
 	f, _ := m.GetFile(ctx, file.ID)
 	if string(f.Content) != "v2" {
 		t.Errorf("Expected content 'v2', got '%s'", string(f.Content))
@@ -136,7 +132,6 @@ func TestAdapter_DuplicateFile(t *testing.T) {
 		t.Errorf("Expected name 'Copy of orig', got '%s'", dup.Name)
 	}
 
-	// Verify content
 	f, _ := m.GetFile(ctx, dup.ID)
 	if string(f.Content) != "content" {
 		t.Errorf("Duplicated content mismatch")
@@ -147,7 +142,6 @@ func TestAdapter_RenameFile(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Test renaming a file
 	file, _ := m.CreateFile(ctx, "old.md", []byte("data"), "root")
 	originalETag := file.ETag
 
@@ -162,7 +156,6 @@ func TestAdapter_RenameFile(t *testing.T) {
 		t.Error("Expected ETag to change after file rename")
 	}
 
-	// Test renaming a folder (should not add .md)
 	folder, _ := m.CreateFolder(ctx, "OldFolder", []string{"root"})
 	folderRenamed, err := m.RenameFile(ctx, folder.ID, "NewFolder")
 	if err != nil {
@@ -177,13 +170,11 @@ func TestAdapter_MoveFile(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create: root → folderA → folderB
 	folderA, _ := m.CreateFolder(ctx, "FolderA", []string{"root"})
 	folderB, _ := m.CreateFolder(ctx, "FolderB", []string{folderA.ID})
 	note, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
 	originalETag := note.ETag
 
-	// Move note from root into folderA
 	moved, err := m.MoveFile(ctx, note.ID, folderA.ID)
 	if err != nil {
 		t.Fatalf("MoveFile(note) failed: %v", err)
@@ -195,7 +186,6 @@ func TestAdapter_MoveFile(t *testing.T) {
 		t.Error("Expected ETag to change after move")
 	}
 
-	// Verify the note appears in folderA's listing
 	items, _ := m.ListFiles(ctx, folderA.ID)
 	found := false
 	for _, it := range items {
@@ -207,7 +197,6 @@ func TestAdapter_MoveFile(t *testing.T) {
 		t.Error("Moved note not found in destination folder")
 	}
 
-	// Move a folder: folderB into root
 	movedFolder, err := m.MoveFile(ctx, folderB.ID, "root")
 	if err != nil {
 		t.Fatalf("MoveFile(folder) failed: %v", err)
@@ -216,13 +205,11 @@ func TestAdapter_MoveFile(t *testing.T) {
 		t.Errorf("Expected parent 'root', got %v", movedFolder.Parents)
 	}
 
-	// ErrNotFound for unknown item
 	_, err = m.MoveFile(ctx, "no-such-id", folderA.ID)
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound for unknown item, got %v", err)
 	}
 
-	// ErrNotFound for unknown destination
 	_, err = m.MoveFile(ctx, note.ID, "no-such-dest")
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Expected ErrNotFound for unknown destination, got %v", err)
@@ -233,23 +220,19 @@ func TestAdapter_MoveFile_CycleRejected(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Build: root → parent → child
 	parent, _ := m.CreateFolder(ctx, "Parent", []string{"root"})
 	child, _ := m.CreateFolder(ctx, "Child", []string{parent.ID})
 
-	// Moving parent into itself must be rejected
 	_, err := m.MoveFile(ctx, parent.ID, parent.ID)
 	if !errors.Is(err, adapter.ErrInvalidMove) {
 		t.Errorf("Expected ErrInvalidMove for self-move, got %v", err)
 	}
 
-	// Moving parent into its own descendant must be rejected
 	_, err = m.MoveFile(ctx, parent.ID, child.ID)
 	if !errors.Is(err, adapter.ErrInvalidMove) {
 		t.Errorf("Expected ErrInvalidMove for descendant-move, got %v", err)
 	}
 
-	// Moving child into parent is fine (not a cycle)
 	grandchild, _ := m.CreateFolder(ctx, "Grandchild", []string{child.ID})
 	_, err = m.MoveFile(ctx, grandchild.ID, parent.ID)
 	if err != nil {
@@ -263,7 +246,6 @@ func TestAdapter_MoveFile_ResolvesBaseFolder(t *testing.T) {
 
 	note, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
 
-	// Empty newParentID must resolve to BaseFolderID
 	moved, err := m.MoveFile(ctx, note.ID, "")
 	if err != nil {
 		t.Fatalf("MoveFile with empty parentID failed: %v", err)
@@ -279,7 +261,6 @@ func TestAdapter_SetStarred(t *testing.T) {
 
 	file, _ := m.CreateFile(ctx, "note.md", []byte("data"), "root")
 
-	// Star
 	starred, err := m.SetStarred(ctx, file.ID, true)
 	if err != nil {
 		t.Fatalf("SetStarred(true) failed: %v", err)
@@ -288,7 +269,6 @@ func TestAdapter_SetStarred(t *testing.T) {
 		t.Error("Expected file to be starred")
 	}
 
-	// Unstar
 	unstarred, err := m.SetStarred(ctx, file.ID, false)
 	if err != nil {
 		t.Fatalf("SetStarred(false) failed: %v", err)
@@ -326,7 +306,6 @@ func TestAdapter_SearchFiles(t *testing.T) {
 	m.CreateFile(ctx, "other.md", []byte("nothing"), "root")
 	m.CreateFile(ctx, "notes.md", []byte("hello from content"), "root")
 
-	// Search by name
 	results, err := m.SearchFiles(ctx, "hello")
 	if err != nil {
 		t.Fatalf("SearchFiles failed: %v", err)
@@ -335,7 +314,6 @@ func TestAdapter_SearchFiles(t *testing.T) {
 		t.Errorf("Expected 2 results (name match + content match), got %d", len(results))
 	}
 
-	// Case-insensitive
 	results2, _ := m.SearchFiles(ctx, "HELLO")
 	if len(results2) != 2 {
 		t.Errorf("Expected case-insensitive search to find 2 results, got %d", len(results2))
@@ -343,47 +321,39 @@ func TestAdapter_SearchFiles(t *testing.T) {
 }
 
 func TestAdapter_DeleteFile_Recursive(t *testing.T) {
-	// Setup in-memory adapter
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// 1. Create Parent Folder
 	parent, err := m.CreateFolder(ctx, "Parent", []string{"root"})
 	if err != nil {
 		t.Fatalf("CreateFolder failed: %v", err)
 	}
 
-	// 2. Create Child Folder
 	childFolder, err := m.CreateFolder(ctx, "ChildFolder", []string{parent.ID})
 	if err != nil {
 		t.Fatalf("CreateFolder failed: %v", err)
 	}
 
-	// 3. Create Child File
 	childFile, err := m.CreateFile(ctx, "ChildFile", []byte("content"), childFolder.ID)
 	if err != nil {
 		t.Fatalf("CreateFile failed: %v", err)
 	}
 
-	// 4. Delete Parent
 	err = m.DeleteFile(ctx, parent.ID)
 	if err != nil {
 		t.Fatalf("DeleteFile failed: %v", err)
 	}
 
-	// 5. Verify Parent Gone
 	_, err = m.GetFile(ctx, parent.ID)
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Parent should be deleted, got error: %v", err)
 	}
 
-	// 6. Verify Child Folder Gone
 	_, err = m.GetFile(ctx, childFolder.ID)
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Child Folder should be deleted, got error: %v", err)
 	}
 
-	// 7. Verify Child File Gone
 	_, err = m.GetFile(ctx, childFile.ID)
 	if !errors.Is(err, adapter.ErrNotFound) {
 		t.Errorf("Child File should be deleted, got error: %v", err)
@@ -394,7 +364,6 @@ func TestAdapter_ListRecent(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create files with different modified times (simulated by sequence)
 	f1, _ := m.CreateFile(ctx, "old.md", []byte("v1"), "root")
 	f2, _ := m.CreateFile(ctx, "new.md", []byte("v1"), "root")
 
@@ -407,7 +376,6 @@ func TestAdapter_ListRecent(t *testing.T) {
 		t.Fatalf("Expected 2 recent files, got %d", len(recent))
 	}
 
-	// Should be ordered by viewed time desc (f2 should be most recent)
 	if recent[0].ID != f2.ID {
 		t.Errorf("Expected most recent file to be %s, got %s (f1=%s, f2=%s)", f2.ID, recent[0].ID, f1.ID, f2.ID)
 	}
@@ -426,7 +394,6 @@ func TestAdapter_CreateFile_InvalidParent(t *testing.T) {
 func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
 	ctx := context.Background()
 
-	// "root" must be accepted without a DB entry
 	m1 := NewMemoryAdapter("user1", "")
 	f1, err := m1.CreateFile(ctx, "note.md", []byte("x"), "root")
 	if err != nil {
@@ -436,7 +403,6 @@ func TestAdapter_CreateFile_SentinelParentsAllowed(t *testing.T) {
 		t.Error("Expected non-nil file with ID for root parentId")
 	}
 
-	// BaseFolderID must be accepted even though it has no entry in m.files
 	m2 := NewMemoryAdapter("user1", "my-base-folder")
 	f2, err := m2.CreateFile(ctx, "note.md", []byte("x"), "my-base-folder")
 	if err != nil {
@@ -516,7 +482,6 @@ func TestAdapter_SearchFiles_BodyMatchHasSnippet(t *testing.T) {
 		t.Fatalf("Expected 2 results, got %d", len(results))
 	}
 
-	// Find each result by name
 	for _, r := range results {
 		switch r.Name {
 		case "body.md":
@@ -537,10 +502,10 @@ func TestMakeSnippet(t *testing.T) {
 		query    string
 		window   int
 		wantHit  bool
-		wantSubs string // substring expected in snippet when wantHit=true
+		wantSubs string
 	}{
 		{"hello world foo", "world", 5, true, "world"},
-		{"hello world foo", "WORLD", 5, true, "world"}, // case-insensitive
+		{"hello world foo", "WORLD", 5, true, "world"},
 		{"hello world foo", "missing", 5, false, ""},
 		{"", "q", 5, false, ""},
 		{"q", "", 5, false, ""},
@@ -564,8 +529,6 @@ func TestMakeSnippet(t *testing.T) {
 		}
 	}
 }
-
-// ---- Tier 2: headings tests ----
 
 func TestAdapter_Headings_StoredOnWrite(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
@@ -649,11 +612,9 @@ func TestAdapter_SearchFiles_ScopeTitles(t *testing.T) {
 }
 
 func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
-	// Simulate a pre-Tier2 note with no stored Headings by directly inserting into map.
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
 
-	// Create via normal path and then clear Headings to simulate legacy item.
 	fm, _ := m.CreateFile(ctx, "legacy.md", []byte("## Rejected Alternatives\nold stuff"), "root")
 	m.files[fm.ID].Headings = nil
 
@@ -666,13 +627,8 @@ func TestAdapter_SearchFiles_HeadingsLazyFallback(t *testing.T) {
 	}
 }
 
-// TestMatchesScope_* renamed to TestScoreMatch_* since matchesScope was
-// replaced by scoreMatch (adds relevance scoring on top of the same hit/scope
-// semantics). Intent (lazy heading fallback, no snippet in ScopeHeadings) is
-// unchanged.
 func TestScoreMatch_NilHeadingsLazyFallback(t *testing.T) {
 	content := []byte("## Rejected Alternatives\ntext")
-	// Nil headings — lazy extraction should kick in.
 	hit, score, snippet := scoreMatch("note.md", nil, content, nil, nil, "Rejected", adapter.ScopeHeadings)
 	if !hit || score == 0 {
 		t.Errorf("expected hit via lazy heading extraction with nil headings, got hit=%v score=%d", hit, score)
@@ -694,9 +650,6 @@ func TestScoreMatch_ScopeHeadingsNoSnippet(t *testing.T) {
 	}
 }
 
-// TestScoreMatch_ComponentRanking locks in the relative ordering of score
-// components: title > heading > tag > body, per the spec's point values
-// (100/40/30/10-per-occurrence).
 func TestScoreMatch_ComponentRanking(t *testing.T) {
 	titleHit, titleScore, _ := scoreMatch("apple.md", nil, []byte("unrelated"), nil, nil, "apple", adapter.ScopeAll)
 	headingHit, headingScore, _ := scoreMatch("other.md", nil, []byte("## apple\nbody"), []string{"apple"}, nil, "apple", adapter.ScopeAll)
@@ -719,7 +672,7 @@ func TestScoreMatch_BodyCountCapsAtFiveOccurrences(t *testing.T) {
 	_, scoreFive, _ := scoreMatch("note.md", nil, five, nil, nil, "apple", adapter.ScopeAll)
 	_, scoreTen, _ := scoreMatch("note.md", nil, ten, nil, nil, "apple", adapter.ScopeAll)
 
-	if scoreFive != 50 { // 10 points * 5 occurrences
+	if scoreFive != 50 {
 		t.Errorf("expected body score 50 at 5 occurrences, got %d", scoreFive)
 	}
 	if scoreTen != scoreFive {
@@ -734,7 +687,7 @@ func TestScoreMatch_ExactTitleBonus(t *testing.T) {
 	if partialScore != 100 {
 		t.Errorf("expected partial-title score 100, got %d", partialScore)
 	}
-	if exactScore != 150 { // 100 contains + 50 exact-title bonus
+	if exactScore != 150 {
 		t.Errorf("expected exact-title score 150, got %d", exactScore)
 	}
 }
@@ -746,13 +699,12 @@ func TestScoreMatch_AliasContainsAndExactBonus(t *testing.T) {
 	}
 
 	hit2, exactScore, _ := scoreMatch("note.md", []string{"Alias"}, nil, nil, nil, "Alias", adapter.ScopeAll)
-	if !hit2 || exactScore != 120 { // 80 contains + 40 exact-alias bonus
+	if !hit2 || exactScore != 120 {
 		t.Errorf("expected exact-alias score 120, got hit=%v score=%d", hit2, exactScore)
 	}
 }
 
 func TestScoreMatch_ScopeTitlesNoSnippet(t *testing.T) {
-	// Body has plenty of occurrences, but ScopeTitles must never produce a snippet.
 	content := []byte("apple apple apple apple apple")
 	hit, score, snippet := scoreMatch("apple.md", nil, content, nil, nil, "apple", adapter.ScopeTitles)
 	if !hit || score == 0 {
@@ -763,10 +715,6 @@ func TestScoreMatch_ScopeTitlesNoSnippet(t *testing.T) {
 	}
 }
 
-// TestScoreMatch_ScopeAllSnippetEvenWithTitleHit locks in the widened ScopeAll
-// behavior: a note whose title ALSO matches now still gets a snippet as long
-// as the body has an occurrence too (previously the snippet was suppressed
-// whenever the title matched, even if the body also contained the query).
 func TestScoreMatch_ScopeAllSnippetEvenWithTitleHit(t *testing.T) {
 	content := []byte("apple is mentioned here in the body")
 	hit, score, snippet := scoreMatch("apple.md", nil, content, nil, nil, "apple", adapter.ScopeAll)
@@ -796,8 +744,6 @@ func TestAdapter_SearchFiles_ScopeHeadings_NoSnippet(t *testing.T) {
 	}
 }
 
-// ---- Tier 3: type filter + alias-under-titles tests ----
-
 func TestAdapter_SearchFilesWithTags_TypeFilter(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -815,11 +761,6 @@ func TestAdapter_SearchFilesWithTags_TypeFilter(t *testing.T) {
 	}
 }
 
-// TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback simulates a legacy
-// row written before the note_type attribute existed: NoteType is empty even
-// though the content's frontmatter has a type. The filter must still match by
-// parsing frontmatter on the fly (mirrors the existing tags/headings lazy
-// fallback).
 func TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()
@@ -828,7 +769,6 @@ func TestAdapter_SearchFilesWithTags_TypeFilter_LazyFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFile: %v", err)
 	}
-	// Simulate a pre-type-feature row.
 	m.files[fm.ID].Type = ""
 
 	results, err := m.SearchFilesWithTags(ctx, "", nil, adapter.ScopeAll, "decision")
@@ -855,9 +795,6 @@ func TestAdapter_SearchFilesWithTags_TypeFilter_NoMatch(t *testing.T) {
 	}
 }
 
-// TestAdapter_SearchFilesWithTags_AliasHitUnderScopeTitles covers the alias
-// scoring component reachable from SearchFilesWithTags: an alias-only match
-// (the query never appears in the title) must still hit under ScopeTitles.
 func TestAdapter_SearchFilesWithTags_AliasHitUnderScopeTitles(t *testing.T) {
 	m := NewMemoryAdapter("user1", "")
 	ctx := context.Background()

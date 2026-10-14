@@ -9,12 +9,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// fakeScanner returns a pre-canned sequence of pages.
 type fakeScanner struct {
 	pages   []*dynamodb.ScanOutput
 	err     error
 	calls   int
-	lastKey []map[string]types.AttributeValue // captured per-call ExclusiveStartKey
+	lastKey []map[string]types.AttributeValue
 }
 
 func (f *fakeScanner) Scan(_ context.Context, in *dynamodb.ScanInput, _ ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error) {
@@ -74,7 +73,6 @@ func TestScanAllPages_FollowsLastEvaluatedKey(t *testing.T) {
 	if len(got) != 3 {
 		t.Errorf("items = %d, want 3", len(got))
 	}
-	// First call has nil ExclusiveStartKey; subsequent calls forward the previous LastEvaluatedKey.
 	if f.lastKey[0] != nil {
 		t.Errorf("call 0 ExclusiveStartKey = %v, want nil", f.lastKey[0])
 	}

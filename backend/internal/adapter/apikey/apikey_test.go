@@ -48,19 +48,16 @@ func TestInMemoryStore_Regenerate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Old hash must no longer work.
 	_, _, ok, _ := s.Lookup(ctx, h1)
 	if ok {
 		t.Error("old hash still valid after regenerate")
 	}
 
-	// New hash must work.
 	uid, _, ok, _ := s.Lookup(ctx, h2)
 	if !ok || uid != "user1" {
 		t.Error("new hash not found after regenerate")
 	}
 
-	// first_issued_at must be preserved; created_at may differ (at least equal).
 	_, _, createdAt2, firstIssuedAt2, _ := s.StatusFor(ctx, "user1")
 	if firstIssuedAt2 != firstIssuedAt1 {
 		t.Errorf("first_issued_at changed after regenerate: %d → %d", firstIssuedAt1, firstIssuedAt2)

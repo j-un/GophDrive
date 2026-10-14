@@ -29,8 +29,6 @@ func NewSearchHandler(storageProvider adapter.StorageProvider, jwtSecret string)
 	}
 }
 
-// getStorageAdapter extracts session claims and returns the storage adapter
-// scoped to the user's base folder.
 func (h *SearchHandler) getStorageAdapter(ctx context.Context, req events.APIGatewayProxyRequest) (adapter.StorageAdapter, error) {
 	claims, err := GetSessionClaims(req, h.jwtSecret)
 	if err != nil {
@@ -48,9 +46,6 @@ func (h *SearchHandler) getStorageAdapter(ctx context.Context, req events.APIGat
 const searchDefaultLimit = 20
 const searchMaxLimit = 100
 
-// parseSearchTime parses a modifiedAfter/modifiedBefore query param. An empty
-// string yields the zero time (no filter), with a nil error. Accepts either
-// an RFC3339 timestamp or a bare YYYY-MM-DD date (interpreted as UTC midnight).
 func parseSearchTime(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
@@ -128,8 +123,6 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 		files = []adapter.FileMetadata{}
 	}
 
-	// Date window is a post-filter, applied before truncation to limit so the
-	// cap doesn't cut into results the window would otherwise exclude anyway.
 	if !after.IsZero() || !before.IsZero() {
 		filtered := make([]adapter.FileMetadata, 0, len(files))
 		for _, f := range files {
@@ -140,9 +133,6 @@ func (h *SearchHandler) Search(ctx context.Context, req events.APIGatewayProxyRe
 		files = filtered
 	}
 
-	// Rank by relevance first; tag-only/type-only queries leave every Score at
-	// 0, so ModifiedTime desc (then ID asc for full determinism) preserves
-	// today's recency ordering for those cases.
 	sort.Slice(files, func(i, j int) bool {
 		if files[i].Score != files[j].Score {
 			return files[i].Score > files[j].Score

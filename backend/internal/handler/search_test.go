@@ -19,13 +19,11 @@ func TestSearch_Success(t *testing.T) {
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Create files
 	req1 := makeRequest("POST", "/notes", `{"name":"hello.md","content":"world"}`)
 	noteH.CreateNote(ctx, req1)
 	req2 := makeRequest("POST", "/notes", `{"name":"other.md","content":"nothing"}`)
 	noteH.CreateNote(ctx, req2)
 
-	// Search
 	searchReq := makeRequest("GET", "/search", "")
 	searchReq.QueryStringParameters = map[string]string{"q": "hello"}
 	resp, err := searchH.Search(ctx, searchReq)
@@ -380,7 +378,7 @@ func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
 		`{"name":"b.md","content":"body has citarget but no heading"}`))
 
 	req := makeRequest("GET", "/search", "")
-	req.QueryStringParameters = map[string]string{"q": "CITarget", "in": "HEADINGS"} // uppercase
+	req.QueryStringParameters = map[string]string{"q": "CITarget", "in": "HEADINGS"}
 	resp, _ := searchH.Search(ctx, req)
 	var results []adapter.FileMetadata
 	json.Unmarshal([]byte(resp.Body), &results)
@@ -389,19 +387,14 @@ func TestSearch_ScopeHeadingsCaseInsensitive(t *testing.T) {
 	}
 }
 
-// TestSearch_RankedOrder locks in the new relevance-first sort: a title match
-// must outrank a body-only match even when the title match is the OLDER note
-// (previously results were sorted purely by ModifiedTime desc).
 func TestSearch_RankedOrder(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
 	searchH := handler.NewSearchHandler(provider, "test-secret")
 	ctx := context.Background()
 
-	// Older note: query hits the title.
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"apple.md","content":"unrelated body"}`))
 	time.Sleep(2 * time.Millisecond)
-	// Newer note: query hits only the body.
 	noteH.CreateNote(ctx, makeRequest("POST", "/notes", `{"name":"other.md","content":"apple mentioned here"}`))
 
 	req := makeRequest("GET", "/search", "")
@@ -422,8 +415,6 @@ func TestSearch_RankedOrder(t *testing.T) {
 	}
 }
 
-// TestSearch_DateFilter covers both modifiedAfter and modifiedBefore as a
-// half-open [after, before) window.
 func TestSearch_DateFilter(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")
@@ -476,9 +467,6 @@ func TestSearch_InvalidDateParam(t *testing.T) {
 	}
 }
 
-// TestSearch_DateOnly_NoQueryTagType covers the "date modifiers alone are
-// insufficient" rule: modifiedAfter/modifiedBefore must not satisfy the
-// "at least one of q/tag/type" requirement by themselves.
 func TestSearch_DateOnly_NoQueryTagType(t *testing.T) {
 	searchH := handler.NewSearchHandler(dynamo.NewMemoryProvider(), "test-secret")
 	ctx := context.Background()
@@ -494,8 +482,6 @@ func TestSearch_DateOnly_NoQueryTagType(t *testing.T) {
 	}
 }
 
-// TestSearch_TypeFilter verifies the 'type' query param reaches the adapter
-// and is observable in the filtered results (no q/tag needed).
 func TestSearch_TypeFilter(t *testing.T) {
 	provider := dynamo.NewMemoryProvider()
 	noteH := handler.NewNoteHandler(provider, "test-secret")

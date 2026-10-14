@@ -8,14 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// scanWarnPageThreshold is the page count at which scanAllPages logs a warning.
-// Tuned for personal-scale usage; if real workloads consistently exceed this,
-// it's a signal to add a GSI rather than to raise the threshold.
 const scanWarnPageThreshold = 10
 
-// ddbScanner is the subset of *dynamodb.Client.Scan used by scanAllPages.
-// Defined as an interface so unit tests can inject a fake without touching
-// the AWS SDK internals.
 type ddbScanner interface {
 	Scan(ctx context.Context, params *dynamodb.ScanInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error)
 }

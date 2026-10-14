@@ -18,7 +18,6 @@ import (
 
 const testKeyJWTSecret = "api-key-test-secret"
 
-// mintJWT produces a valid session JWT for testing.
 func mintJWT(t *testing.T, userID, baseFolderID string) string {
 	t.Helper()
 	mc := jwt.MapClaims{
@@ -46,7 +45,6 @@ func newReq(method, path, token, body string) events.APIGatewayProxyRequest {
 	return req
 }
 
-// failingReader always returns an error, used to exercise the rand-failure path.
 type failingReader struct{}
 
 func (failingReader) Read(_ []byte) (int, error) {
@@ -80,7 +78,6 @@ func TestAPIKeyHandler_Issue_Success(t *testing.T) {
 		t.Errorf("key_prefix mismatch: %q vs %q", out.KeyPrefix, out.Key[:8])
 	}
 
-	// Lookup by hash must succeed.
 	hash := apikey.HashKey(out.Key)
 	uid, bid, ok, err := store.Lookup(context.Background(), hash)
 	if err != nil || !ok {
@@ -129,7 +126,6 @@ func TestAPIKeyHandler_Issue_RandFailure(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("rand failure: want 500, got %d body=%s", resp.StatusCode, resp.Body)
 	}
-	// store.Issue must not have been called
 	hasKey, _, _, _, _ := store.StatusFor(context.Background(), "user-randfail")
 	if hasKey {
 		t.Error("store.Issue should not have been called when rand fails")
@@ -153,7 +149,6 @@ func TestAPIKeyHandler_Issue_Regenerate_RevokesOld(t *testing.T) {
 		t.Fatalf("second issue: want 201, got %d", resp2.StatusCode)
 	}
 
-	// Old key must be gone.
 	_, _, ok, _ := store.Lookup(ctx, apikey.HashKey(out1.Key))
 	if ok {
 		t.Error("old key still valid after regenerate")
@@ -197,7 +192,6 @@ func TestAPIKeyHandler_Get_DoesNotReturnPlaintext(t *testing.T) {
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("Get: want 200, got %d", getResp.StatusCode)
 	}
-	// Response must not contain the full plaintext key.
 	if len(issued.Key) > 0 && strings.Contains(getResp.Body, issued.Key) {
 		t.Error("Get response contains plaintext key")
 	}
@@ -222,10 +216,8 @@ func TestAPIKeyHandler_Get_FirstIssuedAt(t *testing.T) {
 	tok := mintJWT(t, "user-fia", "folder-fia")
 	ctx := context.Background()
 
-	// Issue key once to set first_issued_at.
 	h.Issue(ctx, newReq("POST", "/api-keys", tok, ""))
 
-	// Regenerate — first_issued_at must be preserved.
 	h.Issue(ctx, newReq("POST", "/api-keys", tok, ""))
 
 	resp, _ := h.Get(ctx, newReq("GET", "/api-keys", tok, ""))
@@ -262,12 +254,10 @@ func TestAPIKeyHandler_Delete_Revokes(t *testing.T) {
 		t.Errorf("want 204, got %d body=%s", delResp.StatusCode, delResp.Body)
 	}
 
-	// Lookup must fail after delete.
 	_, _, ok, _ := store.Lookup(ctx, apikey.HashKey(issued.Key))
 	if ok {
 		t.Error("key still valid after Delete")
 	}
 }
 
-// Ensure failingReader satisfies io.Reader at compile time.
 var _ io.Reader = failingReader{}

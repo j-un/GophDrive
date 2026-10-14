@@ -68,9 +68,6 @@ func (r *EnvResolver) GetSecret(_ context.Context, name string) (string, error) 
 	return val, nil
 }
 
-// paramNameToEnvVar converts an SSM parameter name to an environment variable name.
-// "/gophdrive/jwt-secret" -> "JWT_SECRET"
-// "/gophdrive/google-client-secret" -> "GOOGLE_CLIENT_SECRET"
 func paramNameToEnvVar(name string) string {
 	parts := strings.Split(name, "/")
 	last := parts[len(parts)-1]
