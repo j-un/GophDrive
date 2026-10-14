@@ -53,8 +53,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = (next: Theme) => {
     try {
       localStorage.setItem("theme", next);
-    } catch {
-      // localStorage not available (e.g. private browsing)
+    } catch (err) {
+      console.warn("theme preference was not stored", err);
     }
     setThemeState(next);
     const resolved = getResolved(next);

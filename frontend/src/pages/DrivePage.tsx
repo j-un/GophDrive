@@ -20,11 +20,9 @@ function NotesContent() {
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [createNoteSignal, setCreateNoteSignal] = useState(0);
 
-  const searchParamsStr = searchParams.toString();
   const tagFilter = useMemo(
     () => searchParams.getAll("tag").filter(Boolean),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParamsStr],
+    [searchParams],
   );
 
   const canCreateNote = !searchQuery && tagFilter.length === 0;
@@ -53,13 +51,15 @@ function NotesContent() {
     fetchFolderInfoRef.current = fetchFolderInfo;
   });
 
+  if (
+    !folderIdParam &&
+    (breadcrumbs.length !== 1 || breadcrumbs[0]?.id !== "")
+  ) {
+    setBreadcrumbs([{ id: "", name: "Home" }]);
+  }
+
   useEffect(() => {
-    if (folderIdParam) {
-      fetchFolderInfoRef.current(folderIdParam);
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBreadcrumbs([{ id: "", name: "Home" }]);
-    }
+    if (folderIdParam) fetchFolderInfoRef.current(folderIdParam);
   }, [folderIdParam]);
 
   const handleNavigate = (folderId?: string) => {
@@ -75,7 +75,6 @@ function NotesContent() {
     setCreateNoteSignal((v) => v + 1);
   };
 
-  // ⌘N / Ctrl+N — start a new note, unless the user is typing somewhere else.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.key !== "n") return;

@@ -37,9 +37,26 @@ export function APIKeysSection() {
   }, [isDemo]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchStatus();
-  }, [fetchStatus]);
+    if (isDemo) return;
+    let cancelled = false;
+    void getAPIKeyStatus().then(
+      (s) => {
+        if (cancelled) return;
+        setStatus(s);
+        setLoading(false);
+      },
+      (e: unknown) => {
+        if (cancelled) return;
+        setError(
+          e instanceof Error ? e.message : "Failed to load API key status",
+        );
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo]);
 
   if (isDemo) return null;
 

@@ -24,13 +24,6 @@
 @media (min-width: 769px) {
   .sidebarWrap {
     display: flex;
-    transition: opacity 200ms ease;
-  }
-
-  .sidebarWrapZen {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 400ms ease;
   }
 }
 
@@ -56,13 +49,6 @@
   gap: 16px;
   padding: 0 24px;
   background: var(--background);
-  transition: opacity 200ms ease;
-}
-
-.topbarZen {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 400ms ease;
 }
 
 .crumbs {

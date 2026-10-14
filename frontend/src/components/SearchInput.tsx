@@ -1,22 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Search } from "lucide-react";
 
 export default function SearchInput() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [query, setQuery] = useState("");
-
-  // Sync with URL q param so the input reflects current search
-  useEffect(() => {
-    const q = searchParams.get("q");
-    if (q) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setQuery(q);
-    } else {
-      setQuery("");
-    }
-  }, [searchParams]);
+  const urlQuery = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
+  if (urlQuery !== prevUrlQuery) {
+    setPrevUrlQuery(urlQuery);
+    setQuery(urlQuery);
+  }
 
   const handleSearch = () => {
     if (query.trim()) {

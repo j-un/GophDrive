@@ -17,14 +17,22 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
   title = "Rename",
 }) => {
   const [name, setName] = useState(initialName);
+  const [snapshot, setSnapshot] = useState({ isOpen, initialName });
+  if (
+    isOpen &&
+    (snapshot.isOpen !== isOpen || snapshot.initialName !== initialName)
+  ) {
+    setSnapshot({ isOpen, initialName });
+    setName(initialName);
+  } else if (!isOpen && snapshot.isOpen) {
+    setSnapshot({ isOpen, initialName });
+  }
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setName(initialName);
-      setTimeout(() => inputRef.current?.select(), 50);
-    }
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => inputRef.current?.select(), 50);
+    return () => window.clearTimeout(timer);
   }, [isOpen, initialName]);
 
   if (!isOpen) return null;
