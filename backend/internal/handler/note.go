@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -23,7 +24,6 @@ func NewNoteHandler(provider adapter.StorageProvider, jwtSecret string) *NoteHan
 	return &NoteHandler{storageProvider: provider, jwtSecret: jwtSecret}
 }
 
-// getStorageAdapter creates a new storage adapter for the authenticated user.
 func (h *NoteHandler) getStorageAdapter(ctx context.Context, req events.APIGatewayProxyRequest) (adapter.StorageAdapter, error) {
 	claims, err := GetSessionClaims(req, h.jwtSecret)
 	if err != nil {
@@ -140,8 +140,6 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("Failed to get note: %v", err)}, nil
 	}
 
-	// Record the open for recency ordering. Best-effort: a failure here must
-	// never break reading the note.
 	if err := storage.TouchViewed(ctx, file.ID); err != nil {
 		fmt.Printf("TouchViewed error (noteID=%s): %v\n", file.ID, err)
 	}
@@ -164,8 +162,6 @@ func (h *NoteHandler) GetNote(ctx context.Context, req events.APIGatewayProxyReq
 	enriched, backlinks, err := storage.EnrichNoteLinks(ctx, file.ID, file.Links)
 	if err != nil {
 		fmt.Printf("EnrichNoteLinks error (noteID=%s): %v\n", file.ID, err)
-		// Non-fatal: return note with stored links (no currentTitle, no
-		// backlinks) rather than failing the whole request.
 		enriched = file.Links
 	}
 
@@ -257,10 +253,7 @@ func (h *NoteHandler) UpdateNote(ctx context.Context, req events.APIGatewayProxy
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Invalid request body"}, nil
 	}
 
-	// Verify ETag from header (If-Match)
 	etag := req.Headers["If-Match"]
-	// If etag is empty, we force update (last writer wins) or reject.
-	// For optimistic locking, client SHOULD send If-Match.
 
 	file, err := storage.SaveFile(ctx, id, []byte(input.Content), etag)
 	if err != nil {
@@ -301,10 +294,6 @@ func (h *NoteHandler) DeleteNote(ctx context.Context, req events.APIGatewayProxy
 
 	err = storage.DeleteFile(ctx, id)
 	if err != nil {
-		// Idempotent on missing/other-tenant: return 204 whether the row was
-		// truly absent or belonged to another user. Preserves the pre-guard
-		// success semantics of DeleteFile on a missing pk while blocking the
-		// cross-tenant delete at the adapter layer.
 		if errors.Is(err, adapter.ErrNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNoContent}, nil
 		}
@@ -420,7 +409,6 @@ func (h *NoteHandler) PatchNote(ctx context.Context, req events.APIGatewayProxyR
 
 	var updatedFile *adapter.FileMetadata
 
-	// Handle Rename
 	if input.Name != nil {
 		if *input.Name == "" {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Name cannot be empty"}, nil
@@ -472,7 +460,6 @@ func (h *NoteHandler) PatchNote(ctx context.Context, req events.APIGatewayProxyR
 		}
 	}
 
-	// PatchNote requires at least one recognized field (name/starred/parentId).
 	if updatedFile == nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "No valid fields to update"}, nil
 	}
@@ -520,11 +507,11 @@ func (h *NoteHandler) ListRecentNotes(ctx context.Context, req events.APIGateway
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: err.Error()}, nil
 	}
 
-	// Default limit is 5
 	limit := 5
-	// We could allow overriding limit via query param
 	if lStr := req.QueryStringParameters["limit"]; lStr != "" {
-		fmt.Sscanf(lStr, "%d", &limit)
+		if n, err := strconv.Atoi(lStr); err == nil {
+			limit = n
+		}
 	}
 
 	files, err := storage.ListRecent(ctx, limit)
