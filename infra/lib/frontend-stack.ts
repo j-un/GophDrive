@@ -4,7 +4,6 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
-// import * as path from "path";
 
 interface FrontendStackProps extends cdk.StackProps {
   apiGatewayDomain: string;
@@ -35,16 +34,13 @@ export class FrontendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props);
 
-    // S3 Bucket
     const bucket = new s3.Bucket(this, "FrontendBucket", {
-      // websiteIndexDocument: 'index.html', // Remove website config for OAC
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Change to RETAIN for production
-      autoDeleteObjects: true, // Change to false for production
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
     });
 
-    // Origin Access Control (OAC)
     const cfnOriginAccessControl = new cloudfront.CfnOriginAccessControl(
       this,
       "OAC",
@@ -58,7 +54,6 @@ export class FrontendStack extends cdk.Stack {
       },
     );
 
-    // API Gateway Origin
     const apiOrigin = new origins.HttpOrigin(props.apiGatewayDomain, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
       originPath: "/prod",
@@ -68,7 +63,6 @@ export class FrontendStack extends cdk.Stack {
       },
     });
 
-    // CloudFront Function for SPA routing — Vite single index.html fallback
     const rewriteFunction = new cloudfront.Function(this, "RewriteFunction", {
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
@@ -86,7 +80,6 @@ function handler(event) {
       `),
     });
 
-    // Optional Custom Domain Configuration
     const customDomainName = process.env.CUSTOM_DOMAIN_NAME;
     const certificateArn = process.env.CERTIFICATE_ARN;
 
@@ -102,7 +95,6 @@ function handler(event) {
       domainNames = [customDomainName];
     }
 
-    // Security response headers for the frontend
     const securityHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
       this,
       "SecurityHeadersPolicy",
@@ -154,7 +146,6 @@ function handler(event) {
       },
     );
 
-    // CloudFront Distribution
     this.distribution = new cloudfront.Distribution(
       this,
       "FrontendDistribution",
@@ -191,7 +182,6 @@ function handler(event) {
       },
     );
 
-    // Associate OAC with Distribution
     const cfnDistribution = this.distribution.node
       .defaultChild as cloudfront.CfnDistribution;
     cfnDistribution.addPropertyOverride(
@@ -204,7 +194,6 @@ function handler(event) {
       "",
     );
 
-    // Grant CloudFront access to S3 Bucket
     bucket.addToResourcePolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: ["s3:GetObject"],
@@ -220,9 +209,6 @@ function handler(event) {
       }),
     );
 
-    // S3 Deployment moved to shell script for two-phase deployment
-
-    // Outputs
     new cdk.CfnOutput(this, "FrontendUrl", {
       value: `https://${this.distribution.distributionDomainName}`,
       description: "Frontend URL",
@@ -231,6 +217,11 @@ function handler(event) {
     new cdk.CfnOutput(this, "FrontendBucketName", {
       value: bucket.bucketName,
       description: "Frontend S3 Bucket Name",
+    });
+
+    new cdk.CfnOutput(this, "FrontendDistributionId", {
+      value: this.distribution.distributionId,
+      description: "CloudFront distribution ID",
     });
   }
 }

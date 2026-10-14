@@ -64,6 +64,12 @@ describe("FrontendStack", () => {
     });
   });
 
+  test("outputs the CloudFront distribution id", () => {
+    template.hasOutput("FrontendDistributionId", {
+      Value: Match.anyValue(),
+    });
+  });
+
   test("attaches a strict CSP to the CloudFront ResponseHeadersPolicy", () => {
     template.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
       ResponseHeadersPolicyConfig: Match.objectLike({
