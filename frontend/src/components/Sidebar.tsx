@@ -49,10 +49,6 @@ export function Sidebar({
     RECENT_COLLAPSED_KEY,
     false,
   );
-  // Desktop rail/panel collapse. Persisted so it survives page navigation
-  // (the sidebar remounts on every route change). Independent of `isOpen`,
-  // which drives the mobile slide-in drawer only (see Sidebar.module.css
-  // breakpoints).
   const [collapsed, setCollapsed] = useLocalStorageBoolean(
     SIDEBAR_COLLAPSED_KEY,
     false,
@@ -68,9 +64,14 @@ export function Sidebar({
 
   const loadRequestRef = useRef(0);
 
+  const [seenTrigger, setSeenTrigger] = useState(refreshTrigger);
+  if (seenTrigger !== refreshTrigger) {
+    setSeenTrigger(refreshTrigger);
+    setLoading(true);
+  }
+
   const loadFolders = async () => {
     const requestId = ++loadRequestRef.current;
-    setLoading(true);
     try {
       const starred = await listStarred();
       const recent = await listRecent(5);
@@ -92,8 +93,27 @@ export function Sidebar({
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadFolders();
+    const requestId = ++loadRequestRef.current;
+    let cancelled = false;
+    void Promise.all([listStarred(), listRecent(5), listTags(50)]).then(
+      ([starred, recent, tagList]) => {
+        if (cancelled || requestId !== loadRequestRef.current) return;
+        setStarredItems(
+          (starred || []).sort((a, b) => a.name.localeCompare(b.name)),
+        );
+        setRecentFiles(recent || []);
+        setTags(tagList || []);
+        setLoading(false);
+      },
+      (err: unknown) => {
+        if (cancelled || requestId !== loadRequestRef.current) return;
+        console.error("Failed to load sidebar:", err);
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [refreshTrigger]);
 
   // Keep RECENT/Starred fresh when the user returns to the tab (e.g. after
@@ -108,7 +128,9 @@ export function Sidebar({
   });
   useEffect(() => {
     const refresh = () => {
-      if (document.visibilityState === "visible") loadFoldersRef.current();
+      if (document.visibilityState !== "visible") return;
+      setLoading(true);
+      void loadFoldersRef.current();
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
@@ -116,8 +138,6 @@ export function Sidebar({
 
   const handleNavigate = (folderId?: string) => {
     onNavigate(folderId);
-    // Desktop: the sidebar stays open after navigating (it's a persistent
-    // rail now, not a hover overlay). Mobile: still closes the drawer.
     onClose?.();
   };
 
@@ -131,9 +151,6 @@ export function Sidebar({
     searchWrapRef.current?.querySelector("input")?.focus();
   }, [searchFocusSignal]);
 
-  // Cmd/Ctrl+K expands the panel and focuses search regardless of current
-  // collapsed state. The ref mirrors the loadFoldersRef pattern above so
-  // the listener is registered once but always calls the latest closure.
   const openSearchRef = useRef(openSearch);
   useEffect(() => {
     openSearchRef.current = openSearch;
@@ -165,9 +182,6 @@ export function Sidebar({
         onClick={onClose}
       />
 
-      {/* Rendered at all times (not just when collapsed) so its layout is
-          established before the CSS display toggle; only visible via
-          `.rootCollapsed .rail { display: flex }` at desktop widths. */}
       <nav className={styles.rail} data-testid="sidebar-rail">
         <button
           type="button"
@@ -199,10 +213,6 @@ export function Sidebar({
         </button>
       </nav>
 
-      {/* Rendered at all times (not just when expanded) because the mobile
-          drawer depends on this element already being in the DOM to
-          translateX it into view; only hidden via
-          `.rootCollapsed .panel { display: none }` at desktop widths. */}
       <div
         className={`${styles.panel} ${isOpen ? styles.panelMobileOpen : ""}`}
         data-testid="sidebar-panel"
@@ -230,7 +240,6 @@ export function Sidebar({
         </div>
 
         <div className={styles.panelBody}>
-          {/* Starred Section */}
           <div className={styles.section}>
             <div className={styles.sectionHeading}>Starred</div>
             {loading ? (
@@ -299,7 +308,6 @@ export function Sidebar({
             )}
           </div>
 
-          {/* Recent Section */}
           <div className={styles.section}>
             <button
               type="button"
@@ -359,7 +367,6 @@ export function Sidebar({
             </div>
           </div>
 
-          {/* Tags Section */}
           {tags.length > 0 && (
             <div className={styles.section}>
               <div className={styles.sectionHeading}>
@@ -382,9 +389,6 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Always visible now that the panel is a persistent column rather
-            than a hover overlay; previously mobile-only because the rail
-            (with its own Settings entry) was hidden ≤768px. */}
         <div className={styles.panelFooter}>
           <button
             type="button"

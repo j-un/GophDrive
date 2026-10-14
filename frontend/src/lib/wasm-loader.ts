@@ -1,7 +1,11 @@
+interface GoRuntime {
+  importObject: WebAssembly.Imports;
+  run(instance: WebAssembly.Instance): void;
+}
+
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Go: any;
+    Go: new () => GoRuntime;
     renderMarkdown: (source: string) => string;
     checkConflict: (localEtag: string, remoteEtag: string) => boolean;
     createOfflineChange: (

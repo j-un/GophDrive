@@ -11,25 +11,17 @@ export function useAutoSave(
   const [error, setError] = useState<Error | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Mirror `saveFunction` in a ref so the debounce timer always calls the
-  // latest version without needing `saveFunction` in the effect deps below —
-  // otherwise a reference change (e.g. the caller's save callback picking up
-  // a fresh etag after a prior save) would reset the pending debounce timer.
   const saveFunctionRef = useRef(saveFunction);
   useEffect(() => {
     saveFunctionRef.current = saveFunction;
   }, [saveFunction]);
 
+  if (enabled && lastSavedValue === null) {
+    setLastSavedValue(value);
+  }
+
   useEffect(() => {
-    if (!enabled) return;
-
-    if (lastSavedValue === null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLastSavedValue(value);
-      return;
-    }
-
-    if (value === lastSavedValue) return;
+    if (!enabled || lastSavedValue === null || value === lastSavedValue) return;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);

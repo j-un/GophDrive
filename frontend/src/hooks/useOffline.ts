@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 
 export function useOffline() {
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useState(
+    () => typeof navigator !== "undefined" && !navigator.onLine,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -11,9 +13,6 @@ export function useOffline() {
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsOffline(!navigator.onLine);
 
     return () => {
       window.removeEventListener("online", handleOnline);

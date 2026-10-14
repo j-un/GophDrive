@@ -1,6 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// TODO(aria-pressed): Derive active-marker state from CodeMirror ViewPlugin to reflect
-// current selection formatting in button aria-pressed attributes (future enhancement).
 
 import {
   Fragment,
@@ -51,12 +49,6 @@ interface Props {
   editorRef: RefObject<EditorHandle | null>;
   selection: SelectionInfo | null;
   readOnly?: boolean;
-  /**
-   * Whether NotePage's zen mode is currently fading chrome out. Only affects
-   * the mobile persistent bar below — the desktop floating bar already
-   * disappears on its own once typing collapses the selection.
-   */
-  zen?: boolean;
 }
 
 type ButtonIcon = React.ComponentType<{
@@ -71,12 +63,6 @@ type ButtonSpec = {
   command: (state: EditorState) => TransactionSpec;
 };
 
-/**
- * Cycles the heading level of the current line: none → H1 → H2 → H3 → none.
- * Reads the `#` count straight off the line the selection starts on and
- * delegates to `toggleHeading`, whose own same-level-removes/different-level-
- * replaces semantics does the actual strip/replace work.
- */
 function cycleHeadingCommand(state: EditorState): TransactionSpec {
   const line = state.doc.lineAt(state.selection.main.from);
   const match = line.text.match(/^(#{1,6}) /);
@@ -96,7 +82,6 @@ export const BUTTONS: ReadonlyArray<ButtonSpec> = [
   { label: "Link", icon: Link, command: insertLink },
 ];
 
-// Index (into BUTTONS) after which the vertical separator is rendered.
 const SEPARATOR_AFTER_INDEX = 2;
 
 /**
@@ -122,12 +107,6 @@ export const MOBILE_BUTTONS: ReadonlyArray<ButtonSpec> = [
   { label: "Divider", icon: Minus, command: insertDivider },
 ];
 
-// Fallback size used for the very first position calculation, before the
-// toolbar has mounted and `offsetWidth`/`offsetHeight` are available. Close
-// to the real rendered size (7 buttons + 1 separator), so the toolbar never
-// visibly jumps once the accurate measurement lands on the next recalc.
-const FALLBACK_WIDTH = 246;
-const FALLBACK_HEIGHT = 40;
 const VIEWPORT_MARGIN = 8;
 const GAP_ABOVE_SELECTION = 8;
 
@@ -135,7 +114,6 @@ export function MarkdownToolbar({
   editorRef,
   selection,
   readOnly = false,
-  zen = false,
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -162,12 +140,13 @@ export function MarkdownToolbar({
     const right = Math.max(fromCoords.right, toCoords.right);
     const centerX = (left + right) / 2;
 
-    const width = toolbarRef.current?.offsetWidth ?? FALLBACK_WIDTH;
-    const height = toolbarRef.current?.offsetHeight ?? FALLBACK_HEIGHT;
+    const node = toolbarRef.current;
+    if (!node) return;
+    const width = node.offsetWidth;
+    const height = node.offsetHeight;
 
     let toolbarTop = top - GAP_ABOVE_SELECTION - height;
     if (toolbarTop < VIEWPORT_MARGIN) {
-      // Not enough room above the selection — show below it instead.
       toolbarTop = bottom + GAP_ABOVE_SELECTION;
     }
 
@@ -183,19 +162,13 @@ export function MarkdownToolbar({
     setPos({ top: toolbarTop, left: toolbarLeft });
   }, [editorRef, selection]);
 
+  if (!visible && pos !== null) {
+    setPos(null);
+  }
+
   useLayoutEffect(() => {
-    if (!visible) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPos(null);
-      return;
-    }
+    if (!visible) return;
     recalc();
-    // The first recalc for a newly-shown selection runs before the toolbar
-    // itself has mounted, so it centers against FALLBACK_WIDTH/HEIGHT rather
-    // than the real box. Once the node exists, remeasure on the next frame
-    // so the toolbar snaps to its accurate centered position.
-    const raf = requestAnimationFrame(() => recalc());
-    return () => cancelAnimationFrame(raf);
   }, [visible, recalc]);
 
   useEffect(() => {
@@ -219,13 +192,10 @@ export function MarkdownToolbar({
 
   return (
     <>
-      {/* Mobile-only (CSS media query); readOnly disables buttons rather than
-          hiding the bar, matching the pre-redesign toolbar's behavior. */}
       <div
-        className={`${styles.toolbarStatic} ${zen ? styles.toolbarStaticZen : ""}`}
+        className={styles.toolbarStatic}
         role="toolbar"
         aria-label="Markdown formatting (mobile)"
-        data-zen={zen}
       >
         {MOBILE_BUTTONS.map(({ label, icon: Icon, command }) => (
           <button
@@ -234,8 +204,6 @@ export function MarkdownToolbar({
             className={styles.staticButton}
             aria-label={label}
             disabled={readOnly}
-            // Prevents the button from stealing focus so the editor retains
-            // cursor position and the virtual keyboard stays up.
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => dispatch(command)}
           >
@@ -244,15 +212,18 @@ export function MarkdownToolbar({
         ))}
       </div>
 
-      {/* Desktop-only (CSS media query); shown only while there's a
-          non-empty selection, positioned above/below it. */}
-      {visible && pos && (
+      {visible && (
         <div
           ref={toolbarRef}
           className={styles.toolbarFloating}
           role="toolbar"
           aria-label="Markdown formatting"
-          style={{ top: pos.top, left: pos.left }}
+          aria-hidden={pos ? undefined : true}
+          style={
+            pos
+              ? { top: pos.top, left: pos.left }
+              : { visibility: "hidden", top: 0, left: 0 }
+          }
         >
           {BUTTONS.map(({ label, icon: Icon, command }, i) => (
             <Fragment key={label}>

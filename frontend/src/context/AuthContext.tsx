@@ -38,7 +38,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const u = await getUser();
       setUser(u);
-      // Restore deep link saved before auth redirect (see redirect effect below).
       const redirect = sessionStorage.getItem("authRedirect");
       if (redirect) {
         sessionStorage.removeItem("authRedirect");
@@ -46,9 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       const e = error as Error;
-      if (e.message && e.message.includes("401")) {
-        // Not an error, just means user is not logged in
-      } else {
+      if (!e.message?.includes("401")) {
         console.error(
           "AuthContext: Failed to fetch user. Detailed error:",
           e.message || e,
@@ -61,13 +58,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchUser();
-  }, [fetchUser]);
+    let cancelled = false;
+    void getUser().then(
+      (u) => {
+        if (cancelled) return;
+        setUser(u);
+        const redirect = sessionStorage.getItem("authRedirect");
+        if (redirect) {
+          sessionStorage.removeItem("authRedirect");
+          navigateRef.current(redirect);
+        }
+        setLoading(false);
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        const e = error as Error;
+        if (!e.message?.includes("401")) {
+          console.error(
+            "AuthContext: Failed to fetch user. Detailed error:",
+            e.message || e,
+          );
+        }
+        setUser(null);
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    // Redirect logic
-    // console.log("AuthContext check:", { loading, user, pathname });
     if (loading) return;
 
     const isPublic =
@@ -76,11 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pathname.startsWith("/privacy") ||
       pathname.startsWith("/terms");
 
-    // If we are on public page, just let it be.
     if (isPublic) return;
 
     if (!user) {
-      // Save the intended destination so fetchUser can restore it after login.
       sessionStorage.setItem("authRedirect", pathname + location.search);
       navigate("/");
       return;

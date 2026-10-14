@@ -2,7 +2,6 @@ const API_BASE = "/api";
 
 const CSRF_HEADERS = { "X-Requested-With": "XMLHttpRequest" } as const;
 
-// Replaceable fetch function for testability
 let fetchFn: typeof fetch = (...args: Parameters<typeof fetch>) =>
   fetch(...args);
 
@@ -48,7 +47,6 @@ export async function apiFetch(
     ...((init?.headers as Record<string, string>) || {}),
     ...CSRF_HEADERS,
   };
-  // Append robust cache buster (timestamp) to query
   const timestamp = Date.now();
   const separator = path.includes("?") ? "&" : "?";
   const url = `${API_BASE}${path}${separator}_t=${timestamp}`;
@@ -61,12 +59,10 @@ export async function apiFetch(
   });
 
   if (res.status === 401) {
-    // If it's already a refresh request, just let it fail to avoid infinite loop
     if (path === "/auth/refresh") {
       return res;
     }
 
-    // Try to refresh once
     if (!refreshPromise) {
       refreshPromise = refreshSession();
     }
@@ -75,7 +71,6 @@ export async function apiFetch(
     refreshPromise = null;
 
     if (success) {
-      // Cookie is updated by the refresh response. Retry the original request.
       const retryTimestamp = Date.now();
       const retrySeparator = path.includes("?") ? "&" : "?";
       const retryUrl = `${API_BASE}${path}${retrySeparator}_t=${retryTimestamp}`;
@@ -109,11 +104,12 @@ export async function parseJson<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("Content-Type") || "";
   if (!contentType.includes("application/json")) {
     let bodyPreview = "";
-    try {
-      const text = await res.text();
-      bodyPreview = text.slice(0, 200);
-    } catch {
-      // Body already consumed or unreadable.
+    if (typeof res.text === "function") {
+      try {
+        bodyPreview = (await res.text()).slice(0, 200);
+      } catch (err) {
+        console.error("parseJson: could not read response body", err);
+      }
     }
     console.error("parseJson: unexpected non-JSON response", {
       url: res.url,
@@ -284,13 +280,10 @@ export async function getBreadcrumbs(
   }
 
   while (currentId) {
-    // If we reached the base folder, stop (don't include it in breadcrumbs, as 'Home' represents it)
     if (baseFolderId && currentId === baseFolderId) {
       break;
     }
 
-    // Stop if currentId is not a valid UUID — catches the Home sentinel (empty string)
-    // and any external/malformed IDs, avoiding a spurious /notes/{id} request.
     if (!isValidNoteId(currentId)) {
       break;
     }
@@ -298,7 +291,6 @@ export async function getBreadcrumbs(
     try {
       const file = await getFile(currentId);
 
-      // Double check in case logic above didn't catch it (e.g. initial folderId IS baseFolderId)
       if (baseFolderId && file.id === baseFolderId) {
         break;
       }
@@ -315,9 +307,6 @@ export async function getBreadcrumbs(
       console.warn(
         `Failed to fetch breadcrumb for ${currentId}. This might be due to permissions (e.g. parent folder created outside the app). Stopping traversal.`,
       );
-      // If it's a 404/403 (likely), we just stop here and show what we have.
-      // On 401, apiFetch attempts a refresh once; if that also fails, the error propagates here.
-      // "Failed to fetch file" comes from apiFetch throwing error.
       if (e.message) {
         console.warn("Breadcrumb Error Message:", e.message);
       }
@@ -325,7 +314,6 @@ export async function getBreadcrumbs(
     }
   }
 
-  // Add Home at the beginning
   breadcrumbs.unshift({ id: "", name: "Home" });
   return breadcrumbs;
 }

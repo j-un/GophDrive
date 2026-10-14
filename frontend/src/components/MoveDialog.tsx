@@ -26,18 +26,22 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [subfolders, setSubfolders] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  const [trackedFolder, setTrackedFolder] = useState(pickerFolderId);
+  if (isOpen && !wasOpen) {
+    setWasOpen(true);
     setPickerFolderId("");
-  }, [isOpen]);
+    setLoading(true);
+  } else if (!isOpen && wasOpen) {
+    setWasOpen(false);
+  } else if (isOpen && pickerFolderId !== trackedFolder) {
+    setTrackedFolder(pickerFolderId);
+    setLoading(true);
+  }
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
 
     const fetchContents = async () => {
       try {
@@ -47,9 +51,6 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
         ]);
         if (cancelled) return;
         const { folders } = partitionFilesByKind(items);
-        // Exclude the item itself from the list. Moves into own descendants are
-        // rejected server-side (ErrInvalidMove); the UI doesn't pre-traverse
-        // the subtree to hide them all upfront.
         const visible = folders.filter((f) => f.id !== itemId);
         setBreadcrumbs(crumbs);
         setSubfolders(visible);
@@ -127,7 +128,6 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
           </button>
         </div>
 
-        {/* Breadcrumb */}
         <div
           style={{
             display: "flex",
@@ -157,7 +157,6 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
           ))}
         </div>
 
-        {/* Folder list */}
         <div
           style={{
             border: "1px solid var(--border)",
@@ -213,7 +212,6 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
           )}
         </div>
 
-        {/* Actions */}
         <div
           style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}
         >

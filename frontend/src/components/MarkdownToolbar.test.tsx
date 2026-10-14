@@ -12,8 +12,6 @@ function makeSelection(empty: boolean): SelectionInfo {
   return { from: 2, to: empty ? 2 : 8, empty };
 }
 
-/** A minimal `getView()` fake: only `coordsAtPos` (used for positioning) and
- * `state` (used by the Heading cycle test) are exercised by the toolbar. */
 function makeView(stateText = "hello world"): EditorView {
   return {
     coordsAtPos: () => ({ ...FAKE_COORDS }),
@@ -119,7 +117,6 @@ describe("MarkdownToolbar — desktop floating bar (selection-triggered)", () =>
 
     expect(runCommand).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledTimes(1);
-    // the argument must be a function (the toggleBold command)
     expect(typeof runCommand.mock.calls[0][0]).toBe("function");
   });
 
@@ -128,8 +125,6 @@ describe("MarkdownToolbar — desktop floating bar (selection-triggered)", () =>
     render(
       <MarkdownToolbar editorRef={ref} selection={makeSelection(false)} />,
     );
-    // No view to position against, so the toolbar stays hidden rather than
-    // rendering at a default/garbage position.
     expect(queryFloatingToolbar()).toBeNull();
   });
 
@@ -292,19 +287,6 @@ describe("MarkdownToolbar — mobile persistent bar (always visible)", () => {
     const ref = makeEditorRef(null);
     render(<MarkdownToolbar editorRef={ref} selection={null} />);
     const toolbar = getStaticToolbar();
-    // should not throw
     fireEvent.click(within(toolbar).getByRole("button", { name: "Bold" }));
-  });
-
-  it("marks itself as fading via data-zen when zen=true", () => {
-    const ref = makeEditorRef({ getView: () => makeView() });
-    render(<MarkdownToolbar editorRef={ref} selection={null} zen />);
-    expect(getStaticToolbar().getAttribute("data-zen")).toBe("true");
-  });
-
-  it("does not mark itself as fading when zen=false (default)", () => {
-    const ref = makeEditorRef({ getView: () => makeView() });
-    render(<MarkdownToolbar editorRef={ref} selection={null} />);
-    expect(getStaticToolbar().getAttribute("data-zen")).toBe("false");
   });
 });
