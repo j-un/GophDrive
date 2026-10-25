@@ -4,8 +4,8 @@ github.com/alecthomas/chroma/v3 v3.0.0-alpha.5 h1:Ins5lDliEp34swfd+nh2eESjBA4Mlr
 github.com/alecthomas/chroma/v3 v3.0.0-alpha.5/go.mod h1:CjTPYmVdv0LiMgid2gCJeE30AgchDKbdsW7R3xs9mHI=
 github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs=
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/dlclark/regexp2/v2 v2.8.4 h1:yfDDXTn4oxyLDC10/ieOBNDCCdIVWS9WbT6ddVXsPKI=
-github.com/dlclark/regexp2/v2 v2.8.4/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
+github.com/dlclark/regexp2/v2 v2.9.1 h1:q6bZW/NN9VodqMjYXpuic2lZxdHPfFTzGS+MJxIJmKQ=
+github.com/dlclark/regexp2/v2 v2.9.1/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
 github.com/yuin/goldmark-highlighting/v3 v3.1.0 h1:RZiuWoxLTtGURRHbDlBVBx0MwLBZiO69y0kx1xWXhW4=
