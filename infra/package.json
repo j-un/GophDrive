@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.3.0",
+    "@types/node": "^26.0.0",
     "@vitest/coverage-v8": "^5.0.0",
     "aws-cdk": "2.1146.1",
     "aws-cdk-local": "^3.0.1",
