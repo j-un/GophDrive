@@ -43,3 +43,7 @@ infra/node_modules/
 .env
 *.env
 frontend/tsconfig.tsbuildinfo
+
+# Verification skill: scratch (browser profile, pids) and proof artifacts
+.cursor/skills/verify-gophdrive/run/
+.cursor/skills/verify-gophdrive/evidence/
