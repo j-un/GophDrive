@@ -56,7 +56,7 @@ mise x node -- node .cursor/skills/verify-gophdrive/scripts/gophdrive-verify.mjs
 mise x node -- node .cursor/skills/verify-gophdrive/scripts/gophdrive-verify.mjs browser screenshot --path .cursor/skills/verify-gophdrive/evidence/search/results.png
 ```
 
-`--name` matches the accessible name (`aria-label`, otherwise visible text) as a substring. Hidden controls are skipped. `--placeholder` is an exact match. `--key` is one of `Enter`, `Escape`, `Meta+n`, `Meta+k`, `Ctrl+n`, `Ctrl+k`.
+`--name` matches the accessible name (`aria-label`, otherwise visible text) as a substring. Hidden controls are skipped. `wait-name` waits for that accessible name and does not click. `--placeholder` is an exact match. `--key` is one of `Enter`, `Escape`, `Meta+n`, `Meta+k`, `Ctrl+n`, `Ctrl+k`.
 
 `browser insert --text` types into the open note's CodeMirror field (`.cm-content`) at the caret. A note that just opened has the caret at the start.
 
