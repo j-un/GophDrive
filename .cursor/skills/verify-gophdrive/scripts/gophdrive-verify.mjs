@@ -14,6 +14,7 @@
 //   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
 //   browser insert --text <text>          # into the CodeMirror editor
 //   browser wait-text --text <text> [--scope list] [--timeout <ms>]
+//   browser wait-name --role <role> --name <accessible-name> [--timeout <ms>]
 //   browser wait-absent --text <text> [--scope list] [--timeout <ms>]
 //   browser wait-url --includes <substring> [--timeout <ms>]
 //   browser screenshot --path <file>
@@ -713,13 +714,14 @@ async function evaluate(cdp, expression) {
   return result.result?.value;
 }
 
-async function click(role, name) {
-  if (!role || !name) die("click requires --role and --name");
-  const found = await withPage(async (cdp) =>
-    evaluate(
-      cdp,
-      `(() => {
+function matchVisibleControl(role, name, { click = false } = {}) {
+  const activate = click
+    ? `hits[0].el.scrollIntoView({ block: "center", inline: "center" });
+        hits[0].el.click();`
+    : "";
+  return `(() => {
         const norm = (s) => (s || "").replace(/\\s+/g, " ").trim();
+        const accessibleName = (el) => norm(el.getAttribute("aria-label") || el.innerText || "");
         const want = ${JSON.stringify(name)};
         const wantRole = ${JSON.stringify(role)}.toLowerCase();
         const nodes = [...document.querySelectorAll("a,button,input,textarea,[role]")];
@@ -742,7 +744,7 @@ async function click(role, name) {
             }
           }
           if (implicit !== wantRole) continue;
-          const accessible = norm(el.getAttribute("aria-label") || el.innerText || "");
+          const accessible = accessibleName(el);
           if (want && !accessible.includes(want)) continue;
           hits.push({ el, accessible, exact: accessible === want });
         }
@@ -754,16 +756,20 @@ async function click(role, name) {
             if (style.display === "none" || style.visibility === "hidden") continue;
             const rect = el.getBoundingClientRect();
             if (rect.width < 1 || rect.height < 1) continue;
-            const accessible = norm(el.getAttribute("aria-label") || el.innerText || "");
+            const accessible = accessibleName(el);
             if (accessible) visible.push(accessible);
           }
-          return { ok: false, visible: visible.slice(0, 40) };
+          return { ok: false, visible: visible.slice(0, 40), url: location.href };
         }
-        hits[0].el.scrollIntoView({ block: "center", inline: "center" });
-        hits[0].el.click();
-        return { ok: true, name: hits[0].accessible };
-      })()`,
-    ),
+        ${activate}
+        return { ok: true, name: hits[0].accessible, url: location.href };
+      })()`;
+}
+
+async function click(role, name) {
+  if (!role || !name) die("click requires --role and --name");
+  const found = await withPage(async (cdp) =>
+    evaluate(cdp, matchVisibleControl(role, name, { click: true })),
   );
   if (!found?.ok) {
     die(
@@ -890,6 +896,26 @@ async function waitFor(kind, expected, timeoutMs, scope) {
   console.error(`url: ${last?.url}`);
   console.error((last?.text || "").slice(0, 1500));
   die(`timed out after ${timeout}ms waiting for ${kind} ${JSON.stringify(expected)}`);
+}
+
+async function waitName(role, name, timeoutMs) {
+  if (!role || !name) die("wait-name requires --role and --name");
+  const timeout = Number(timeoutMs || 20000);
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < timeout) {
+    last = await withPage((cdp) => evaluate(cdp, matchVisibleControl(role, name)));
+    if (last?.ok) {
+      console.log(`name ok ${JSON.stringify(role)} ${JSON.stringify(last.name)}`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  console.error(`url: ${last?.url}`);
+  console.error((last?.visible || []).join("\n"));
+  die(
+    `timed out after ${timeout}ms waiting for name ${JSON.stringify(role)} ${JSON.stringify(name)}`,
+  );
 }
 
 async function snapshot(file) {
@@ -1028,6 +1054,7 @@ function help() {
   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
   browser insert --text <text>
   browser wait-text --text <text> [--scope list] [--timeout <ms>]
+  browser wait-name --role <role> --name <name> [--timeout <ms>]
   browser wait-absent --text <text> [--scope list] [--timeout <ms>]
   browser wait-url --includes <substring> [--timeout <ms>]
   browser screenshot --path <file>
@@ -1057,6 +1084,7 @@ try {
     else if (sub === "press") await press(o.key);
     else if (sub === "insert") await insertText(o.text);
     else if (sub === "wait-text") await waitFor("text", o.text, o.timeout, o.scope);
+    else if (sub === "wait-name") await waitName(o.role, o.name, o.timeout);
     else if (sub === "wait-absent") await waitFor("absent", o.text, o.timeout, o.scope);
     else if (sub === "wait-url") await waitFor("url", o.includes, o.timeout);
     else if (sub === "screenshot") await screenshot(o.path);
