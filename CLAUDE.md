@@ -9,6 +9,7 @@ GophDrive is a serverless Markdown notes app: Vite + React SPA on S3+CloudFront,
 1. **Run `./scripts/check.sh`** (fmt + vet + test + prettier + tsc + eslint + vitest across all stacks) and ensure it passes. Runs entirely on the host via `mise x` — no DynamoDB Local / overmind required.
 2. **If `core/` changed** → `core.wasm` is rebuilt automatically by the `wasm` overmind process (`dev.sh` / `overmind start`) and by `npm run dev`/`build` via the `predev`/`prebuild` hooks. For builds outside those paths run `./scripts/internal/build-wasm.sh` manually. (`core.wasm` and `wasm_exec.js` are gitignored build artifacts — do not commit them.)
 3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → the PWA service worker (`sw.js`) and its precache manifest are regenerated automatically by `vite-plugin-pwa` (Workbox) on every `npm run build`. No manual `CACHE_NAME` bump is required.
+4. **If the UI, the session cookie, or a note flow changed** → after `./scripts/check.sh`, run `.cursor/skills/verify-gophdrive`. If `doctor` prints `worth driving: yes`, adopt the running dev stack and drive only the feature file for that change at `http://localhost:5173`. API and gophmem changes use `.claude/skills/verify`.
 
 ## Common Commands
 
