@@ -13,8 +13,8 @@
 //   browser fill --placeholder <placeholder> --value <text>
 //   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
 //   browser insert --text <text>          # into the CodeMirror editor
-//   browser wait-text --text <text> [--timeout <ms>]
-//   browser wait-absent --text <text> [--timeout <ms>]
+//   browser wait-text --text <text> [--scope list] [--timeout <ms>]
+//   browser wait-absent --text <text> [--scope list] [--timeout <ms>]
 //   browser wait-url --includes <substring> [--timeout <ms>]
 //   browser screenshot --path <file>
 //   browser snapshot --path <file>
@@ -852,15 +852,35 @@ async function pageText(cdp) {
   );
 }
 
-async function waitFor(kind, expected, timeoutMs) {
+async function headingSiblingText(cdp) {
+  return evaluate(
+    cdp,
+    `(() => {
+      const h1 = document.querySelector("h1");
+      const sibling = h1 && h1.nextElementSibling;
+      const page = document.body ? document.body.innerText : "";
+      if (!sibling) return { url: location.href, title: document.title, text: page, ready: false };
+      return { url: location.href, title: document.title, text: sibling.innerText || "", ready: true };
+    })()`,
+  );
+}
+
+async function waitFor(kind, expected, timeoutMs, scope) {
+  if (scope !== undefined && scope !== "list") {
+    die(`unknown scope ${JSON.stringify(scope)}; the only scope is list`);
+  }
   const timeout = Number(timeoutMs || 20000);
   const started = Date.now();
   let last = null;
   while (Date.now() - started < timeout) {
-    last = await withPage((cdp) => pageText(cdp));
+    last = await withPage((cdp) =>
+      scope === "list" ? headingSiblingText(cdp) : pageText(cdp),
+    );
+    const pending = scope === "list" && last?.ready !== true;
     const haystack = kind === "url" ? last?.url || "" : last?.text || "";
     const ok =
-      kind === "absent" ? !haystack.includes(expected) : haystack.includes(expected);
+      !pending &&
+      (kind === "absent" ? !haystack.includes(expected) : haystack.includes(expected));
     if (ok) {
       console.log(`${kind} ok ${JSON.stringify(expected)}`);
       return;
@@ -1007,8 +1027,8 @@ function help() {
   browser fill --placeholder <placeholder> --value <text>
   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
   browser insert --text <text>
-  browser wait-text --text <text> [--timeout <ms>]
-  browser wait-absent --text <text> [--timeout <ms>]
+  browser wait-text --text <text> [--scope list] [--timeout <ms>]
+  browser wait-absent --text <text> [--scope list] [--timeout <ms>]
   browser wait-url --includes <substring> [--timeout <ms>]
   browser screenshot --path <file>
   browser snapshot --path <file>
@@ -1036,8 +1056,8 @@ try {
     else if (sub === "fill") await fill(o.placeholder, o.value);
     else if (sub === "press") await press(o.key);
     else if (sub === "insert") await insertText(o.text);
-    else if (sub === "wait-text") await waitFor("text", o.text, o.timeout);
-    else if (sub === "wait-absent") await waitFor("absent", o.text, o.timeout);
+    else if (sub === "wait-text") await waitFor("text", o.text, o.timeout, o.scope);
+    else if (sub === "wait-absent") await waitFor("absent", o.text, o.timeout, o.scope);
     else if (sub === "wait-url") await waitFor("url", o.includes, o.timeout);
     else if (sub === "screenshot") await screenshot(o.path);
     else if (sub === "snapshot") await snapshot(o.path);
