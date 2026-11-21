@@ -37,7 +37,7 @@ fi
 bold "Building gophmem ..."
 mkdir -p "$BIN_DIR"
 if ! command -v mise >/dev/null 2>&1; then
-  echo "error: mise is required (see CLAUDE.md → Common Commands). Install via https://mise.jdx.dev/ and re-run." >&2
+  echo "error: mise is required (see AGENTS.md, Common Commands). Install via https://mise.jdx.dev/ and re-run." >&2
   exit 1
 fi
 ( cd "$SCRIPT_DIR" && mise x go -- go build -o "$BIN_DIR/gophmem" . )
