@@ -60,22 +60,38 @@ func (f *fakeDDB) evalCondition(condExpr *string, values map[string]types.Attrib
 	if condExpr == nil {
 		return true, nil
 	}
-	if *condExpr != "attribute_exists(pk) AND user_id = :uid" {
+	switch *condExpr {
+	case "attribute_exists(pk) AND user_id = :uid":
+		item, ok := f.items[pk]
+		if !ok {
+			return false, nil
+		}
+		uidAV, ok := values[":uid"]
+		if !ok {
+			return false, fmt.Errorf("fakeDDB: condition references :uid but none provided")
+		}
+		uidS, ok := uidAV.(*types.AttributeValueMemberS)
+		if !ok {
+			return false, fmt.Errorf("fakeDDB: :uid must be a string attribute")
+		}
+		return stringAttr(item, "user_id") == uidS.Value, nil
+	case "etag = :expected":
+		item, ok := f.items[pk]
+		if !ok {
+			return false, nil
+		}
+		expectedAV, ok := values[":expected"]
+		if !ok {
+			return false, fmt.Errorf("fakeDDB: condition references :expected but none provided")
+		}
+		expectedS, ok := expectedAV.(*types.AttributeValueMemberS)
+		if !ok {
+			return false, fmt.Errorf("fakeDDB: :expected must be a string attribute")
+		}
+		return stringAttr(item, "etag") == expectedS.Value, nil
+	default:
 		return false, fmt.Errorf("fakeDDB: unsupported expression %q", *condExpr)
 	}
-	item, ok := f.items[pk]
-	if !ok {
-		return false, nil
-	}
-	uidAV, ok := values[":uid"]
-	if !ok {
-		return false, fmt.Errorf("fakeDDB: condition references :uid but none provided")
-	}
-	uidS, ok := uidAV.(*types.AttributeValueMemberS)
-	if !ok {
-		return false, fmt.Errorf("fakeDDB: :uid must be a string attribute")
-	}
-	return stringAttr(item, "user_id") == uidS.Value, nil
 }
 
 func (f *fakeDDB) GetItem(_ context.Context, params *dynamodb.GetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error) {
