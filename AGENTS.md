@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agents working in this repository.
 
 GophDrive is a serverless Markdown notes app: Vite + React SPA on S3+CloudFront, single Go Lambda behind API Gateway, notes stored in DynamoDB (`FileStore` table). Google is used purely as an OIDC identity provider — no Drive scope, no stored OAuth refresh tokens.
 
@@ -10,6 +10,7 @@ GophDrive is a serverless Markdown notes app: Vite + React SPA on S3+CloudFront,
 2. **If `core/` changed** → `core.wasm` is rebuilt automatically by the `wasm` overmind process (`dev.sh` / `overmind start`) and by `npm run dev`/`build` via the `predev`/`prebuild` hooks. For builds outside those paths run `./scripts/internal/build-wasm.sh` manually. (`core.wasm` and `wasm_exec.js` are gitignored build artifacts — do not commit them.)
 3. **If `frontend/src/`, `core/`, or `frontend/public/` changed** → the PWA service worker (`sw.js`) and its precache manifest are regenerated automatically by `vite-plugin-pwa` (Workbox) on every `npm run build`. No manual `CACHE_NAME` bump is required.
 4. **If the UI, the session cookie, or a note flow changed** → after `./scripts/check.sh`, run `.cursor/skills/verify-gophdrive`. If `doctor` prints `worth driving: yes`, adopt the running dev stack and drive only the feature file for that change at `http://localhost:5173`. API and gophmem changes use `.claude/skills/verify`.
+5. **If `Adapter.SaveFile`, `Adapter.GetFile`, `NoteHandler.UpdateNote`, `If-Match`, or the note etag changed** → after `./scripts/check.sh`, follow `.cursor/skills/verify-note-save`.
 
 ## Common Commands
 

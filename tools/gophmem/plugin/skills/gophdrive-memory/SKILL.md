@@ -78,7 +78,7 @@ Record knowledge that cannot be recovered from code or `git log`:
 - **Experiments** — approaches tried and dropped, with the result
 - **Operational procedures** — manual e2e verification, environment-specific setup
 
-Do not record: implementation detail the code already shows, history already in `git log`, or anything already in `CLAUDE.md`, `AGENTS.md`, or project rules.
+Do not record: implementation detail the code already shows, history already in `git log`, or anything already in `AGENTS.md` or project rules.
 
 ## Note conventions
 
