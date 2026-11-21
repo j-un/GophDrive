@@ -1,18 +1,4 @@
 ------------------------------ MODULE SaveFile ------------------------------
-\* Production Adapter.SaveFile on the DynamoDB path.
-\* One note. Two writers. Each writer reads the note once, then calls SaveFile
-\* once. SaveFile is two indivisible steps, matching the code:
-\*   GetFile  — dynamo.go Adapter.GetFile, one GetItem
-\*   then either
-\*     RejectStale — the local compare in Adapter.SaveFile
-\*       (etag != "" && f.ETag != etag returns ErrPreconditionFailed)
-\*     or
-\*       PutItem — the PutItem in Adapter.SaveFile, which sets no
-\*       ConditionExpression
-\* The compare uses the ETag captured by that GetFile, not a new read.
-\* An empty etag is a documented force-overwrite (StorageAdapter.SaveFile)
-\* and is not a step here. The in-memory saveFileMap holds mu across the
-\* check and the write, so this interleaving is the DynamoDB path only.
 
 EXTENDS Naturals
 
@@ -62,12 +48,18 @@ RejectStale(w) ==
   /\ outcome' = [outcome EXCEPT ![w] = "rejected"]
   /\ UNCHANGED <<storedEtag, storedBody, presented, snapshot>>
 
-\* The compare passed, so SaveFile builds a new ETag and PutItem with no
-\* condition. A PutItem that starts after another writer's PutItem still
-\* overwrites the row.
+RejectMovedEtag(w) ==
+  /\ phase[w] = "read"
+  /\ presented[w] = snapshot[w]
+  /\ snapshot[w] # storedEtag
+  /\ phase' = [phase EXCEPT ![w] = "done"]
+  /\ outcome' = [outcome EXCEPT ![w] = "rejected"]
+  /\ UNCHANGED <<storedEtag, storedBody, presented, snapshot>>
+
 PutItem(w) ==
   /\ phase[w] = "read"
   /\ presented[w] = snapshot[w]
+  /\ snapshot[w] = storedEtag
   /\ storedEtag' = storedEtag + 1
   /\ storedBody' = w
   /\ phase' = [phase EXCEPT ![w] = "done"]
@@ -83,6 +75,7 @@ Next ==
   \/ \E w \in Writers : GetNote(w)
   \/ \E w \in Writers : GetFile(w)
   \/ \E w \in Writers : RejectStale(w)
+  \/ \E w \in Writers : RejectMovedEtag(w)
   \/ \E w \in Writers : PutItem(w)
   \/ Done
 

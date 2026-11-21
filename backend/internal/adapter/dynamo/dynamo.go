@@ -413,6 +413,7 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 	if etag != "" && f.ETag != etag {
 		return nil, adapter.ErrPreconditionFailed
 	}
+	expected := f.ETag
 
 	inline, s3Key, err := m.routeBody(ctx, content)
 	if err != nil {
@@ -467,11 +468,22 @@ func (m *Adapter) SaveFile(ctx context.Context, fileID string, content []byte, e
 		return nil, err
 	}
 
-	_, err = m.client.PutItem(ctx, &dynamodb.PutItemInput{
+	input := &dynamodb.PutItemInput{
 		TableName: getTableName(),
 		Item:      av,
-	})
+	}
+	if etag != "" {
+		input.ConditionExpression = aws.String("etag = :expected")
+		input.ExpressionAttributeValues = map[string]types.AttributeValue{
+			":expected": &types.AttributeValueMemberS{Value: expected},
+		}
+	}
+	_, err = m.client.PutItem(ctx, input)
 	if err != nil {
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return nil, adapter.ErrPreconditionFailed
+		}
 		return nil, err
 	}
 
