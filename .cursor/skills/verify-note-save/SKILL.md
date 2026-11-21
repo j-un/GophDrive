@@ -37,7 +37,8 @@ One note. Two writers, `w1` and `w2`. Each writer does one `GetNote` and then on
 | `GetNote` | `NoteHandler.GetNote` returns `file.ETag`. The etag on a successful `UpdateNote` response is the same kind of observation |
 | `GetFile` | `Adapter.GetFile` on the DynamoDB path, one `GetItem` |
 | `RejectStale` | `Adapter.SaveFile`: `etag != "" && f.ETag != etag` returns `ErrPreconditionFailed`. `UpdateNote` maps that to HTTP 412. No write |
-| `PutItem` | `Adapter.SaveFile` `PutItem` after that compare passes. The call sets no `ConditionExpression` |
+| `RejectMovedEtag` | `PutItem`'s `ConditionExpression` `etag = :expected` fails. `:expected` is the etag `GetFile` returned. `SaveFile` returns `ErrPreconditionFailed`. No write |
+| `PutItem` | That condition holds, so `PutItem` commits. The stored etag still equals the `GetFile` snapshot |
 
 `StaleSaveRejected` — a committed save presented the ETag its own `GetFile` returned.
 
@@ -47,22 +48,15 @@ One note. Two writers, `w1` and `w2`. Each writer does one `GetNote` and then on
 
 ## Known finding
 
-At the sync commit, `NoLostUpdate` fails. `StaleSaveRejected`, `TypeOK`, and `NoDeadlock` hold. Do not weaken `NoLostUpdate` or add a condition to the model's `PutItem` while the Go `PutItem` has no `ConditionExpression`.
+At the sync commit, TLC exits 0. `TypeOK`, `StaleSaveRejected`, `NoLostUpdate`, and `NoDeadlock` hold. Do not weaken `NoLostUpdate`. Do not drop `RejectMovedEtag` while the Go `PutItem` still has `ConditionExpression` `etag = :expected`.
 
-Shortest path, in the code's words:
-
-1. Both writers `GetNote` and both keep ETag 1.
-2. Both `SaveFile` calls `GetFile` and both snapshot ETag 1.
-3. The first `PutItem` stores that writer's body and a new ETag. `SaveFile` returns success.
-4. The second `PutItem` overwrites the row. `SaveFile` returns success. The first body is gone.
-
-Replay that against the adapter:
+Replay the two saves against the adapter:
 
 ```bash
 mise x go -- bash -c 'cd .cursor/skills/verify-note-save/scripts/repro && go run .'
 ```
 
-Exit 0 means both `SaveFile` calls returned success and one body is gone. That is this finding. Exit 1 means the replay did not do that: the write may now be conditional, or the harness no longer drives `SaveFile`. The module path of that program stays under `github.com/jun/gophdrive/backend/internal/...` so Go allows the import of `internal/adapter/dynamo`. The directory is not inside `backend/`.
+Exit 0 means both `SaveFile` calls returned success and one body is gone. Exit 1 means that did not happen. At the sync commit the replay exits 1 and prints `bug did not reproduce: saves=2 unconditional puts=0`. The module path of that program stays under `github.com/jun/gophdrive/backend/internal/...` so Go allows the import of `internal/adapter/dynamo`. The directory is not inside `backend/`.
 
 ## Tell a bug from a modeling error
 
@@ -85,11 +79,11 @@ Move the sync commit only after the spec describes the code at the new commit an
 
 ## Coverage
 
-Sync commit: `1637d19e3765f93189b759719bb0722092b78844`
+Sync commit: `9a365f69a1c653fd2a4d128417602ac1ecd4b1ee`
 
 Confirmed against that commit. The line numbers below are from that commit.
 
-- `backend/internal/adapter/dynamo/dynamo.go` — `Adapter.SaveFile` when `inMemory` is false (`GetFile` at the start, the etag compare, the unconditional `PutItem`). `Adapter.GetFile` on that same path.
+- `backend/internal/adapter/dynamo/dynamo.go` — `Adapter.SaveFile` when `inMemory` is false (`GetFile` at line 408, the etag compare at line 413, `etag = :expected` at line 476, `ConditionalCheckFailedException` mapped to `ErrPreconditionFailed` at lines 484-485). `Adapter.GetFile` at line 308.
 - `backend/internal/handler/note.go` — `NoteHandler.UpdateNote` reads `If-Match` and passes it to `SaveFile`. It does not consult the editing lock.
 - `backend/internal/adapter/storage.go` — `StorageAdapter.SaveFile` documents that an empty etag forces an overwrite. That path is not a step in the model.
 
