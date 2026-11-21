@@ -24,6 +24,7 @@ export const step = (action, _from, to) => {
   if (action.startsWith("GetNote")) return "reads the note and keeps its ETag";
   if (action.startsWith("GetFile")) return "save reads the stored note";
   if (action.startsWith("RejectStale")) return "save sees a different ETag and stops";
+  if (action.startsWith("RejectMovedEtag")) return "save finds the stored ETag changed and stops";
   if (action.startsWith("PutItem")) {
     if (label(to) === "Both saves succeeded against the same ETag") {
       return "save writes the note [the other save already read this ETag]";
