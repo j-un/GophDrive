@@ -540,6 +540,21 @@ async function browserStart() {
   fs.rmSync(profile, { recursive: true, force: true });
   fs.mkdirSync(profile, { recursive: true });
   fs.mkdirSync(downloadDir, { recursive: true });
+  // Browser.setDownloadBehavior lasts only while that DevTools socket is open.
+  // This script starts a new process per command, so Chrome reads the directory from the profile.
+  const prefsDir = path.join(profile, "Default");
+  fs.mkdirSync(prefsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(prefsDir, "Preferences"),
+    JSON.stringify({
+      download: {
+        default_directory: downloadDir,
+        directory_upgrade: true,
+        prompt_for_download: false,
+      },
+      savefile: { default_directory: downloadDir },
+    }),
+  );
   const chrome = chromeBinary();
   const child = spawn(
     chrome,
@@ -563,17 +578,6 @@ async function browserStart() {
   const port = await readDevtoolsPort(profile);
   writeJson(browserPath, { pid: child.pid, port, profile });
   await openPage(port, "about:blank");
-  await withBrowser(async (cdp) => {
-    try {
-      await cdp.send("Browser.setDownloadBehavior", {
-        behavior: "allow",
-        downloadPath: downloadDir,
-        eventsEnabled: true,
-      });
-    } catch (error) {
-      console.error(`download behavior: ${error.message}`);
-    }
-  });
   console.log(`browser ready pid=${child.pid} port=${port}`);
   console.log(`profile ${profile}`);
   console.log("drive http://localhost:5173 — not 127.0.0.1 (session cookie is host-only)");
@@ -681,19 +685,6 @@ async function withPage(fn) {
       deviceScaleFactor: 1,
       mobile: false,
     });
-    return await fn(cdp);
-  } finally {
-    cdp.ws.close();
-  }
-}
-
-async function withBrowser(fn) {
-  const session = browserSession();
-  const version = await fetch(
-    `http://127.0.0.1:${session.port}/json/version`,
-  ).then((r) => r.json());
-  const cdp = await connect(version.webSocketDebuggerUrl);
-  try {
     return await fn(cdp);
   } finally {
     cdp.ws.close();
