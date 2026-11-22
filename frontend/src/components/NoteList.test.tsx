@@ -175,7 +175,7 @@ describe("NoteList — new note flow", () => {
     vi.mocked(useOffline).mockReturnValue(false);
   });
 
-  it("opens the inline row and creates a note when createNoteSignal is bumped (DrivePage's + New note / ⌘N)", async () => {
+  it("opens the inline row and creates a note when createNoteSignal is bumped (DrivePage's + New note / ⌘⌥N)", async () => {
     mockListFiles.mockResolvedValueOnce([]);
     const { rerender } = render(<NoteList createNoteSignal={0} />);
     await waitFor(() => expect(mockListFiles).toHaveBeenCalled());

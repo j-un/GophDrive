@@ -28,7 +28,7 @@ interface NoteListProps {
   searchQuery?: string;
   tagFilter?: string[];
   onAfterMutation?: () => void;
-  /** Bumped by DrivePage (button click or ⌘N) to open the inline "new note" row. */
+  /** Bumped by DrivePage (button click or ⌘⌥N) to open the inline "new note" row. */
   createNoteSignal?: number;
 }
 

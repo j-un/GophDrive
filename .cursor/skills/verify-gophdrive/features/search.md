@@ -37,7 +37,7 @@ Preconditions:
 
 - The field does not search as you type. Nothing changes until Enter. The address becomes `/drive/?q=`.
 - `⌘K` focuses search. The harness sends `Ctrl+k` for the same listener. Do not claim the Meta chord from a Ctrl run.
-- Ctrl+K while a text field is focused still runs the shortcut; the page listener does not ignore inputs for this chord. Ctrl+N does ignore inputs.
+- Ctrl+K while a text field is focused still runs the shortcut; the page listener does not ignore inputs for this chord. ⌘⌥N does ignore inputs.
 - **+ New note** disappears while a query is active. That is the search page, not a missing button.
 - Seeded notes have no tags. A `tag:` query matches nothing until a note body contains that tag. Do not treat an empty tag query as a broken search.
 - `Welcome` matches the English note's name. `blockquote` matches its body (`This is a blockquote`) and is not in the title. Assert the heading `Search results for "blockquote"` so a name-only match is not mistaken for a body match.
