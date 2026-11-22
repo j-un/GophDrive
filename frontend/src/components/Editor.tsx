@@ -14,6 +14,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import type { TransactionSpec } from "@codemirror/state";
 
+import { blankHeading } from "@/lib/blankHeading";
 import { quietEditorExtensions } from "@/lib/editorTheme";
 
 export type SelectionInfo = {
@@ -175,6 +176,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         onCreateEditor={(v) => {
           viewRef.current = v;
           setView(v);
+          if (readOnly || v.state.doc.toString() !== blankHeading) return;
+          v.dispatch({ selection: { anchor: blankHeading.length } });
+          v.focus();
         }}
         theme="none"
         readOnly={readOnly}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { mockNavigate } from "@/__mocks__/react-router";
-import { createFolder, createNote, deleteFile } from "@/lib/api";
+import { createFolder, createNote, deleteFile, type FileItem } from "@/lib/api";
 import { getAllNotesLocal } from "@/lib/idb";
 import { useOffline } from "@/hooks/useOffline";
 
@@ -169,36 +169,93 @@ describe("NoteList row list", () => {
   });
 });
 
+const timestampName = /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/;
+
 describe("NoteList — new note flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useOffline).mockReturnValue(false);
+    vi.mocked(createNote).mockResolvedValue({ id: "note-new" } as FileItem);
   });
 
-  it("opens the inline row and creates a note when createNoteSignal is bumped (DrivePage's + New note / ⌘⌥N)", async () => {
-    mockListFiles.mockResolvedValueOnce([]);
+  it("creates a note when createNoteSignal is bumped", async () => {
     const { rerender } = render(<NoteList createNoteSignal={0} />);
     await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
 
     rerender(<NoteList createNoteSignal={1} />);
 
-    const input = await screen.findByPlaceholderText("Note name...");
-    fireEvent.change(input, { target: { value: "My New Note" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(createNote).toHaveBeenCalledWith(
-        "My New Note",
-        "# My New Note",
-        undefined,
-      ),
-    );
+    expect(screen.queryByPlaceholderText("Note name...")).toBeNull();
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    const name = vi.mocked(createNote).mock.calls[0][0];
+    expect(name).toMatch(timestampName);
+    expect(createNote).toHaveBeenCalledWith(name, "# ", undefined);
     expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-new");
   });
 
-  it("does not open the inline row on initial mount", () => {
+  it("does not create a note on initial mount", async () => {
     render(<NoteList createNoteSignal={0} />);
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+    expect(createNote).not.toHaveBeenCalled();
     expect(screen.queryByPlaceholderText("Note name...")).toBeNull();
+  });
+
+  it("passes folderId to createNote", async () => {
+    const { rerender } = render(
+      <NoteList folderId="folder-1" createNoteSignal={0} />,
+    );
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+    rerender(<NoteList folderId="folder-1" createNoteSignal={1} />);
+
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createNote).mock.calls[0][2]).toBe("folder-1");
+  });
+
+  it("does not create a note when searchQuery is set", async () => {
+    const { rerender } = render(
+      <NoteList searchQuery="hello" createNoteSignal={0} />,
+    );
+    expect(await screen.findByText("No notes found.")).toBeTruthy();
+
+    rerender(<NoteList searchQuery="hello" createNoteSignal={1} />);
+    expect(await screen.findByText("No notes found.")).toBeTruthy();
+    expect(createNote).not.toHaveBeenCalled();
+  });
+
+  it("alerts without navigating when create fails, and a later bump retries", async () => {
+    vi.mocked(createNote).mockRejectedValueOnce(new Error("nope"));
+    const { rerender } = render(<NoteList createNoteSignal={0} />);
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+    rerender(<NoteList createNoteSignal={1} />);
+    await waitFor(() => expect(window.alert).toHaveBeenCalled());
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    rerender(<NoteList createNoteSignal={2} />);
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(2));
+    expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-new");
+  });
+
+  it("calls createNote once when the signal bumps twice before the request settles", async () => {
+    let resolveCreate: (note: FileItem) => void = () => {};
+    vi.mocked(createNote).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    const { rerender } = render(<NoteList createNoteSignal={0} />);
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+    rerender(<NoteList createNoteSignal={1} />);
+    rerender(<NoteList createNoteSignal={2} />);
+    expect(createNote).toHaveBeenCalledTimes(1);
+
+    resolveCreate({ id: "note-new" } as FileItem);
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-new"),
+    );
+    expect(createNote).toHaveBeenCalledTimes(1);
   });
 });
 

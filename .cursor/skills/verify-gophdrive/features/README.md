@@ -26,7 +26,7 @@ The drive heading is `Home`. Both seeded notes are visible. `browser cookies` in
 ## Driving conventions
 
 - Start every recipe from the baseline state unless its preconditions say otherwise.
-- Prefer role and accessible name. Placeholder `Search...`, `Note name...`, and `Folder name...` are exact.
+- Prefer role and accessible name. Placeholder `Search...` and `Folder name...` are exact.
 - The button chip says `⌘⌥N`. The harness sends `Alt+Meta+n` (Windows and Linux use `Alt+Ctrl+n`). Plain `⌘N` and `Ctrl+N` are the browser's new window, and the page ignores them. The search shortcut is `⌘K`. The harness sends `Ctrl+k` for that listener. `Meta+k` is the same chord.
 - Treat every command as literal.
 - Restore nothing by hand. Demo notes expire after 60 minutes. Do not delete other users' rows.
@@ -49,7 +49,7 @@ Each feature file starts with an H1 and one paragraph, then exactly these H2s in
 ## Features
 
 - [Demo login](./demo-login.md) signs in from the home page and lands on a private drive with the two seeded notes.
-- [Create a note](./create-note.md) opens the name field from the button and from Ctrl+N, discards a draft, and reopens the saved note.
+- [Create a note](./create-note.md) creates a note from the New note button and from ⌘⌥N, opens the editor, and reopens that note from the drive list.
 - [Search notes](./search.md) finds a seeded note by title and by body, shows an empty query, and leaves search.
 - [Edit a note](./edit-note.md) types into the editor, waits for autosave, reopens the note, and opens preview.
 - [Export notes](./export-notes.md) downloads a ZIP of every note from Settings.

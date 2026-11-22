@@ -6,11 +6,16 @@ import type { EditorView } from "@codemirror/view";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
 
-function renderEditor(value: string) {
+function renderEditor(value: string, options: { readOnly?: boolean } = {}) {
   const onChange = vi.fn();
   const ref = createRef<EditorHandle>();
   const { rerender } = render(
-    <Editor ref={ref} value={value} onChange={onChange} />,
+    <Editor
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      readOnly={options.readOnly}
+    />,
   );
   const view = ref.current!.getView()!;
   return {
@@ -18,7 +23,14 @@ function renderEditor(value: string) {
     onChange,
     doc: () => view.state.doc.toString(),
     setValue: (next: string) =>
-      rerender(<Editor ref={ref} value={next} onChange={onChange} />),
+      rerender(
+        <Editor
+          ref={ref}
+          value={next}
+          onChange={onChange}
+          readOnly={options.readOnly}
+        />,
+      ),
   };
 }
 
@@ -132,5 +144,32 @@ describe("Editor document sync", () => {
 
     typeAtEnd(view, "d");
     expect(onChange).toHaveBeenLastCalledWith("abcd");
+  });
+});
+
+describe("Editor initial caret", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("places the caret after a blank heading", () => {
+    const { view } = renderEditor("# ");
+    expect(view.state.doc.toString()).toBe("# ");
+    expect(view.state.selection.main.anchor).toBe(2);
+    expect(view.state.selection.main.head).toBe(2);
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("leaves the caret at the start of any other document", () => {
+    const { view } = renderEditor("# hello");
+    expect(view.state.selection.main.anchor).toBe(0);
+    expect(view.state.selection.main.head).toBe(0);
+  });
+
+  it("leaves the caret at the start of a read-only blank heading", () => {
+    const { view } = renderEditor("# ", { readOnly: true });
+    expect(view.state.selection.main.anchor).toBe(0);
+    expect(view.state.selection.main.head).toBe(0);
+    expect(view.hasFocus).toBe(false);
   });
 });

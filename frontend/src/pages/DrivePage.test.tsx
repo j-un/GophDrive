@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { mockNavigate } from "@/__mocks__/react-router";
+import { createNote, type FileItem } from "@/lib/api";
 
 const mockListFiles = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
@@ -13,6 +15,7 @@ vi.mock("@/lib/api", () => ({
   listFiles: mockListFiles,
   getBreadcrumbs: vi.fn(),
   isValidNoteId: vi.fn(),
+  createNote: vi.fn().mockResolvedValue({ id: "note-new" }),
 }));
 
 import DrivePage from "./DrivePage";
@@ -32,10 +35,23 @@ async function renderDrive() {
   await screen.findByText("No notes found.");
 }
 
+const timestampName = /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/;
+
+async function expectCreatedNote() {
+  await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+  const name = vi.mocked(createNote).mock.calls[0][0];
+  expect(name).toMatch(timestampName);
+  expect(createNote).toHaveBeenCalledWith(name, "# ", undefined);
+  expect(mockNavigate).toHaveBeenCalledWith("/note/?id=note-new");
+}
+
 describe("DrivePage new note shortcut", () => {
   beforeEach(() => {
     mockListFiles.mockReset();
     mockListFiles.mockResolvedValue([]);
+    vi.mocked(createNote).mockReset();
+    vi.mocked(createNote).mockResolvedValue({ id: "note-new" } as FileItem);
+    mockNavigate.mockClear();
   });
 
   it("shows ⌘⌥N on the New note button", async () => {
@@ -45,41 +61,46 @@ describe("DrivePage new note shortcut", () => {
     ).toContain("⌘⌥N");
   });
 
-  it("opens the name field for ⌘⌥N when Option turns the key into ˜", async () => {
+  it("creates a note for ⌘⌥N when Option turns the key into ˜", async () => {
     await renderDrive();
     pressN({ key: "˜", altKey: true, metaKey: true });
-    expect(await screen.findByPlaceholderText("Note name...")).toBeTruthy();
+    await expectCreatedNote();
   });
 
-  it("opens the name field for Ctrl+Alt+N", async () => {
+  it("creates a note for Ctrl+Alt+N", async () => {
     await renderDrive();
     pressN({ key: "n", altKey: true, ctrlKey: true });
-    expect(await screen.findByPlaceholderText("Note name...")).toBeTruthy();
+    await expectCreatedNote();
   });
 
-  it("does not open the name field for ⌘N", async () => {
+  it("does not create a note for ⌘N", async () => {
     await renderDrive();
     pressN({ key: "n", metaKey: true });
-    expect(screen.queryByPlaceholderText("Note name...")).toBeNull();
+    expect(createNote).not.toHaveBeenCalled();
   });
 
-  it("does not open the name field for ⌘⇧⌥N", async () => {
+  it("does not create a note for ⌘⇧⌥N", async () => {
     await renderDrive();
     pressN({ key: "N", altKey: true, metaKey: true, shiftKey: true });
-    expect(screen.queryByPlaceholderText("Note name...")).toBeNull();
+    expect(createNote).not.toHaveBeenCalled();
   });
 
-  it("leaves a typed name in place when the chord hits the name field", async () => {
+  it("does not create a note while an input is focused", async () => {
     await renderDrive();
-    pressN({ key: "˜", altKey: true, metaKey: true });
-    const input = await screen.findByPlaceholderText("Note name...");
-    fireEvent.change(input, { target: { value: "Keep" } });
-    fireEvent.keyDown(input, {
-      key: "˜",
-      code: "KeyN",
-      altKey: true,
-      metaKey: true,
-    });
-    expect((input as HTMLInputElement).value).toBe("Keep");
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    try {
+      pressN({ key: "˜", altKey: true, metaKey: true });
+      expect(createNote).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("creates a note from the New note button", async () => {
+    await renderDrive();
+    fireEvent.click(screen.getByRole("button", { name: /New note/ }));
+    await expectCreatedNote();
   });
 });
