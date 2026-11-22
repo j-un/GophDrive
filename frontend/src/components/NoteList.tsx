@@ -21,6 +21,8 @@ import { useOffline } from "@/hooks/useOffline";
 import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
 import { buildSearchRequest } from "@/lib/searchQuery";
 import { partitionFilesByKind } from "@/lib/partitionFiles";
+import { blankHeading } from "@/lib/blankHeading";
+import { defaultNoteName } from "@/lib/defaultNoteName";
 import styles from "./NoteList.module.css";
 
 interface NoteListProps {
@@ -28,7 +30,7 @@ interface NoteListProps {
   searchQuery?: string;
   tagFilter?: string[];
   onAfterMutation?: () => void;
-  /** Bumped by DrivePage (button click or ⌘⌥N) to open the inline "new note" row. */
+  /** Bumped by DrivePage (+ New note or ⌘⌥N) to create a note in the current folder. */
   createNoteSignal?: number;
 }
 
@@ -51,10 +53,6 @@ export default function NoteList({
   const [folders, setFolders] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [isCreating, setIsCreating] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newNoteName, setNewNoteName] = useState("");
 
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isSubmittingFolder, setIsSubmittingFolder] = useState(false);
@@ -149,28 +147,28 @@ export default function NoteList({
     loadNotesRef.current();
   }, [folderId, searchQuery, tagFilter, isOffline]);
 
-  const [prevCreateSignal, setPrevCreateSignal] = useState(createNoteSignal);
-  if (createNoteSignal !== prevCreateSignal) {
-    setPrevCreateSignal(createNoteSignal);
-    if (isBrowseMode) {
-      setIsCreating(true);
-      setNewNoteName("");
-    }
-  }
-
-  const handleCreateNote = async (name: string) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const note = await apiCreateNote(name, "# " + name, folderId);
-      navigate(`/note/?id=${note.id}`);
-    } catch (error) {
-      const err = error as Error;
-      console.error("Failed to create note:", err);
-      alert(err.message || "Failed to create note. Please try again.");
-      setIsSubmitting(false);
-    }
-  };
+  // A seen signal does not create again. creatingRef is set before the
+  // request, so a second run while that request is in flight does nothing.
+  // Failure clears creatingRef. Success leaves it set.
+  const creatingRef = useRef(false);
+  const seenSignalRef = useRef(createNoteSignal);
+  useEffect(() => {
+    if (seenSignalRef.current === createNoteSignal) return;
+    seenSignalRef.current = createNoteSignal;
+    if (createNoteSignal === 0 || !isBrowseMode || creatingRef.current) return;
+    creatingRef.current = true;
+    const name = defaultNoteName(new Date());
+    void apiCreateNote(name, blankHeading, folderId)
+      .then((note) => {
+        navigate(`/note/?id=${note.id}`);
+      })
+      .catch((error) => {
+        creatingRef.current = false;
+        const err = error as Error;
+        console.error("Failed to create note:", err);
+        alert(err.message || "Failed to create note. Please try again.");
+      });
+  }, [createNoteSignal, isBrowseMode, folderId, navigate]);
 
   const handleCreateFolder = async (name: string) => {
     if (!name.trim() || isSubmittingFolder) return;
@@ -377,8 +375,7 @@ export default function NoteList({
   }
 
   const showNoteSkeleton = loading && notes.length === 0;
-  const showEmptyNotes =
-    !loading && notes.length === 0 && !(isCreating && isBrowseMode);
+  const showEmptyNotes = !loading && notes.length === 0;
 
   return (
     <div>
@@ -488,30 +485,6 @@ export default function NoteList({
       )}
 
       <div>
-        {isCreating && isBrowseMode && (
-          <div className={styles.inlineRow}>
-            <input
-              autoFocus
-              type="text"
-              placeholder="Note name..."
-              value={newNoteName}
-              onChange={(e) => setNewNoteName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (e.nativeEvent.isComposing) return;
-                  if (newNoteName.trim()) handleCreateNote(newNoteName.trim());
-                }
-                if (e.key === "Escape") setIsCreating(false);
-              }}
-              onBlur={() => {
-                if (!newNoteName.trim()) setIsCreating(false);
-              }}
-              className={styles.inlineInput}
-            />
-          </div>
-        )}
-
         {showNoteSkeleton
           ? Array.from({ length: 5 }).map((_, i) => (
               <SkeletonRow key={`skeleton-note-${i}`} />
