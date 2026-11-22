@@ -77,7 +77,10 @@ function NotesContent() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== "n") return;
+      // Option/Alt keeps this off the browser's New Window chord (⌘N / Ctrl+N).
+      // e.code, because Option+N reports key "˜" on a Mac layout.
+      if (e.code !== "KeyN" || !e.altKey || e.shiftKey) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
       const active = document.activeElement as HTMLElement | null;
       const tag = active?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || active?.isContentEditable) {
@@ -140,7 +143,7 @@ function NotesContent() {
                 onClick={triggerCreateNote}
               >
                 + New note
-                <span className={styles.keyChip}>⌘N</span>
+                <span className={styles.keyChip}>⌘⌥N</span>
               </button>
             )}
           </div>

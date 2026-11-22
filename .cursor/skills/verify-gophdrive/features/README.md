@@ -27,7 +27,7 @@ The drive heading is `Home`. Both seeded notes are visible. `browser cookies` in
 
 - Start every recipe from the baseline state unless its preconditions say otherwise.
 - Prefer role and accessible name. Placeholder `Search...`, `Note name...`, and `Folder name...` are exact.
-- The button chip says `⌘N` / the search shortcut is `⌘K`. The harness sends `Ctrl+n` and `Ctrl+k` because those hit the same listeners and Chrome does not reserve them. `Meta+n` in Chrome opens a window instead of creating a note.
+- The button chip says `⌘⌥N`. The harness sends `Alt+Meta+n` (Windows and Linux use `Alt+Ctrl+n`). Plain `⌘N` and `Ctrl+N` are the browser's new window, and the page ignores them. The search shortcut is `⌘K`. The harness sends `Ctrl+k` for that listener. `Meta+k` is the same chord.
 - Treat every command as literal.
 - Restore nothing by hand. Demo notes expire after 60 minutes. Do not delete other users' rows.
 - Do not remove proof artifacts during cleanup.

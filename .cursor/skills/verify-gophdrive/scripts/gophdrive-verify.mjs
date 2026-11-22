@@ -11,7 +11,7 @@
 //   browser goto <url>
 //   browser click --role <role> --name <accessible-name>
 //   browser fill --placeholder <placeholder> --value <text>
-//   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
+//   browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k|Alt+Meta+n|Alt+Ctrl+n>
 //   browser insert --text <text>          # into the CodeMirror editor
 //   browser wait-text --text <text> [--scope list] [--timeout <ms>]
 //   browser wait-name --role <role> --name <accessible-name> [--timeout <ms>]
@@ -800,6 +800,9 @@ const KEYS = {
   "Meta+k": { key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 4 },
   "Ctrl+n": { key: "n", code: "KeyN", windowsVirtualKeyCode: 78, modifiers: 2 },
   "Ctrl+k": { key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 2 },
+  // Alt is 1, Ctrl is 2, Meta is 4. New note is Alt plus Meta or Ctrl.
+  "Alt+Meta+n": { key: "n", code: "KeyN", windowsVirtualKeyCode: 78, modifiers: 5 },
+  "Alt+Ctrl+n": { key: "n", code: "KeyN", windowsVirtualKeyCode: 78, modifiers: 3 },
 };
 
 async function press(key) {
@@ -1042,7 +1045,7 @@ function help() {
   browser goto <url>
   browser click --role <role> --name <name>
   browser fill --placeholder <placeholder> --value <text>
-  browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k>
+  browser press --key <Enter|Escape|Meta+n|Meta+k|Ctrl+n|Ctrl+k|Alt+Meta+n|Alt+Ctrl+n>
   browser insert --text <text>
   browser wait-text --text <text> [--scope list] [--timeout <ms>]
   browser wait-name --role <role> --name <name> [--timeout <ms>]
