@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -378,6 +379,40 @@ func TestAdapter_ListRecent(t *testing.T) {
 
 	if recent[0].ID != f2.ID {
 		t.Errorf("Expected most recent file to be %s, got %s (f1=%s, f2=%s)", f2.ID, recent[0].ID, f1.ID, f2.ID)
+	}
+}
+
+func TestAdapter_ListRecent_NonPositiveLimit(t *testing.T) {
+	m := NewMemoryAdapter("user1", "")
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		name := "n" + string(rune('0'+i)) + ".md"
+		if _, err := m.CreateFile(ctx, name, []byte("v"), "root"); err != nil {
+			t.Fatalf("CreateFile: %v", err)
+		}
+	}
+
+	for _, limit := range []int{-1, 0} {
+		t.Run(strconv.Itoa(limit), func(t *testing.T) {
+			recent, err := m.ListRecent(ctx, limit)
+			if err != nil {
+				t.Fatalf("ListRecent: %v", err)
+			}
+			if len(recent) != 6 {
+				t.Fatalf("len=%d, want 6", len(recent))
+			}
+		})
+	}
+}
+
+func TestAdapter_ListRecent_NegativeLimitEmpty(t *testing.T) {
+	m := NewMemoryAdapter("user1", "")
+	recent, err := m.ListRecent(context.Background(), -1)
+	if err != nil {
+		t.Fatalf("ListRecent: %v", err)
+	}
+	if len(recent) != 0 {
+		t.Fatalf("len=%d, want 0", len(recent))
 	}
 }
 
