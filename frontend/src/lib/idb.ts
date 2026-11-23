@@ -2,14 +2,31 @@ const DB_NAME = "gophdrive-db";
 const DB_VERSION = 1;
 const STORE_NOTES = "notes";
 
+declare const isoDateTimeBrand: unique symbol;
+
+export type IsoDateTime = string & { readonly [isoDateTimeBrand]: never };
+
+const UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+export function isoDateTime(value: string): IsoDateTime {
+  if (!UTC_ISO.test(value)) {
+    throw new Error("modifiedTime must be UTC ISO-8601");
+  }
+  return value as IsoDateTime;
+}
+
 export interface LocalNote {
   id: string;
   subject: string;
   name: string;
   content: string;
-  modifiedTime: string; // ISO string
+  modifiedTime: IsoDateTime;
   dirty?: boolean; // True if modified locally and needs sync
 }
+
+export type LocalNoteDraft = Omit<LocalNote, "modifiedTime"> & {
+  modifiedTime: string;
+};
 
 export const openDB = (): Promise<IDBDatabase> => {
   if (typeof window === "undefined") return Promise.reject("Window undefined");
@@ -27,23 +44,44 @@ export const openDB = (): Promise<IDBDatabase> => {
   });
 };
 
-export const saveNoteLocal = async (note: LocalNote) => {
+export const saveNoteLocal = async (note: LocalNoteDraft) => {
+  const stored: LocalNote = {
+    ...note,
+    modifiedTime: isoDateTime(note.modifiedTime),
+  };
   const db = await openDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NOTES, "readwrite");
     const store = tx.objectStore(STORE_NOTES);
-    const req = store.put(note);
+    const req = store.put(stored);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
 };
 
+type StoredNote = {
+  id: string;
+  subject?: string;
+  name: string;
+  content: string;
+  modifiedTime?: string;
+  dirty?: boolean;
+};
+
 function ownedNote(
-  note: LocalNote | undefined,
+  note: StoredNote | undefined,
   subject: string,
 ): LocalNote | undefined {
   if (!subject || !note || note.subject !== subject) return undefined;
-  return note;
+  if (!note.modifiedTime || !UTC_ISO.test(note.modifiedTime)) return undefined;
+  return {
+    id: note.id,
+    subject: note.subject,
+    name: note.name,
+    content: note.content,
+    modifiedTime: note.modifiedTime as IsoDateTime,
+    dirty: note.dirty,
+  };
 }
 
 export const getNoteLocal = async (
@@ -69,8 +107,13 @@ export const getAllNotesLocal = async (
     const store = tx.objectStore(STORE_NOTES);
     const req = store.getAll();
     req.onsuccess = () => {
-      const notes = (req.result ?? []) as LocalNote[];
-      resolve(subject ? notes.filter((note) => note.subject === subject) : []);
+      const notes = (req.result ?? []) as StoredNote[];
+      resolve(
+        notes.flatMap((note) => {
+          const owned = ownedNote(note, subject);
+          return owned ? [owned] : [];
+        }),
+      );
     };
     req.onerror = () => reject(req.error);
   });

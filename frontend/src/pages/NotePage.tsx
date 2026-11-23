@@ -17,7 +17,7 @@ import {
   saveNoteLocal,
   getNoteLocal,
   deleteNoteLocal,
-  type LocalNote,
+  type LocalNoteDraft,
 } from "@/lib/idb";
 import {
   apiFetch,
@@ -91,7 +91,7 @@ function NoteContent() {
 
   const isOffline = useOffline();
   const cacheNote = useCallback(
-    (note: Omit<LocalNote, "subject">) => {
+    (note: Omit<LocalNoteDraft, "subject">) => {
       if (!subject) return Promise.resolve();
       return saveNoteLocal({ ...note, subject });
     },

@@ -149,23 +149,21 @@ export default function NoteList({
     loadNotesRef.current();
   }, [folderId, searchQuery, tagFilter, isOffline, user?.id]);
 
-  // A seen signal does not create again. creatingRef is set before the
-  // request, so a second run while that request is in flight does nothing.
-  // Failure clears creatingRef. Success leaves it set.
-  const creatingRef = useRef(false);
+  const createConsumed = useRef(false);
   const seenSignalRef = useRef(createNoteSignal);
   useEffect(() => {
     if (seenSignalRef.current === createNoteSignal) return;
     seenSignalRef.current = createNoteSignal;
-    if (createNoteSignal === 0 || !isBrowseMode || creatingRef.current) return;
-    creatingRef.current = true;
+    if (createNoteSignal === 0 || !isBrowseMode || createConsumed.current)
+      return;
+    createConsumed.current = true;
     const name = defaultNoteName(new Date());
     void apiCreateNote(name, blankHeading, folderId)
       .then((note) => {
         navigate(`/note/?id=${note.id}`);
       })
       .catch((error) => {
-        creatingRef.current = false;
+        createConsumed.current = false;
         const err = error as Error;
         console.error("Failed to create note:", err);
         alert(err.message || "Failed to create note. Please try again.");
