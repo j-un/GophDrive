@@ -71,4 +71,46 @@ describe("IndexedDB (idb.ts)", () => {
     const result = await getNoteLocal(id);
     expect(result).toBeUndefined();
   });
+
+  it("does not return a note cached for another subject", async () => {
+    const id = uniqueId();
+    await saveNoteLocal({
+      id,
+      subject: "user-a",
+      name: "Alice secret",
+      content: "alice body",
+      modifiedTime: new Date().toISOString(),
+    });
+
+    expect(await getNoteLocal(id, "user-b")).toBeUndefined();
+    const visible = await getAllNotesLocal("user-b");
+    expect(visible.map((n) => n.id)).not.toContain(id);
+  });
+
+  it("does not return a cached note that has no subject", async () => {
+    const id = uniqueId();
+    await saveNoteLocal({
+      id,
+      name: "Legacy",
+      content: "old body",
+      modifiedTime: new Date().toISOString(),
+    });
+
+    expect(await getNoteLocal(id, "user-a")).toBeUndefined();
+  });
+
+  it("returns a note cached for the same subject", async () => {
+    const id = uniqueId();
+    await saveNoteLocal({
+      id,
+      subject: "user-a",
+      name: "Alice secret",
+      content: "alice body",
+      modifiedTime: new Date().toISOString(),
+    });
+
+    expect((await getNoteLocal(id, "user-a"))?.content).toBe("alice body");
+    const visible = await getAllNotesLocal("user-a");
+    expect(visible.map((n) => n.id)).toContain(id);
+  });
 });
