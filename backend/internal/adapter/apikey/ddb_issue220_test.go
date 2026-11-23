@@ -279,7 +279,6 @@ func TestDDBStore_RegeneratePreservesFirstIssuedAt(t *testing.T) {
 		t.Fatal("first_issued_at is 0 after first Issue")
 	}
 
-	// first_issued_at is unix seconds. Wait until the clock ticks so a rewrite to now is visible.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Unix() <= firstIssuedAt {
 		if time.Now().After(deadline) {
