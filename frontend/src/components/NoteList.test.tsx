@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { mockNavigate } from "@/__mocks__/react-router";
 import { createFolder, createNote, deleteFile, type FileItem } from "@/lib/api";
-import { getAllNotesLocal } from "@/lib/idb";
+import { getAllNotesLocal, type LocalNote } from "@/lib/idb";
 import { useOffline } from "@/hooks/useOffline";
 
 const mockListFiles = vi.hoisted(() =>
@@ -312,7 +312,7 @@ describe("NoteList onAfterMutation — delete", () => {
         subject: "user-1",
         name: "Test Note",
         content: "",
-        modifiedTime: "2026-05-14T00:00:00Z",
+        modifiedTime: "2026-05-14T00:00:00Z" as LocalNote["modifiedTime"],
       },
     ]);
     const onAfterMutation = vi.fn();

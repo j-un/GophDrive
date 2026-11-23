@@ -5,7 +5,8 @@ import {
   getNoteLocal,
   getAllNotesLocal,
   deleteNoteLocal,
-  LocalNote,
+  openDB,
+  type LocalNoteDraft,
 } from "./idb";
 
 const subject = "user-test";
@@ -18,7 +19,7 @@ function uniqueId() {
 describe("IndexedDB (idb.ts)", () => {
   it("saves and retrieves a note", async () => {
     const id = uniqueId();
-    const note: LocalNote = {
+    const note: LocalNoteDraft = {
       id,
       subject,
       name: "Test Note",
@@ -100,9 +101,44 @@ describe("IndexedDB (idb.ts)", () => {
       name: "Legacy",
       content: "old body",
       modifiedTime: new Date().toISOString(),
-    } as LocalNote);
+    } as LocalNoteDraft);
 
     expect(await getNoteLocal(id, "user-a")).toBeUndefined();
+  });
+
+  it("rejects a note whose modifiedTime is not UTC ISO", async () => {
+    const id = uniqueId();
+    await expect(
+      saveNoteLocal({
+        id,
+        subject,
+        name: "Bad time",
+        content: "nope",
+        modifiedTime: "yesterday",
+      }),
+    ).rejects.toThrow(Error);
+    expect(await getNoteLocal(id, subject)).toBeUndefined();
+  });
+
+  it("does not return a stored note whose modifiedTime is not UTC ISO", async () => {
+    const id = uniqueId();
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("notes", "readwrite");
+      const req = tx.objectStore("notes").put({
+        id,
+        subject,
+        name: "Bad time",
+        content: "nope",
+        modifiedTime: "yesterday",
+      });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+
+    expect(await getNoteLocal(id, subject)).toBeUndefined();
+    const visible = await getAllNotesLocal(subject);
+    expect(visible.map((note) => note.id)).not.toContain(id);
   });
 
   it("returns a note cached for the same subject", async () => {
