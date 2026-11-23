@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -724,5 +725,54 @@ func TestNoteHandler_CreateFolder_InvalidParent_Returns400(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expected 400 for invalid parentId, got %d: %s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestNoteHandler_ListRecentNotes_InvalidLimitUsesDefault(t *testing.T) {
+	provider := dynamo.NewMemoryProvider()
+	h := handler.NewNoteHandler(provider, "test-secret")
+	ctx := context.Background()
+
+	for i := 0; i < 6; i++ {
+		body := fmt.Sprintf(`{"name":"n%d.md","content":"x"}`, i)
+		resp, err := h.CreateNote(ctx, makeRequest("POST", "/notes", body))
+		if err != nil || resp.StatusCode != http.StatusCreated {
+			t.Fatalf("CreateNote %d: err=%v status=%d", i, err, resp.StatusCode)
+		}
+	}
+
+	for _, limit := range []string{"-1", "0", "abc"} {
+		t.Run(limit, func(t *testing.T) {
+			req := makeRequest("GET", "/recent", "")
+			req.QueryStringParameters = map[string]string{"limit": limit}
+			resp, err := h.ListRecentNotes(ctx, req)
+			if err != nil {
+				t.Fatalf("ListRecentNotes: %v", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d body %s", resp.StatusCode, resp.Body)
+			}
+			var notes []adapter.FileMetadata
+			if err := json.Unmarshal([]byte(resp.Body), &notes); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if len(notes) != 5 {
+				t.Errorf("len=%d, want 5", len(notes))
+			}
+		})
+	}
+
+	req := makeRequest("GET", "/recent", "")
+	req.QueryStringParameters = map[string]string{"limit": "2"}
+	resp, err := h.ListRecentNotes(ctx, req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("limit=2: err=%v status=%d", err, resp.StatusCode)
+	}
+	var notes []adapter.FileMetadata
+	if err := json.Unmarshal([]byte(resp.Body), &notes); err != nil {
+		t.Fatalf("limit=2: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Errorf("limit=2: len=%d, want 2", len(notes))
 	}
 }
