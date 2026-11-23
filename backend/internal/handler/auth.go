@@ -231,6 +231,12 @@ func (h *AuthHandler) Refresh(ctx context.Context, req events.APIGatewayProxyReq
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "Demo sessions cannot be refreshed; please log in again"}, nil
 	}
 
+	// A translation JWT is not a browser session. Reject it before re-signing
+	// and do not copy api_key onto a new cookie.
+	if apiKey, _ := mc["api_key"].(bool); apiKey {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized, Body: "API key sessions cannot be refreshed"}, nil
+	}
+
 	sc := SessionClaims{UserID: sub}
 	if v, ok := mc["email"].(string); ok {
 		sc.Email = v
