@@ -40,6 +40,14 @@ vi.mock("@/hooks/useOffline", () => ({
   useOffline: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", base_folder_id: "root" },
+    loading: false,
+    refreshUser: vi.fn(),
+  }),
+}));
+
 import NoteList from "./NoteList";
 
 const openDeleteDialog = async () => {
@@ -301,6 +309,7 @@ describe("NoteList onAfterMutation — delete", () => {
     vi.mocked(getAllNotesLocal).mockResolvedValueOnce([
       {
         id: "note-1",
+        subject: "user-1",
         name: "Test Note",
         content: "",
         modifiedTime: "2026-05-14T00:00:00Z",

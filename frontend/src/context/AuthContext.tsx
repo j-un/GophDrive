@@ -10,6 +10,22 @@ import {
 } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { getUser, User } from "@/lib/api";
+import { syncLocalNotesToSubject } from "@/lib/idb";
+
+function isAuthFailure(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes("401") || error.message.includes("Unauthorized"))
+  );
+}
+
+async function dropCachedNotes(subject: string | null) {
+  try {
+    await syncLocalNotesToSubject(subject);
+  } catch (error) {
+    console.error("AuthContext: failed to drop cached notes", error);
+  }
+}
 
 interface AuthContextType {
   user: User | null;
@@ -37,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUser = useCallback(async () => {
     try {
       const u = await getUser();
+      await dropCachedNotes(u.id);
       setUser(u);
       const redirect = sessionStorage.getItem("authRedirect");
       if (redirect) {
@@ -45,7 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       const e = error as Error;
-      if (!e.message?.includes("401")) {
+      if (isAuthFailure(e)) {
+        await dropCachedNotes(null);
+      } else {
         console.error(
           "AuthContext: Failed to fetch user. Detailed error:",
           e.message || e,
@@ -60,7 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     void getUser().then(
-      (u) => {
+      async (u) => {
+        if (cancelled) return;
+        await dropCachedNotes(u.id);
         if (cancelled) return;
         setUser(u);
         const redirect = sessionStorage.getItem("authRedirect");
@@ -70,15 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setLoading(false);
       },
-      (error: unknown) => {
+      async (error: unknown) => {
         if (cancelled) return;
         const e = error as Error;
-        if (!e.message?.includes("401")) {
+        if (isAuthFailure(e)) {
+          await dropCachedNotes(null);
+        } else {
           console.error(
             "AuthContext: Failed to fetch user. Detailed error:",
             e.message || e,
           );
         }
+        if (cancelled) return;
         setUser(null);
         setLoading(false);
       },

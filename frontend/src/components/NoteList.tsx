@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RenameDialog } from "@/components/RenameDialog";
 import { MoveDialog } from "@/components/MoveDialog";
 import { useOffline } from "@/hooks/useOffline";
+import { useAuth } from "@/context/AuthContext";
 import { deleteNoteLocal, getAllNotesLocal } from "@/lib/idb";
 import { buildSearchRequest } from "@/lib/searchQuery";
 import { partitionFilesByKind } from "@/lib/partitionFiles";
@@ -49,6 +50,7 @@ export default function NoteList({
   createNoteSignal = 0,
 }: NoteListProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [notes, setNotes] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,7 +98,7 @@ export default function NoteList({
       }
 
       if (isOffline) {
-        const localNotes = await getAllNotesLocal();
+        const localNotes = user?.id ? await getAllNotesLocal(user.id) : [];
         if (requestId !== loadRequestRef.current) return;
         const fileItems: FileItem[] = localNotes.map((n) => ({
           id: n.id,
@@ -145,7 +147,7 @@ export default function NoteList({
 
   useEffect(() => {
     loadNotesRef.current();
-  }, [folderId, searchQuery, tagFilter, isOffline]);
+  }, [folderId, searchQuery, tagFilter, isOffline, user?.id]);
 
   // A seen signal does not create again. creatingRef is set before the
   // request, so a second run while that request is in flight does nothing.
