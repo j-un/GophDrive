@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-lambda-go v1.55.1
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
+	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.21
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.74.0
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.83.0
@@ -21,7 +22,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	github.com/alecthomas/chroma/v3 v3.0.0-alpha.5 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.21.0 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.9 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect
