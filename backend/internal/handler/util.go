@@ -19,6 +19,10 @@ type SessionClaims struct {
 	Email        string
 	Name         string
 	BaseFolderID string
+	// APIKey marks a short-lived translation token. SignSession emits api_key
+	// only when this is true. Browser sessions omit the claim. GetSessionClaims
+	// does not read it, so a live key still authorizes routes.
+	APIKey bool
 }
 
 // GetSessionClaims parses and verifies the session JWT, returning the trusted
@@ -84,6 +88,9 @@ func SignSession(c SessionClaims, ttl time.Duration, jwtSecret string) (string, 
 		"base_folder_id": c.BaseFolderID,
 		"iat":            now.Unix(),
 		"exp":            now.Add(ttl).Unix(),
+	}
+	if c.APIKey {
+		mc["api_key"] = true
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, mc).SignedString([]byte(jwtSecret))
 }

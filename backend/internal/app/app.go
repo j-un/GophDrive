@@ -429,7 +429,7 @@ func translateAPIKey(ctx context.Context, headers map[string]string, store apike
 		return "", false
 	}
 
-	claims := handler.SessionClaims{UserID: userID, BaseFolderID: baseFolderID}
+	claims := handler.SessionClaims{UserID: userID, BaseFolderID: baseFolderID, APIKey: true}
 	tok, err := handler.SignSession(claims, 5*time.Minute, jwtSecret)
 	if err != nil {
 		log.Printf("WARNING: translateAPIKey: SignSession: %v", err)
