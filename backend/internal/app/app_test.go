@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/jun/gophdrive/backend/internal/adapter/apikey"
@@ -177,6 +178,7 @@ func TestCSRF_POSTWithGarbageAuthHeaderTriggersCsrf(t *testing.T) {
 type apiKeyTestApp struct {
 	app      *App
 	keyPlain string
+	store    *apikey.InMemoryStore
 }
 
 func newAPIKeyTestApp(t *testing.T, userID, baseFolderID, jwtSecret string) apiKeyTestApp {
@@ -190,6 +192,10 @@ func newAPIKeyTestApp(t *testing.T, userID, baseFolderID, jwtSecret string) apiK
 
 	p := dynamo.NewMemoryProvider()
 	app := &App{
+		authHandler: handler.NewAuthHandler(handler.AuthHandlerDeps{
+			JWTSecret:   jwtSecret,
+			FrontendURL: csrfFrontendURL,
+		}),
 		noteHandler:   handler.NewNoteHandler(p, jwtSecret),
 		searchHandler: handler.NewSearchHandler(p, jwtSecret),
 		exportHandler: handler.NewExportHandler(p, jwtSecret),
@@ -198,8 +204,9 @@ func newAPIKeyTestApp(t *testing.T, userID, baseFolderID, jwtSecret string) apiK
 		apiKeyHandler: handler.NewAPIKeyHandler(store, jwtSecret),
 		apiKeys:       store,
 		jwtSecret:     jwtSecret,
+		frontendURL:   csrfFrontendURL,
 	}
-	return apiKeyTestApp{app: app, keyPlain: plain}
+	return apiKeyTestApp{app: app, keyPlain: plain, store: store}
 }
 
 func TestAPIKey_CorrectKey(t *testing.T) {
@@ -763,5 +770,120 @@ func TestBearerSessionJWT_NoLongerAuthenticates(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("Bearer-only session JWT: want 401, got %d (Phase 3c regression)", resp.StatusCode)
+	}
+}
+
+func sessionTokenFromSetCookie(resp events.APIGatewayProxyResponse) string {
+	for _, c := range resp.MultiValueHeaders["Set-Cookie"] {
+		part := strings.TrimSpace(strings.Split(c, ";")[0])
+		if strings.HasPrefix(part, "session_token=") {
+			return strings.TrimPrefix(part, "session_token=")
+		}
+	}
+	return ""
+}
+
+func TestAPIKeyRefresh_DoesNotEstablishCookieThatSurvivesRevoke(t *testing.T) {
+	const jwtSecret = "refresh-key-secret"
+	const userID = "google-oauth2|refresh-user"
+	ta := newAPIKeyTestApp(t, userID, "folder-refresh", jwtSecret)
+
+	refresh, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/auth/refresh",
+		Headers:    map[string]string{"Authorization": "Bearer " + ta.keyPlain},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	cookie := sessionTokenFromSetCookie(refresh)
+	if err := ta.store.Revoke(context.Background(), userID); err != nil {
+		t.Fatal(err)
+	}
+	if cookie != "" {
+		notes, notesErr := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+			HTTPMethod: "GET",
+			Path:       "/api/notes",
+			Headers:    map[string]string{"Cookie": "session_token=" + cookie},
+		})
+		if notesErr != nil {
+			t.Fatalf("notes: %v", notesErr)
+		}
+		if notes.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("after revoke, GET /notes with the refresh cookie: want 401, got %d body=%s", notes.StatusCode, notes.Body)
+		}
+	}
+	if refresh.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("API-key refresh: want 401, got %d body=%s", refresh.StatusCode, refresh.Body)
+	}
+	if cookie != "" {
+		t.Fatal("API-key refresh set a session cookie")
+	}
+}
+
+func TestRefresh_NormalSessionCookie(t *testing.T) {
+	const jwtSecret = "refresh-session-secret"
+	const userID = "google-oauth2|session-user"
+	ta := newAPIKeyTestApp(t, userID, "folder-session", jwtSecret)
+
+	tok, err := handler.SignSession(handler.SessionClaims{
+		UserID:       userID,
+		BaseFolderID: "folder-session",
+	}, time.Hour, jwtSecret)
+	if err != nil {
+		t.Fatalf("SignSession: %v", err)
+	}
+
+	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/auth/refresh",
+		Headers: map[string]string{
+			"Cookie":           "session_token=" + tok,
+			"Origin":           csrfFrontendURL,
+			"X-Requested-With": "XMLHttpRequest",
+		},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("normal session refresh: want 200, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+	if sessionTokenFromSetCookie(resp) == "" {
+		t.Fatal("normal session refresh: want a new Set-Cookie")
+	}
+}
+
+func TestRefresh_DemoSessionRejected(t *testing.T) {
+	const jwtSecret = "refresh-demo-secret"
+	const userID = "demo-user-abc"
+	ta := newAPIKeyTestApp(t, userID, "folder-demo", jwtSecret)
+
+	tok, err := handler.SignSession(handler.SessionClaims{
+		UserID:       userID,
+		BaseFolderID: "folder-demo",
+	}, time.Hour, jwtSecret)
+	if err != nil {
+		t.Fatalf("SignSession: %v", err)
+	}
+
+	resp, err := ta.app.HandleRequest(context.Background(), events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		Path:       "/api/auth/refresh",
+		Headers: map[string]string{
+			"Cookie":           "session_token=" + tok,
+			"Origin":           csrfFrontendURL,
+			"X-Requested-With": "XMLHttpRequest",
+		},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("demo session refresh: want 401, got %d body=%s", resp.StatusCode, resp.Body)
+	}
+	if sessionTokenFromSetCookie(resp) != "" {
+		t.Fatal("demo session refresh set a session cookie")
 	}
 }
