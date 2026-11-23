@@ -513,6 +513,9 @@ func (h *NoteHandler) ListRecentNotes(ctx context.Context, req events.APIGateway
 			limit = n
 		}
 	}
+	if limit < 1 {
+		limit = 5
+	}
 
 	files, err := storage.ListRecent(ctx, limit)
 	if err != nil {

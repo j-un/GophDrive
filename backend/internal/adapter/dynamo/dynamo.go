@@ -1730,7 +1730,7 @@ func (m *Adapter) ListRecent(ctx context.Context, limit int) ([]adapter.FileMeta
 
 	sortByViewedTimeDesc(files)
 
-	if len(files) > limit {
+	if limit > 0 && len(files) > limit {
 		files = files[:limit]
 	}
 
@@ -1769,7 +1769,7 @@ func (m *Adapter) listRecentMap(ctx context.Context, limit int) ([]adapter.FileM
 
 	sortByViewedTimeDesc(files)
 
-	if len(files) > limit {
+	if limit > 0 && len(files) > limit {
 		files = files[:limit]
 	}
 
