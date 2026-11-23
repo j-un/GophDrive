@@ -8,6 +8,8 @@ import {
   LocalNote,
 } from "./idb";
 
+const subject = "user-test";
+
 let testCounter = 0;
 function uniqueId() {
   return `note-${++testCounter}-${Date.now()}`;
@@ -18,6 +20,7 @@ describe("IndexedDB (idb.ts)", () => {
     const id = uniqueId();
     const note: LocalNote = {
       id,
+      subject,
       name: "Test Note",
       content: "# Hello",
       modifiedTime: new Date().toISOString(),
@@ -25,14 +28,14 @@ describe("IndexedDB (idb.ts)", () => {
     };
 
     await saveNoteLocal(note);
-    const retrieved = await getNoteLocal(id);
+    const retrieved = await getNoteLocal(id, subject);
     expect(retrieved).toBeDefined();
     expect(retrieved!.id).toBe(id);
     expect(retrieved!.content).toBe("# Hello");
   });
 
   it("returns undefined for non-existent note", async () => {
-    const result = await getNoteLocal("nonexistent-" + Date.now());
+    const result = await getNoteLocal("nonexistent-" + Date.now(), subject);
     expect(result).toBeUndefined();
   });
 
@@ -42,18 +45,20 @@ describe("IndexedDB (idb.ts)", () => {
 
     await saveNoteLocal({
       id: id1,
+      subject,
       name: "Note 1",
       content: "A",
       modifiedTime: new Date().toISOString(),
     });
     await saveNoteLocal({
       id: id2,
+      subject,
       name: "Note 2",
       content: "B",
       modifiedTime: new Date().toISOString(),
     });
 
-    const all = await getAllNotesLocal();
+    const all = await getAllNotesLocal(subject);
     const ids = all.map((n) => n.id);
     expect(ids).toContain(id1);
     expect(ids).toContain(id2);
@@ -63,12 +68,13 @@ describe("IndexedDB (idb.ts)", () => {
     const id = uniqueId();
     await saveNoteLocal({
       id,
+      subject,
       name: "To Delete",
       content: "bye",
       modifiedTime: new Date().toISOString(),
     });
     await deleteNoteLocal(id);
-    const result = await getNoteLocal(id);
+    const result = await getNoteLocal(id, subject);
     expect(result).toBeUndefined();
   });
 
@@ -94,7 +100,7 @@ describe("IndexedDB (idb.ts)", () => {
       name: "Legacy",
       content: "old body",
       modifiedTime: new Date().toISOString(),
-    });
+    } as LocalNote);
 
     expect(await getNoteLocal(id, "user-a")).toBeUndefined();
   });

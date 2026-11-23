@@ -61,22 +61,20 @@ describe("AuthProvider local note cache", () => {
       content: "bob body",
       modifiedTime: "2026-01-02T00:00:00.000Z",
     });
-    session = { id: "user-a", base_folder_id: "root-a" };
+    session = { id: "user-b", base_folder_id: "root-b" };
 
     const button = await settle();
-    expect(button.textContent).toBe("user:user-a");
-    expect((await getNoteLocal("note-a", "user-a"))?.content).toBe(
-      "alice body",
-    );
+    expect(button.textContent).toBe("user:user-b");
+    expect(await getNoteLocal("note-a", "user-a")).toBeUndefined();
+    expect((await getNoteLocal("note-b", "user-b"))?.content).toBe("bob body");
 
-    session = { id: "user-b", base_folder_id: "root-b" };
+    session = { id: "user-a", base_folder_id: "root-a" };
     fireEvent.click(button);
 
     expect(
-      await screen.findByRole("button", { name: "user:user-b" }),
+      await screen.findByRole("button", { name: "user:user-a" }),
     ).toBeTruthy();
-    expect(await getNoteLocal("note-a", "user-a")).toBeUndefined();
-    expect((await getNoteLocal("note-b", "user-b"))?.content).toBe("bob body");
+    expect(await getNoteLocal("note-b", "user-b")).toBeUndefined();
   });
 
   it("drops cached notes when the session ends", async () => {

@@ -12,7 +12,13 @@ import { Check, Share2, ChevronLeft, Eye } from "lucide-react";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useOffline } from "@/hooks/useOffline";
-import { saveNoteLocal, getNoteLocal, deleteNoteLocal } from "@/lib/idb";
+import { useAuth } from "@/context/AuthContext";
+import {
+  saveNoteLocal,
+  getNoteLocal,
+  deleteNoteLocal,
+  type LocalNote,
+} from "@/lib/idb";
 import {
   apiFetch,
   parseJson,
@@ -58,6 +64,8 @@ function NoteContent() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const id = searchParams.get("id");
+  const { user, loading: authLoading } = useAuth();
+  const subject = user?.id ?? "";
 
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
@@ -82,13 +90,20 @@ function NoteContent() {
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
 
   const isOffline = useOffline();
+  const cacheNote = useCallback(
+    (note: Omit<LocalNote, "subject">) => {
+      if (!subject) return Promise.resolve();
+      return saveNoteLocal({ ...note, subject });
+    },
+    [subject],
+  );
 
   const copyTimerRef = useRef<number | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
   const noteLoadRef = useRef(0);
   const breadcrumbsRequestRef = useRef(0);
 
-  const loadKey = id ? `${id}:${String(isOffline)}` : "";
+  const loadKey = id ? `${id}:${String(isOffline)}:${subject}` : "";
   const [appliedLoadKey, setAppliedLoadKey] = useState<string | null>(null);
   if (!id) {
     if (loading) setLoading(false);
@@ -100,12 +115,12 @@ function NoteContent() {
   }
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || authLoading) return;
 
     const requestId = ++noteLoadRef.current;
 
     async function load() {
-      const localNote = await getNoteLocal(id!);
+      const localNote = await getNoteLocal(id!, subject);
       if (requestId !== noteLoadRef.current) return;
 
       if (!navigator.onLine) {
@@ -194,7 +209,7 @@ function NoteContent() {
         const headerEtag = res.headers.get("ETag");
         setEtag(headerEtag || data.etag || "");
 
-        saveNoteLocal({
+        cacheNote({
           id: id!,
           content: data.content || "",
           name: data.name || "Untitled Note",
@@ -216,7 +231,7 @@ function NoteContent() {
       }
     }
     load();
-  }, [id, isOffline]);
+  }, [id, isOffline, authLoading, subject, cacheNote]);
 
   if (!parentId && (breadcrumbs.length !== 1 || breadcrumbs[0]?.id !== "")) {
     setBreadcrumbs([{ id: "", name: "Home" }]);
@@ -247,7 +262,7 @@ function NoteContent() {
       if (!id || lockedBy) return;
 
       if (isOffline) {
-        await saveNoteLocal({
+        await cacheNote({
           id,
           content: newContent,
           name: title,
@@ -310,7 +325,7 @@ function NoteContent() {
 
         const now = new Date().toISOString();
         setSavedAt(formatSavedTime(now));
-        saveNoteLocal({
+        cacheNote({
           id,
           content: newContent,
           name: title,
@@ -323,7 +338,7 @@ function NoteContent() {
         console.error("Save failed", e);
         const isNetworkError = e instanceof TypeError;
         if (isNetworkError || isOffline) {
-          await saveNoteLocal({
+          await cacheNote({
             id,
             content: newContent,
             name: title,
@@ -335,7 +350,7 @@ function NoteContent() {
         throw e;
       }
     },
-    [id, lockedBy, etag, isOffline, title],
+    [id, lockedBy, etag, isOffline, title, cacheNote],
   );
 
   const {
@@ -397,7 +412,7 @@ function NoteContent() {
     try {
       if (isOffline) {
         setTitle(newName);
-        await saveNoteLocal({
+        await cacheNote({
           id,
           content,
           name: newName,
@@ -407,7 +422,7 @@ function NoteContent() {
       } else {
         await renameNote(id, newName);
         setTitle(newName);
-        await saveNoteLocal({
+        await cacheNote({
           id,
           content,
           name: newName,
